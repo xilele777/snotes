@@ -1,5 +1,6 @@
 import { Hono } from 'hono'
 import { auth } from './auth'
+import { notesRoutes } from './routes/notes'
 import type { Env } from './types'
 
 export function createApp() {
@@ -9,6 +10,8 @@ export function createApp() {
   app.get('/api/health', (c) => c.json({ ok: true }))
 
   app.use('/api/*', auth)
+
+  app.route('/', notesRoutes)
 
   return app
 }

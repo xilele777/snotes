@@ -77,3 +77,47 @@ export interface PullPlan {
   updateProp: NoteMeta[]
   fetchBody: string[]
 }
+
+/** POST /api/notes 请求体（规格 §7.2）。 */
+export interface CreateNoteRequest {
+  id: string
+  create_time: number
+  content: string
+  title: string
+  summary: string
+  thumbnail?: string | null
+  group_id?: string | null
+  star?: 0 | 1
+  top?: 0 | 1
+  skin_color?: string | null
+}
+
+/** POST /api/notes 响应体。 */
+export interface CreateNoteResponse {
+  id: string
+  version: number
+  prop_version: number
+  update_time: number
+}
+
+/** PATCH /api/notes/:id 请求体（规格 §7.2）。 */
+export interface PatchNoteRequest {
+  content?: string
+  title?: string
+  summary?: string
+  thumbnail?: string | null
+  group_id?: string | null
+  star?: 0 | 1
+  top?: 0 | 1
+  skin_color?: string | null
+  base_version?: number
+  base_prop_version?: number
+}
+
+/** PATCH /api/notes/:id 响应体。 */
+export interface PatchNoteResponse {
+  version: number
+  prop_version: number
+  update_time: number
+  conflicted: boolean
+}
