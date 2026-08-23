@@ -10,12 +10,19 @@ export interface NoteMeta {
   thumbnail: string | null
   version: number
   prop_version: number
-  star: number
-  top: number
+  star: 0 | 1
+  top: 0 | 1
   skin_color: string | null
-  invalid: number
+  invalid: 0 | 1
   create_time: number
   update_time: number
+}
+
+/** 笔记正文（note_body 表一行 ↔ NoteBody）。 */
+export interface NoteBody {
+  note_id: string
+  content: string
+  version: number
 }
 
 /** 分组（note_group 表一行 ↔ Group）。 */
@@ -24,7 +31,7 @@ export interface Group {
   name: string
   ord: number
   color: string | null
-  invalid: number
+  invalid: 0 | 1
   update_time: number
 }
 
@@ -50,4 +57,23 @@ export interface OutboxTask {
   seq: number
   /** 1 = 不可重试的失败，移出消费队列等用户处理；新编辑合并进来时归零 */
   failed: 0 | 1
+}
+
+/** 本地某条笔记的同步状态（planPull 输入）。 */
+export interface LocalNoteState {
+  id: string
+  /** 服务端已确认的正文版本，用作 PATCH 的 base_version */
+  version: number
+  /** 本地 body 字段当前对应的服务端版本；0 表示正文还没拉到 */
+  body_version: number
+  prop_version: number
+  /** outbox 里是否有未失败的 body/create 任务——有就别拿远端正文盖本地 */
+  body_pending: boolean
+}
+
+/** pull 归约结果（planPull 输出）。 */
+export interface PullPlan {
+  insert: NoteMeta[]
+  updateProp: NoteMeta[]
+  fetchBody: string[]
 }
