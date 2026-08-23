@@ -27,3 +27,10 @@ export interface Group {
   invalid: number
   update_time: number
 }
+
+/** 客户端从正文派生的三个字段（规格 §6.2）。服务端只存不算。 */
+export interface DerivedFields {
+  title: string
+  summary: string
+  thumbnail: string | null
+}
