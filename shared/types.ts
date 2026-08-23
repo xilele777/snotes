@@ -121,3 +121,18 @@ export interface PatchNoteResponse {
   update_time: number
   conflicted: boolean
 }
+
+/** POST /api/groups 请求体（规格 §7.3）。 */
+export interface CreateGroupRequest {
+  group_id: string
+  name: string
+  ord?: number
+  color?: string | null
+}
+
+/** PATCH /api/groups/:id 请求体。 */
+export interface PatchGroupRequest {
+  name?: string
+  ord?: number
+  color?: string | null
+}

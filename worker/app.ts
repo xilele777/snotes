@@ -1,5 +1,6 @@
 import { Hono } from 'hono'
 import { auth } from './auth'
+import { groupsRoutes } from './routes/groups'
 import { notesRoutes } from './routes/notes'
 import { trashRoutes } from './routes/trash'
 import type { Env } from './types'
@@ -13,6 +14,7 @@ export function createApp() {
   app.use('/api/*', auth)
 
   app.route('/', notesRoutes)
+  app.route('/', groupsRoutes)
   app.route('/', trashRoutes)
 
   return app
