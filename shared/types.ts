@@ -161,3 +161,13 @@ export interface BodiesRequest {
 export interface BodiesResponse {
   bodies: NoteBody[]
 }
+
+/** 本地某条笔记的 dirty 标记（哪些轨道有未推送的改动）。 */
+export type DirtyState = 'none' | 'body' | 'prop' | 'both'
+
+/** 本地笔记（LocalNote = NoteMeta + 正文 + 正文版本 + dirty）。 */
+export interface LocalNote extends NoteMeta {
+  body: string
+  body_version: number
+  dirty: DirtyState
+}

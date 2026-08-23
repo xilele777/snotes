@@ -6,6 +6,6 @@ export default defineConfig({
   test: {
     environment: 'jsdom',
     include: ['tests/unit/**/*.test.ts', 'src/**/*.test.ts', 'shared/**/*.test.ts'],
-    setupFiles: [],
+    setupFiles: ['./tests/unit/setup-idb.ts'],
   },
 })
