@@ -1,0 +1,3 @@
+import type {NoteMeta} from './types'
+export interface PullPlan { inserts:NoteMeta[]; propUpdates:{local:NoteMeta;remote:NoteMeta}[]; bodyIds:string[] }
+export function planPull(remote:NoteMeta[], localById:Map<string,NoteMeta>):PullPlan { const inserts:NoteMeta[]=[]; const propUpdates:any[]=[]; const bodyIds:string[]=[]; for(const r of remote){const l=localById.get(r.id); if(!l){inserts.push({...r,body:'',body_version:0,dirty:'none'}); bodyIds.push(r.id); continue} if(r.prop_version>l.prop_version)propUpdates.push({local:l,remote:r}); if(r.version> (l.body_version??0) && !(l.dirty==='body'||l.dirty==='both')) bodyIds.push(r.id)} return {inserts,propUpdates,bodyIds} }

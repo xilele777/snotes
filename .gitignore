@@ -7,3 +7,9 @@ dist/
 *.log
 .DS_Store
 base.apk
+node_modules
+dist
+.wrangler
+.dev.vars
+*.local
+*.tsbuildinfo

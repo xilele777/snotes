@@ -1,0 +1,1 @@
+import {defineStore} from 'pinia'; import {ref} from 'vue'; export const useUiStore=defineStore('ui',()=>{const view=ref<'all'|'trash'|'calendar'|'groups'>('all'),query=ref(''),token=ref(!!localStorage.getItem('snotes_token'));return {view,query,token}})

@@ -1,0 +1,12 @@
+import {db,type LocalNote} from './schema'; import {mergeOutbox,type OutboxTask} from '../../shared/outbox'; import type {Group} from '../../shared/types'; import {derive} from '../../shared/derive';
+async function enqueue(task:OutboxTask){const old=await db.outbox.where({note_id:task.note_id,kind:task.kind}).first(); if(old)await db.outbox.put(mergeOutbox(old,task));else await db.outbox.add(task)}
+export async function listNotes(){return db.notes.filter(n=>!n.invalid).toArray()}
+export async function getNote(id:string){return db.notes.get(id)}
+export async function createNote(){const id=crypto.randomUUID(),now=Date.now(),n:LocalNote={id,group_id:null,title:'',summary:'',thumbnail:null,version:1,prop_version:1,star:0,top:0,skin_color:null,invalid:0,create_time:now,update_time:now,body:'',body_version:0,dirty:'body'};await db.notes.put(n);await enqueue({note_id:id,kind:'create',payload:{id,create_time:now,content:'',...derive('')},retry:0,next_at:0});return n}
+export async function saveBody(id:string,body:string){const n=await db.notes.get(id);if(!n)return;const d=derive(body),next:LocalNote={...n,...d,body,dirty:n.dirty==='prop'?'both':'body'};await db.notes.put(next);await enqueue({note_id:id,kind:'body',payload:{content:body,...d,base_version:n.version},retry:0,next_at:0})}
+export async function updateProps(id:string,props:Partial<Pick<LocalNote,'group_id'|'star'|'top'|'skin_color'>>){const n=await db.notes.get(id);if(!n)return;await db.notes.put({...n,...props,dirty:n.dirty==='body'?'both':'prop'});await enqueue({note_id:id,kind:'prop',payload:{...props,base_prop_version:n.prop_version},retry:0,next_at:0})}
+export async function trashNote(id:string){await updateProps(id,{ });const n=await db.notes.get(id);if(n){await db.notes.put({...n,invalid:1,dirty:'prop'});await enqueue({note_id:id,kind:'prop',payload:{invalid:1,base_prop_version:n.prop_version},retry:0,next_at:0})}}
+export async function recoverNote(id:string){const n=await db.notes.get(id);if(n){await db.notes.put({...n,invalid:0,dirty:'prop'});await enqueue({note_id:id,kind:'prop',payload:{invalid:0,base_prop_version:n.prop_version},retry:0,next_at:0})}}
+export async function putGroup(g:Group){await db.groups.put(g);await enqueue({note_id:g.group_id,kind:'group',payload:g,retry:0,next_at:0})}
+export async function getMeta<T>(key:string, fallback:T):Promise<T>{return (await db.meta.get(key))?.value??fallback}
+export async function setMeta(key:string,value:any){await db.meta.put({key,value})}

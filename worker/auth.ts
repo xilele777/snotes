@@ -1,0 +1,4 @@
+import type {Context,Next} from 'hono'; import type {Env} from '../shared/types'
+export const IMAGE_COOKIE='snotes_token'
+function constantTimeEqual(a:string,b:string){if(a.length!==b.length)return false;let x=0;for(let i=0;i<a.length;i++)x|=a.charCodeAt(i)^b.charCodeAt(i);return x===0}
+export async function auth(c:Context<{Bindings:Env}>,next:Next){if(c.req.path.startsWith('/api/health'))return next(); const h=c.req.header('Authorization')||''; const bearer=h.startsWith('Bearer ')?h.slice(7):''; const cookie=c.req.header('Cookie')||''; const cv=cookie.split(';').map(x=>x.trim()).find(x=>x.startsWith(IMAGE_COOKIE+'='))?.slice(IMAGE_COOKIE.length+1)||''; const allowed=c.req.method==='GET'&&c.req.path.startsWith('/api/images/')&&cv&&constantTimeEqual(cv,c.env.ACCESS_TOKEN) || bearer&&constantTimeEqual(bearer,c.env.ACCESS_TOKEN); if(!allowed)return c.json({error:'unauthorized'},401); return next() }

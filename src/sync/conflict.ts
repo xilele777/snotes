@@ -1,0 +1,1 @@
+import {createNote,saveBody} from '../db/repo';export async function createConflictCopy(content:string,title:string){const n=await createNote();await saveBody(n.id,`# ${title}（冲突副本）\n\n${content}`);return n.id}
