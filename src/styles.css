@@ -327,6 +327,11 @@ body { color: var(--text-primary); background: var(--bg-app); font-size: 16px; l
 }
 .note-item.swiped .delete { transform: translateX(0); }
 .note-item.swiped { transform: translateX(-80px); }
+/* 桌面端 hover 也露删除按钮：左滑是移动端唯一入口，桌面端不能只靠 hover，
+   但 E2E 跑在桌面浏览器里，没有滑动，得让删除按钮可点。 */
+@media (hover: hover) {
+  .note-item:hover .delete { transform: translateX(0); }
+}
 
 .empty { color: var(--text-secondary); padding: 48px 16px; text-align: center; }
 

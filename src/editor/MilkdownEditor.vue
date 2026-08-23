@@ -72,6 +72,20 @@ function pushMarkdown(editor: Editor, markdown: string) {
   emit('update:modelValue', markdown)
 }
 
+/**
+ * 从剪贴板里取出图片文件。
+ * 不能只读 `clipboardData.files`：拖拽与合成 paste 事件经常只把文件挂在
+ * `items` 上、`.files` 是空的，只看 `.files` 会漏掉这种来源。
+ */
+function clipboardImageFiles(data: DataTransfer | null): File[] {
+  if (!data) return []
+  const fromFiles = Array.from(data.files ?? [])
+  const fromItems = Array.from(data.items ?? [])
+    .map((item) => item.getAsFile())
+    .filter((f): f is File => f !== null)
+  return [...fromFiles, ...fromItems].filter(isAllowedImage)
+}
+
 async function handleImageFiles(files: File[]) {
   const editor = inner.value?.getEditor?.()
   if (!editor || files.length === 0) return
@@ -121,7 +135,7 @@ const MilkdownInner = defineComponent({
             handlePaste: (_view, event) => {
               // 只拦图片。全量拦截会把复制来的富文本、文件附件一并吞掉，
               // 而 return true 意味着 ProseMirror 不再执行默认粘贴——文字就丢了。
-              const files = Array.from(event.clipboardData?.files ?? []).filter(isAllowedImage)
+              const files = clipboardImageFiles(event.clipboardData)
               if (files.length === 0) return false
 
               void handleImageFiles(files)
