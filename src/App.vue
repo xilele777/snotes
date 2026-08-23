@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref, watch } from 'vue'
 import { hasToken } from './api/token'
+import MilkdownEditor from './editor/MilkdownEditor.vue'
 import NoteList from './components/NoteList.vue'
 import TokenGate from './components/TokenGate.vue'
 import { useNotesStore } from './stores/notes'
@@ -42,7 +43,13 @@ function backToList() {
       </div>
       <div class="editor-body">
         <p v-if="!notes.current" class="placeholder">选择或新建一条笔记</p>
-        <pre v-else>{{ notes.current.body }}</pre>
+        <MilkdownEditor
+          v-else
+          :note-id="notes.current.id"
+          :model-value="notes.current.body"
+          @update:model-value="(md: string) => notes.saveBody(notes.current!.id, md)"
+          @flush="(id: string, md: string) => notes.saveBody(id, md)"
+        />
       </div>
     </main>
 

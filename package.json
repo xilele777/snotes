@@ -15,6 +15,8 @@
     "typecheck": "vue-tsc -b --force"
   },
   "dependencies": {
+    "@milkdown/kit": "^7.22.1",
+    "@milkdown/vue": "^7.22.1",
     "dexie": "^4.4.5",
     "hono": "^4.13.3",
     "pinia": "^4.0.3",

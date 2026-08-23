@@ -81,12 +81,69 @@ body { color: var(--text-primary); background: var(--bg-app); font-size: 16px; l
   flex: 1;
   overflow: auto;
 }
-.editor-body > * {
+/* 占位 <p> 与编辑器都走 max-width 810px 居中 */
+.editor-body > .placeholder {
   max-width: 810px;
   margin: 0 auto;
   padding: 24px;
+  color: var(--text-secondary);
 }
-.placeholder { color: var(--text-secondary); }
+/* 编辑器铺满整列：真实 DOM 是 .editor-body > [data-milkdown-root] > .milkdown > .ProseMirror。
+   容器居中 + padding 只在 .milkdown 这一层给一次，ProseMirror 撑满高度。
+   注意不要用 .editor-body > .milkdown（带直接子代选择器），.milkdown 不是直接子元素。 */
+.editor-body .milkdown-mock,
+.editor-body .milkdown {
+  max-width: 810px;
+  margin: 0 auto;
+  padding: 24px;
+  min-height: 100%;
+  color: var(--text-primary);
+  font-size: 16px;
+  line-height: 1.7;
+}
+.editor-body .milkdown {
+  display: flex;
+  flex-direction: column;
+}
+/* 聚焦的是 .ProseMirror（contenteditable），不是 .milkdown：去 outline 消除黑框，
+   并 flex 撑满，让整块白底都是可编辑区。 */
+.editor-body .milkdown .ProseMirror {
+  outline: none;
+  padding: 0;
+  flex: 1;
+  min-height: calc(100vh - 56px - 48px);
+}
+.editor-body .milkdown .ProseMirror:focus { outline: none; }
+.editor-body .milkdown :is(h1, h2, h3) { font-weight: 700; line-height: 1.3; }
+.editor-body .milkdown h1 { font-size: 24px; margin: 24px 0 12px; }
+.editor-body .milkdown h2 { font-size: 20px; margin: 20px 0 10px; }
+.editor-body .milkdown h3 { font-size: 17px; margin: 16px 0 8px; }
+.editor-body .milkdown p { margin: 8px 0; }
+.editor-body .milkdown ul,
+.editor-body .milkdown ol { padding-left: 24px; margin: 8px 0; }
+.editor-body .milkdown blockquote {
+  border-left: 3px solid var(--border-default);
+  padding-left: 12px;
+  color: var(--text-secondary);
+  margin: 8px 0;
+}
+.editor-body .milkdown pre {
+  background: var(--bg-app);
+  padding: 12px;
+  border-radius: 4px;
+  overflow-x: auto;
+  font-size: 14px;
+}
+.editor-body .milkdown code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+.editor-body .milkdown :not(pre) > code {
+  background: var(--bg-app);
+  padding: 2px 4px;
+  border-radius: 3px;
+  font-size: 14px;
+}
+.editor-body .milkdown img { max-width: 100%; border-radius: 4px; }
 
 /* === 笔记列表（UI 规格 §4.2） === */
 .note-list { list-style: none; margin: 0; padding: 0; }
