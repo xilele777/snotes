@@ -34,3 +34,20 @@ export interface DerivedFields {
   summary: string
   thumbnail: string | null
 }
+
+/** outbox 任务类型（规格 §8.2）。同一 note_id 的同类任务入队时合并。 */
+export type OutboxKind = 'create' | 'body' | 'prop' | 'trash' | 'recover' | 'purge'
+
+/** outbox 任务行（outbox 表一行 ↔ OutboxTask）。 */
+export interface OutboxTask {
+  id?: number
+  note_id: string
+  kind: OutboxKind
+  payload: unknown
+  retry: number
+  next_at: number
+  /** 修订号：每次入队 +1，push 用它判断「发出去之后这一行有没有被新编辑改过」 */
+  seq: number
+  /** 1 = 不可重试的失败，移出消费队列等用户处理；新编辑合并进来时归零 */
+  failed: 0 | 1
+}
