@@ -2,6 +2,7 @@ import { Hono } from 'hono'
 import { auth } from './auth'
 import { groupsRoutes } from './routes/groups'
 import { notesRoutes } from './routes/notes'
+import { syncRoutes } from './routes/sync'
 import { trashRoutes } from './routes/trash'
 import type { Env } from './types'
 
@@ -15,6 +16,7 @@ export function createApp() {
 
   app.route('/', notesRoutes)
   app.route('/', groupsRoutes)
+  app.route('/', syncRoutes)
   app.route('/', trashRoutes)
 
   return app

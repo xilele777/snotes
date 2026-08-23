@@ -136,3 +136,18 @@ export interface PatchGroupRequest {
   ord?: number
   color?: string | null
 }
+
+/** POST /api/sync/pull 请求体（规格 §7.1）。 */
+export interface PullRequest {
+  since: number
+  limit?: number
+  cursor?: string | null
+}
+
+/** POST /api/sync/pull 响应体。 */
+export interface PullResponse {
+  notes: NoteMeta[]
+  groups: Group[]
+  server_time: number
+  next_cursor: string | null
+}
