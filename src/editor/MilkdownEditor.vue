@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { Editor, defaultValueCtx, rootCtx } from '@milkdown/kit/core'
+import { Editor, defaultValueCtx, editorViewOptionsCtx, rootCtx } from '@milkdown/kit/core'
 import { clipboard } from '@milkdown/kit/plugin/clipboard'
 import { listener, listenerCtx } from '@milkdown/kit/plugin/listener'
 import { commonmark } from '@milkdown/kit/preset/commonmark'
@@ -8,6 +8,7 @@ import { Milkdown, MilkdownProvider, useEditor } from '@milkdown/vue'
 import { defineComponent, h, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import type { ComponentPublicInstance } from 'vue'
 import { escapeRawHtml } from '../../shared/sanitize'
+import { isAllowedImage, removePlaceholder, replacePlaceholder, uploadImage } from './image-upload'
 
 const props = defineProps<{ noteId: string; modelValue: string }>()
 const emit = defineEmits<{
@@ -63,6 +64,38 @@ function onMarkdownChange(markdown: string) {
 
 defineExpose({ onMarkdownChange })
 
+function pushMarkdown(editor: Editor, markdown: string) {
+  latest = markdown
+  syncingExternally = true
+  editor.action(replaceAll(markdown))
+  syncingExternally = false
+  emit('update:modelValue', markdown)
+}
+
+async function handleImageFiles(files: File[]) {
+  const editor = inner.value?.getEditor?.()
+  if (!editor || files.length === 0) return
+
+  for (const file of files) {
+    const placeholder = URL.createObjectURL(file)
+
+    // 先插入占位，界面立即看到图
+    pushMarkdown(editor, `${latest}\n\n![](${placeholder})`)
+
+    try {
+      const { url } = await uploadImage(file, props.noteId)
+      pushMarkdown(editor, replacePlaceholder(latest, placeholder, url))
+    } catch (error) {
+      // 必须把占位抹掉。blob URL 只在当初那个页面上下文里有效，
+      // 留着它就是一条会同步到其他设备、且永远修不好的死链。
+      pushMarkdown(editor, removePlaceholder(latest, placeholder))
+      alert(`图片上传失败：${error instanceof Error ? error.message : String(error)}`)
+    } finally {
+      URL.revokeObjectURL(placeholder)
+    }
+  }
+}
+
 /**
  * 内部子组件：useEditor 必须在 MilkdownProvider 的后代里执行——
  * provider 在自己的 setup 里 provide(editorInfoCtxKey)，只有它的子组件
@@ -82,6 +115,20 @@ const MilkdownInner = defineComponent({
         .use(commonmark)
         .use(listener)
         .use(clipboard)
+        .config((ctx) => {
+          ctx.update(editorViewOptionsCtx, (prev) => ({
+            ...prev,
+            handlePaste: (_view, event) => {
+              // 只拦图片。全量拦截会把复制来的富文本、文件附件一并吞掉，
+              // 而 return true 意味着 ProseMirror 不再执行默认粘贴——文字就丢了。
+              const files = Array.from(event.clipboardData?.files ?? []).filter(isAllowedImage)
+              if (files.length === 0) return false
+
+              void handleImageFiles(files)
+              return true
+            },
+          }))
+        })
     )
 
     expose({
@@ -90,13 +137,16 @@ const MilkdownInner = defineComponent({
         if (!editor) return
         editor.action(replaceAll(md))
       },
+      getEditor() {
+        return get()
+      },
     })
 
     return () => h(Milkdown)
   },
 })
 
-const inner = ref<ComponentPublicInstance<{ replaceContent: (md: string) => void }> | null>(null)
+const inner = ref<ComponentPublicInstance<{ replaceContent: (md: string) => void; getEditor: () => Editor | undefined }> | null>(null)
 
 watch(
   () => props.noteId,
