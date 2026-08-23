@@ -1,0 +1,25 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "snotes",
+  "main": "worker/index.ts",
+  "compatibility_date": "2026-08-22",
+  "assets": {
+    "directory": "./dist",
+    "not_found_handling": "single-page-application",
+    "run_worker_first": ["/api/*"]
+  },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "snotes",
+      "database_id": "66325ab4-c335-4976-9a62-b0c9e5e21e97",
+      "migrations_dir": "migrations"
+    }
+  ],
+  "r2_buckets": [
+    {
+      "binding": "R2",
+      "bucket_name": "snotes-images"
+    }
+  ]
+}
