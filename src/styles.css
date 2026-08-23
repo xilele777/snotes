@@ -19,6 +19,7 @@
   --accent-press: #3083dc;
   --primary-yellow: #fed634;
   --create-yellow: #f4dd46;
+  --select-yellow: #f4dc3d;
   --danger: #ff4949;
 
   font-family: Helvetica Neue, Helvetica, PingFang SC, Hiragino Sans GB, STHeitiSC-Light,
@@ -30,10 +31,11 @@ html, body { margin: 0; height: 100%; }
 body { color: var(--text-primary); background: var(--bg-app); font-size: 16px; line-height: 1.7; }
 #app { height: 100%; }
 
-/* === 三栏布局（UI 规格 §2.1） === */
+/* === 三栏布局（UI 规格 §2.1，对照原站 note.wps.cn 实测） === */
+/* 侧栏 180px、列表区固定 360px、编辑器占剩余——原站列表窄、编辑器宽 */
 .layout {
   display: grid;
-  grid-template-columns: 180px 1fr 1fr;
+  grid-template-columns: 180px 360px 1fr;
   height: 100vh;
   position: relative;
 }
@@ -77,6 +79,81 @@ body { color: var(--text-primary); background: var(--bg-app); font-size: 16px; l
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+
+/* 编辑器顶栏「更多」菜单（原站 clz_more_icon_div） */
+.more-menu { position: relative; margin-left: auto; flex: none; }
+.more-btn {
+  border: 0;
+  background: none;
+  color: var(--text-secondary);
+  cursor: pointer;
+  padding: 4px;
+  display: flex;
+}
+.more-btn:hover { color: var(--text-primary); }
+.more-popover {
+  position: absolute;
+  top: 100%;
+  right: 0;
+  margin-top: 4px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-default);
+  border-radius: 6px;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.12);
+  padding: 6px;
+  min-width: 180px;
+  z-index: 20;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.more-item {
+  border: 0;
+  background: none;
+  color: var(--text-primary);
+  font-size: 14px;
+  text-align: left;
+  padding: 8px 10px;
+  border-radius: 4px;
+  cursor: pointer;
+}
+.more-item:hover { background: var(--bg-hover); }
+.more-item.danger { color: var(--danger); }
+.more-colors {
+  display: flex;
+  gap: 6px;
+  padding: 8px 10px;
+  flex-wrap: wrap;
+}
+.more-swatch {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  border: 1px solid var(--border-input);
+  padding: 0;
+  cursor: pointer;
+}
+.more-swatch.is-none {
+  background: repeating-linear-gradient(45deg, var(--bg-surface) 0 4px, var(--text-disabled) 4px 8px);
+}
+.more-group {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 8px 10px;
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+.more-group select {
+  height: 30px;
+  border: 1px solid var(--border-input);
+  border-radius: 4px;
+  background: var(--bg-surface);
+  font-size: 13px;
+  color: var(--text-primary);
+  padding: 0 6px;
+}
+.more-group select:focus { outline: none; border-color: var(--accent); }
 .editor-body {
   flex: 1;
   overflow: auto;
@@ -145,46 +222,94 @@ body { color: var(--text-primary); background: var(--bg-app); font-size: 16px; l
 }
 .editor-body .milkdown img { max-width: 100%; border-radius: 4px; }
 
-/* === 笔记列表（UI 规格 §4.2） === */
+/* === 笔记列表（UI 规格 §4.2，对照原站 .note_list_item 实测） === */
+/* 列表区 header：原站 listHeader 56px，左侧 logo 名 + 视图标题 */
+.list-header {
+  height: 56px;
+  line-height: 56px;
+  border-bottom: 1px solid var(--border-light);
+  padding: 0 16px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.list-header .header-name {
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+.list-header .header-title {
+  font-size: 16px;
+  color: var(--text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .note-list { list-style: none; margin: 0; padding: 0; }
+/* 列表项：缩略图 float:right，文字流式绕排（原站 note_list_item 结构） */
 .note-item {
   position: relative;
-  display: flex;
-  align-items: flex-start;
-  gap: 8px;
   height: 93px;
   padding: 12px 16px 0 13px;
   border-left: 3px solid var(--bg-surface);
-  border-bottom: 1px solid var(--border-light);
   cursor: pointer;
   transition: all 0.2s ease-in-out;
   overflow: hidden;
 }
 .note-item:hover { border-left-color: var(--border-light); }
 .note-item.is-active { border-left-color: var(--skin, var(--accent)); }
-.note-item.is-top .note-title::after { content: ' 置顶'; color: var(--text-secondary); font-size: 12px; font-weight: 400; }
-.note-text { flex: 1; min-width: 0; }
-.note-title { font-size: 14px; font-weight: 700; color: var(--text-primary); display: flex; align-items: center; gap: 4px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.note-title .star { color: var(--primary-yellow); flex: none; }
-.note-summary { font-size: 13px; line-height: 19px; color: var(--text-secondary); margin-top: 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.thumb { width: 48px; height: 48px; object-fit: cover; border-radius: 4px; flex: none; }
-
-/* 操作条：hover 或选中时显示 */
-.note-acts {
+/* 缩略图右侧浮动，margin-left 留出文字与图的间距 */
+.note-item .thumb {
+  width: 48px;
+  height: 48px;
+  object-fit: cover;
+  border-radius: 4px;
+  float: right;
+  margin-left: 16px;
+}
+.note-item .note-title {
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.note-item .note-summary {
+  font-size: 13px;
+  line-height: 19px;
+  color: var(--text-secondary);
+  margin-top: 2px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+/* 底部日期行：日期 + 常驻标记图标（置顶图钉/星标） */
+.note-item .note-meta {
+  margin-top: 12px;
+  width: 100%;
   display: flex;
   align-items: center;
-  gap: 4px;
-  opacity: 0;
-  transition: opacity 0.2s ease-in-out;
+  gap: 8px;
 }
-.note-item:hover .note-acts,
-.note-item.is-active .note-acts { opacity: 1; }
-.note-acts button { border: 0; background: none; cursor: pointer; padding: 4px; color: var(--text-secondary); display: flex; }
-.note-acts button:hover { color: var(--text-primary); }
-.icon-pin-on { color: var(--primary-yellow); }
-.colors { display: flex; gap: 3px; margin-left: 2px; }
-.swatch { width: 14px; height: 14px; border-radius: 50%; border: 1px solid var(--border-input); padding: 0; }
-.swatch.is-none { background: repeating-linear-gradient(45deg, var(--bg-surface) 0 3px, var(--text-disabled) 3px 6px); }
+.note-item .note-date {
+  font-size: 12px;
+  color: var(--text-disabled);
+}
+.note-item .note-pin { color: var(--primary-yellow); display: flex; }
+.note-item .note-star { color: var(--primary-yellow); display: flex; }
+/* 分隔线缩进（原站 note_list_bottom_line margin-left:88px） */
+.note-item .note-divider {
+  position: absolute;
+  left: 13px;
+  right: 0;
+  bottom: 0;
+  height: 1px;
+  background: var(--bg-divider);
+}
+.note-item .thumb + .note-text ~ .note-divider,
+.note-item:has(.thumb) .note-divider { left: 13px; }
 
 /* 左滑删除（UI 规格 §4.2） */
 .note-item .delete {
@@ -204,11 +329,6 @@ body { color: var(--text-primary); background: var(--bg-app); font-size: 16px; l
 .note-item.swiped { transform: translateX(-80px); }
 
 .empty { color: var(--text-secondary); padding: 48px 16px; text-align: center; }
-
-/* 触屏没有 hover，操作条常驻 */
-@media (hover: none) {
-  .note-acts { opacity: 1; }
-}
 
 /* === 浮动新建按钮（UI 规格 §4.2） === */
 .create-btn {
@@ -335,8 +455,8 @@ body { color: var(--text-primary); background: var(--bg-app); font-size: 16px; l
   cursor: pointer;
   color: var(--text-primary);
 }
-.groups li:hover { background: var(--bg-hover); }
-.groups li.active { background: var(--bg-press); }
+.groups li:hover { background: var(--bg-press); }
+.groups li.active { background: var(--select-yellow); color: var(--text-primary); }
 .groups li .dot { width: 8px; height: 8px; border-radius: 50%; flex: none; background: var(--text-disabled); }
 .groups li .group-name { flex: 1; font-size: 12px; text-align: left; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .groups li .rename-btn { border: 0; background: none; cursor: pointer; color: var(--text-tertiary); padding: 4px; display: none; }
@@ -451,10 +571,10 @@ body { color: var(--text-primary); background: var(--bg-app); font-size: 16px; l
 .trash-acts .purge:hover { color: var(--danger); border-color: var(--danger); }
 @media (hover: none) { .trash-acts { opacity: 1; } }
 
-/* === 响应式断点（UI 规格 §2.2） === */
-/* 720px–1020px：侧栏隐藏（Task 18 加 ☰ 滑出），列表+编辑器并排 */
+/* === 响应式断点（UI 规格 §2.2，对照原站） === */
+/* 720px–1020px：侧栏隐藏，列表窄+编辑器宽并排（不等宽，贴近原站比例） */
 @media (max-width: 1020px) {
-  .layout { grid-template-columns: 1fr 1fr; }
+  .layout { grid-template-columns: 360px 1fr; }
   .sidebar-pane { display: none; }
 }
 /* <720px：列表↔编辑器互斥切换 */

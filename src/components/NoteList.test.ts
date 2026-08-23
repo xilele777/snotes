@@ -1,9 +1,7 @@
 import { mount } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { flushPromises } from '@vue/test-utils'
 import { db } from '../db/schema'
-import { useGroupsStore } from '../stores/groups'
 import { useNotesStore } from '../stores/notes'
 import NoteList from './NoteList.vue'
 
@@ -37,6 +35,17 @@ describe('NoteList', () => {
     expect(wrapper.text()).toContain('我的摘要')
   })
 
+  it('列表区 header 显示 logo 名与视图标题', async () => {
+    const store = useNotesStore()
+    await store.create()
+
+    const wrapper = mount(NoteList)
+    await wrapper.vm.$nextTick()
+
+    expect(wrapper.find('.list-header .header-name').text()).toBe('snotes')
+    expect(wrapper.find('.list-header .header-title').text()).toBe('全部笔记')
+  })
+
   it('无标题时显示占位文案', async () => {
     const store = useNotesStore()
     await store.create()
@@ -47,7 +56,7 @@ describe('NoteList', () => {
     expect(wrapper.text()).toContain('无标题')
   })
 
-  it('置顶笔记带 is-top 标记', async () => {
+  it('置顶笔记带 is-top 标记且底部渲染置顶图标', async () => {
     const store = useNotesStore()
     const note = await store.create()
     await store.setProps(note.id, { top: 1 })
@@ -56,9 +65,11 @@ describe('NoteList', () => {
     await wrapper.vm.$nextTick()
 
     expect(wrapper.find('.note-item.is-top').exists()).toBe(true)
+    // 置顶图标常驻底部日期行（对照原站 note_list_item_date 里的图钉）
+    expect(wrapper.find('.note-item .note-pin').exists()).toBe(true)
   })
 
-  it('星标笔记渲染星标图标', async () => {
+  it('星标笔记底部常驻星标图标', async () => {
     const store = useNotesStore()
     const note = await store.create()
     await store.setProps(note.id, { star: 1 })
@@ -66,8 +77,18 @@ describe('NoteList', () => {
     const wrapper = mount(NoteList)
     await wrapper.vm.$nextTick()
 
-    // 星标用内联 SVG 承载，class 保留以便测试与样式定位
-    expect(wrapper.find('.note-item .star').exists()).toBe(true)
+    expect(wrapper.find('.note-item .note-star').exists()).toBe(true)
+  })
+
+  it('未置顶/未星标时不渲染标记图标', async () => {
+    const store = useNotesStore()
+    await store.create()
+
+    const wrapper = mount(NoteList)
+    await wrapper.vm.$nextTick()
+
+    expect(wrapper.find('.note-item .note-pin').exists()).toBe(false)
+    expect(wrapper.find('.note-item .note-star').exists()).toBe(false)
   })
 
   it('有缩略图时渲染 img 且 src 为同源路径', async () => {
@@ -78,46 +99,23 @@ describe('NoteList', () => {
     const wrapper = mount(NoteList)
     await wrapper.vm.$nextTick()
 
-    const img = wrapper.find('.note-item img')
+    const img = wrapper.find('.note-item img.thumb')
     expect(img.exists()).toBe(true)
     expect(img.attributes('src')).toBe('/api/images/n/k.png')
   })
 
-  it('选色写入 skin_color，选中态色条取该皮肤色', async () => {
+  it('选中态色条取该笔记自身皮肤色', async () => {
     const store = useNotesStore()
     const note = await store.create()
     store.currentId = note.id
-
-    const wrapper = mount(NoteList)
-    await wrapper.vm.$nextTick()
-
-    const swatches = wrapper.findAll('.note-item [data-color]')
-    // 第二个色板是 yellow #fed634
-    await swatches[1].trigger('click')
-
-    // 模板 @click 不会 await store.setProps，重渲染落在 store.notes 回填之后，
-    // nextTick / flushPromises 都可能抢跑；用 vi.waitFor 等到 --skin 落到 DOM。
-    await vi.waitFor(() => {
-      expect(wrapper.find('.note-item.is-active').attributes('style')).toContain('--skin')
-    })
-    expect((await db.notes.get(note.id))!.skin_color).toBe(swatches[1].attributes('data-color'))
-  })
-
-  it('选「无」清回 null', async () => {
-    const store = useNotesStore()
-    const note = await store.create()
+    // 皮肤色入口已移到编辑器顶栏更多菜单，列表只负责渲染，直接经 store 写入
     await store.setProps(note.id, { skin_color: '#fed634' })
 
     const wrapper = mount(NoteList)
     await wrapper.vm.$nextTick()
 
-    const swatches = wrapper.findAll('.note-item [data-color]')
-    await swatches[0].trigger('click') // 第一个是 default(null)
-
-    await vi.waitFor(() => {
-      expect((store.notes.find((n) => n.id === note.id))?.skin_color).toBeNull()
-    })
-    expect((await db.notes.get(note.id))!.skin_color).toBeNull()
+    // 选中态色条颜色通过 --skin 变量下发给 CSS（UI 规格 §3.5）
+    expect(wrapper.find('.note-item.is-active').attributes('style')).toContain('--skin')
   })
 
   it('点击条目切换当前笔记', async () => {
@@ -136,72 +134,6 @@ describe('NoteList', () => {
     await wrapper.findAll('.note-item')[0].trigger('click')
 
     expect(store.currentId).toBe(b.id)
-  })
-
-  it('点击置顶按钮翻转 top 且不选中该条目', async () => {
-    const store = useNotesStore()
-    const note = await store.create()
-    store.currentId = null
-
-    const wrapper = mount(NoteList)
-    await wrapper.vm.$nextTick()
-
-    await wrapper.find('.note-item [data-act="top"]').trigger('click')
-
-    await vi.waitFor(() => {
-      expect((store.notes.find((n) => n.id === note.id))?.top).toBe(1)
-    })
-    expect((await db.notes.get(note.id))!.top).toBe(1)
-    // 按钮要 stop 掉冒泡，否则打个标记会顺带跳转到这条笔记
-    expect(store.currentId).toBeNull()
-  })
-
-  it('再次点击置顶按钮取消置顶', async () => {
-    const store = useNotesStore()
-    const note = await store.create()
-    await store.setProps(note.id, { top: 1 })
-
-    const wrapper = mount(NoteList)
-    await wrapper.vm.$nextTick()
-
-    await wrapper.find('.note-item [data-act="top"]').trigger('click')
-
-    await vi.waitFor(() => {
-      expect((store.notes.find((n) => n.id === note.id))?.top).toBe(0)
-    })
-    expect((await db.notes.get(note.id))!.top).toBe(0)
-  })
-
-  it('点击星标按钮翻转 star', async () => {
-    const store = useNotesStore()
-    const note = await store.create()
-
-    const wrapper = mount(NoteList)
-    await wrapper.vm.$nextTick()
-
-    await wrapper.find('.note-item [data-act="star"]').trigger('click')
-
-    await vi.waitFor(() => {
-      expect((store.notes.find((n) => n.id === note.id))?.star).toBe(1)
-    })
-    expect((await db.notes.get(note.id))!.star).toBe(1)
-  })
-
-  it('打标记后每条笔记只留一条 prop 任务', async () => {
-    const store = useNotesStore()
-    await store.create()
-
-    const wrapper = mount(NoteList)
-    await wrapper.vm.$nextTick()
-
-    await wrapper.find('.note-item [data-act="top"]').trigger('click')
-    await wrapper.find('.note-item [data-act="star"]').trigger('click')
-
-    await vi.waitFor(async () => {
-      const props = await db.outbox.where('kind').equals('prop').toArray()
-      expect(props).toHaveLength(1)
-      expect(props[0].payload).toMatchObject({ top: 1, star: 1 })
-    })
   })
 
   it('左滑超过阈值展开删除按钮', async () => {
@@ -243,37 +175,5 @@ describe('NoteList', () => {
     await wrapper.vm.$nextTick()
 
     expect(wrapper.text()).toContain('还没有笔记')
-  })
-
-  it('下拉切换分组，写的是 group_id 属性', async () => {
-    const groups = useGroupsStore()
-    const g = await groups.create('工作')
-    const notes = useNotesStore()
-    const note = await notes.create()
-
-    const wrapper = mount(NoteList)
-    await flushPromises()
-
-    await wrapper.find(`[data-note-id="${note.id}"] select`).setValue(g.group_id)
-    await flushPromises()
-
-    expect((await db.notes.get(note.id))!.group_id).toBe(g.group_id)
-  })
-
-  it('选「未分组」写入 null 而不是空串', async () => {
-    const groups = useGroupsStore()
-    const g = await groups.create('工作')
-    const notes = useNotesStore()
-    const note = await notes.create()
-    await notes.setProps(note.id, { group_id: g.group_id })
-
-    const wrapper = mount(NoteList)
-    await flushPromises()
-
-    await wrapper.find(`[data-note-id="${note.id}"] select`).setValue('')
-    await flushPromises()
-
-    // 空串会被当成一个真实存在的 group_id 同步给服务端，导致该笔记在所有分组里都查不到
-    expect((await db.notes.get(note.id))!.group_id).toBeNull()
   })
 })
