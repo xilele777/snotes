@@ -1,13 +1,17 @@
 <script setup lang="ts">
-import { ref, watch } from 'vue'
+import { onMounted, onUnmounted, ref, watch } from 'vue'
 import { hasToken } from './api/token'
 import GroupSidebar from './components/GroupSidebar.vue'
 import MilkdownEditor from './editor/MilkdownEditor.vue'
 import NoteList from './components/NoteList.vue'
 import TokenGate from './components/TokenGate.vue'
+import TrashView from './components/TrashView.vue'
+import { resolveShortcut } from './components/shortcut'
 import { useNotesStore } from './stores/notes'
+import { useUiStore } from './stores/ui'
 
 const notes = useNotesStore()
+const ui = useUiStore()
 
 // 移动端 <720px 列表↔编辑器互斥（UI 规格 §2.3）
 const mobilePane = ref<'list' | 'editor'>('list')
@@ -22,6 +26,26 @@ watch(
 function backToList() {
   mobilePane.value = 'list'
 }
+
+// 全局快捷键（UI 规格 §6.2）
+function onKeydown(e: KeyboardEvent) {
+  const action = resolveShortcut(e, { hasQuery: ui.query.trim().length > 0 })
+  if (!action) return
+
+  if (action.type === 'create') {
+    e.preventDefault()
+    notes.create()
+  } else if (action.type === 'focusSearch') {
+    e.preventDefault()
+    document.querySelector<HTMLInputElement>('.sidebar-search input')?.focus()
+  } else if (action.type === 'clearQuery') {
+    e.preventDefault()
+    ui.query = ''
+  }
+}
+
+onMounted(() => window.addEventListener('keydown', onKeydown))
+onUnmounted(() => window.removeEventListener('keydown', onKeydown))
 </script>
 
 <template>
@@ -33,7 +57,8 @@ function backToList() {
     </aside>
 
     <section class="list-pane">
-      <NoteList />
+      <TrashView v-if="ui.view === 'trash'" />
+      <NoteList v-else />
     </section>
 
     <main class="editor-pane">

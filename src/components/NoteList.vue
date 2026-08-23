@@ -2,9 +2,12 @@
 import { onMounted, ref } from 'vue'
 import { useGroupsStore } from '../stores/groups'
 import { useNotesStore } from '../stores/notes'
+import { useUiStore } from '../stores/ui'
+import { highlight } from './SearchBar'
 
 const notes = useNotesStore()
 const groups = useGroupsStore()
+const ui = useUiStore()
 
 /**
  * 6 色皮肤板（UI 规格 §3.5）。null 排第一位，作为「清除颜色 / default」。
@@ -56,7 +59,14 @@ onMounted(() => notes.load())
           <svg v-if="note.star === 1" class="star" width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-label="星标">
             <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01z" />
           </svg>
-          <span>{{ note.title || '无标题' }}</span>
+          <template v-if="note.title">
+            <span
+              v-for="(seg, i) in highlight(note.title, ui.query)"
+              :key="i"
+              :class="{ hit: seg.hit }"
+            >{{ seg.text }}</span>
+          </template>
+          <template v-else>无标题</template>
         </div>
         <div class="note-summary">{{ note.summary }}</div>
       </div>

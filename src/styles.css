@@ -409,6 +409,48 @@ body { color: var(--text-primary); background: var(--bg-app); font-size: 16px; l
 }
 .note-acts .group-select:focus { outline: none; border-color: var(--accent); }
 
+/* === 搜索高亮（UI 规格 §10） === */
+.note-title .hit { background: var(--primary-yellow); border-radius: 2px; }
+
+/* === 回收站（UI 规格 §4.4） === */
+.trash-view { display: flex; flex-direction: column; height: 100%; }
+.trash-header {
+  height: 56px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 16px;
+  border-bottom: 1px solid var(--border-light);
+}
+.trash-title { font-size: 15px; font-weight: 700; color: var(--text-primary); }
+.clean-all {
+  font-size: 12px;
+  color: var(--text-secondary);
+  border: 1px solid var(--border-input);
+  border-radius: 4px;
+  padding: 0 10px;
+  height: 26px;
+  background: var(--bg-surface);
+  cursor: pointer;
+}
+.clean-all:hover { color: var(--danger); border-color: var(--danger); }
+.trash-item { border-left: 3px solid var(--bg-surface); }
+.trash-item:hover { border-left-color: var(--border-light); }
+.trash-acts { display: flex; gap: 4px; opacity: 0; transition: opacity 0.2s ease-in-out; }
+.trash-item:hover .trash-acts { opacity: 1; }
+.trash-acts button {
+  border: 1px solid var(--border-input);
+  border-radius: 4px;
+  background: var(--bg-surface);
+  color: var(--text-secondary);
+  font-size: 12px;
+  padding: 4px 8px;
+  cursor: pointer;
+}
+.trash-acts .recover:hover { color: var(--accent); border-color: var(--accent); }
+.trash-acts .purge:hover { color: var(--danger); border-color: var(--danger); }
+@media (hover: none) { .trash-acts { opacity: 1; } }
+
 /* === 响应式断点（UI 规格 §2.2） === */
 /* 720px–1020px：侧栏隐藏（Task 18 加 ☰ 滑出），列表+编辑器并排 */
 @media (max-width: 1020px) {
