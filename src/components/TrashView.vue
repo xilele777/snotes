@@ -1,1 +1,0 @@
-<template><section class="trash-view"><article v-for="n in notes.items.filter(n=>n.invalid)" :key="n.id" class="note-item"><span>{{n.title||'无标题'}}</span><button class="recover" @click="notes.recover(n.id)">恢复</button></article></section></template><script setup lang="ts">import {useNotesStore} from '../stores/notes';const notes=useNotesStore()</script>

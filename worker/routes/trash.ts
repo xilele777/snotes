@@ -1,1 +1,0 @@
-import {Hono} from 'hono'; import type {Env} from '../../shared/types'; import {purgeNotes} from '../db'; export const trash=new Hono<{Bindings:Env}>(); trash.post('/clean',async c=>{const r=await c.env.DB.prepare('SELECT id FROM note WHERE invalid=1').all();const ids=(r.results||[]).map((x:any)=>x.id);await purgeNotes(c.env,ids);return c.json({purged:ids})})

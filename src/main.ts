@@ -1,1 +1,0 @@
-import {createApp} from 'vue';import {createPinia} from 'pinia';import App from './App.vue';import './style.css';import {startSync} from './sync/engine';const app=createApp(App).use(createPinia());app.mount('#app');if('serviceWorker' in navigator)navigator.serviceWorker.register('/sw.js').catch(()=>{});startSync()

@@ -1,2 +1,0 @@
-<template><main class="token-gate"><h1>snotes</h1><form @submit.prevent="submit"><input v-model="value" type="password" placeholder="访问令牌" autofocus><button>进入</button></form></main></template>
-<script setup lang="ts">import {ref} from 'vue';import {setToken} from '../api/token';const emit=defineEmits<{success:[]}>();const value=ref('');function submit(){if(value.value.trim()){setToken(value.value.trim());emit('success')}}</script>

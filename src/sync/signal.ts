@@ -1,1 +1,0 @@
-type Listener=()=>void;const local=new Set<Listener>(),remote=new Set<Listener>();export const signals={onLocalWrite(fn:Listener){local.add(fn);return()=>local.delete(fn)},emitLocalWrite(){local.forEach(fn=>fn())},onRemoteApply(fn:Listener){remote.add(fn);return()=>remote.delete(fn)},emitRemoteApply(){remote.forEach(fn=>fn())}}

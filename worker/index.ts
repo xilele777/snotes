@@ -1,3 +1,0 @@
-import {Hono} from 'hono'; import {auth} from './auth'; import {notes} from './routes/notes'; import {groups} from './routes/groups'; import {sync} from './routes/sync'; import {trash} from './routes/trash'; import {images} from './routes/images'; import type {Env} from '../shared/types'
-export function createApp(){const app=new Hono<{Bindings:Env}>(); app.get('/api/health',c=>c.json({ok:true})); app.use('/api/*',auth); app.route('/api/notes',notes); app.route('/api/groups',groups); app.route('/api/sync',sync); app.route('/api/trash',trash); app.route('/api/images',images); app.notFound(async c=> c.env.ASSETS?c.env.ASSETS.fetch(c.req.raw):c.text('Not found',404)); return app}
-const app=createApp(); export default {fetch:app.fetch}
