@@ -273,10 +273,147 @@ body { color: var(--text-primary); background: var(--bg-app); font-size: 16px; l
 }
 .token-card button:disabled { background: var(--text-disabled); cursor: not-allowed; }
 
+/* === 分组侧栏（UI 规格 §4.1 §2.5） === */
+.sidebar-pane {
+  background: var(--bg-app);
+  border-right: 1px solid var(--border-default);
+  overflow-y: auto;
+  position: relative;
+}
+.group-sidebar { padding: 8px; display: flex; flex-direction: column; height: 100%; }
+
+.sidebar-search {
+  position: relative;
+  margin-bottom: 8px;
+}
+.sidebar-search .search-icon {
+  position: absolute;
+  left: 10px;
+  top: 11px;
+  color: var(--text-tertiary);
+  pointer-events: none;
+}
+.sidebar-search input {
+  width: 100%;
+  height: 36px;
+  background: #f0f0f0;
+  border: 0;
+  border-radius: 4px;
+  padding: 0 10px 0 32px;
+  font-size: 13px;
+  color: var(--text-primary);
+}
+.sidebar-search input:focus { outline: none; }
+
+.views, .groups { list-style: none; margin: 0; padding: 0; }
+.views li {
+  height: 40px;
+  line-height: 40px;
+  border-radius: 20px;
+  padding: 0 12px;
+  font-size: 13px;
+  color: var(--text-primary);
+  cursor: pointer;
+  margin-left: 0;
+}
+.views li:hover { background: var(--bg-hover); }
+.views li.active { background: var(--bg-press); color: var(--accent); font-weight: 500; }
+
+.group-header {
+  font-size: 12px;
+  color: var(--text-tertiary);
+  padding: 12px 12px 4px;
+}
+.groups li {
+  height: 40px;
+  border-radius: 20px;
+  margin-left: 8px;
+  padding: 0 8px 0 10px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  color: var(--text-primary);
+}
+.groups li:hover { background: var(--bg-hover); }
+.groups li.active { background: var(--bg-press); }
+.groups li .dot { width: 8px; height: 8px; border-radius: 50%; flex: none; background: var(--text-disabled); }
+.groups li .group-name { flex: 1; font-size: 12px; text-align: left; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.groups li .rename-btn { border: 0; background: none; cursor: pointer; color: var(--text-tertiary); padding: 4px; display: none; }
+.groups li:hover .rename-btn { display: flex; }
+.groups li .rename-btn:hover { color: var(--text-primary); }
+.groups li .rename-input {
+  flex: 1;
+  height: 30px;
+  border: 1px solid var(--accent);
+  background: #f8f8f8;
+  border-radius: 4px;
+  padding: 0 6px;
+  font-size: 12px;
+  color: var(--text-primary);
+}
+
+.new-group { padding: 8px 4px; }
+.new-group input {
+  width: 100%;
+  height: 30px;
+  border: 1px solid var(--border-input);
+  border-radius: 4px;
+  padding: 0 8px;
+  font-size: 12px;
+  color: var(--text-primary);
+  background: var(--bg-surface);
+}
+.new-group input:focus { outline: none; border-color: var(--accent); }
+
+/* 底部用户区（UI 规格 §2.5）：fixed bottom、50px 高、170px 宽 */
+.user-area {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  width: 170px;
+  height: 50px;
+  background: var(--bg-app);
+  display: flex;
+  align-items: center;
+  padding: 0 16px;
+  border-top: 1px solid var(--border-light);
+}
+.sync-idle { position: relative; color: var(--text-tertiary); display: flex; }
+.sync-idle.has-failed { color: var(--danger); }
+.failed-badge {
+  position: absolute;
+  top: -6px;
+  right: -8px;
+  background: var(--danger);
+  color: #fff;
+  font-size: 10px;
+  line-height: 14px;
+  min-width: 14px;
+  height: 14px;
+  border-radius: 7px;
+  padding: 0 3px;
+  text-align: center;
+}
+
+/* 笔记条目上的分组下拉（Task 18 §4.1） */
+.note-acts .group-select {
+  height: 24px;
+  border: 1px solid var(--border-input);
+  border-radius: 4px;
+  background: var(--bg-surface);
+  font-size: 12px;
+  color: var(--text-secondary);
+  padding: 0 4px;
+  max-width: 90px;
+}
+.note-acts .group-select:focus { outline: none; border-color: var(--accent); }
+
 /* === 响应式断点（UI 规格 §2.2） === */
 /* 720px–1020px：侧栏隐藏（Task 18 加 ☰ 滑出），列表+编辑器并排 */
 @media (max-width: 1020px) {
   .layout { grid-template-columns: 1fr 1fr; }
+  .sidebar-pane { display: none; }
 }
 /* <720px：列表↔编辑器互斥切换 */
 @media (max-width: 720px) {

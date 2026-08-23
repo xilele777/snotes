@@ -1,7 +1,9 @@
 import { mount } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { flushPromises } from '@vue/test-utils'
 import { db } from '../db/schema'
+import { useGroupsStore } from '../stores/groups'
 import { useNotesStore } from '../stores/notes'
 import NoteList from './NoteList.vue'
 
@@ -241,5 +243,37 @@ describe('NoteList', () => {
     await wrapper.vm.$nextTick()
 
     expect(wrapper.text()).toContain('还没有笔记')
+  })
+
+  it('下拉切换分组，写的是 group_id 属性', async () => {
+    const groups = useGroupsStore()
+    const g = await groups.create('工作')
+    const notes = useNotesStore()
+    const note = await notes.create()
+
+    const wrapper = mount(NoteList)
+    await flushPromises()
+
+    await wrapper.find(`[data-note-id="${note.id}"] select`).setValue(g.group_id)
+    await flushPromises()
+
+    expect((await db.notes.get(note.id))!.group_id).toBe(g.group_id)
+  })
+
+  it('选「未分组」写入 null 而不是空串', async () => {
+    const groups = useGroupsStore()
+    const g = await groups.create('工作')
+    const notes = useNotesStore()
+    const note = await notes.create()
+    await notes.setProps(note.id, { group_id: g.group_id })
+
+    const wrapper = mount(NoteList)
+    await flushPromises()
+
+    await wrapper.find(`[data-note-id="${note.id}"] select`).setValue('')
+    await flushPromises()
+
+    // 空串会被当成一个真实存在的 group_id 同步给服务端，导致该笔记在所有分组里都查不到
+    expect((await db.notes.get(note.id))!.group_id).toBeNull()
   })
 })

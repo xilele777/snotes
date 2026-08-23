@@ -1,8 +1,10 @@
 <script setup lang="ts">
 import { onMounted, ref } from 'vue'
+import { useGroupsStore } from '../stores/groups'
 import { useNotesStore } from '../stores/notes'
 
 const notes = useNotesStore()
+const groups = useGroupsStore()
 
 /**
  * 6 色皮肤板（UI 规格 §3.5）。null 排第一位，作为「清除颜色 / default」。
@@ -37,6 +39,7 @@ onMounted(() => notes.load())
       v-for="note in notes.visible"
       :key="note.id"
       class="note-item"
+      :data-note-id="note.id"
       :class="{
         'is-top': note.top === 1,
         'is-active': note.id === notes.currentId,
@@ -62,6 +65,19 @@ onMounted(() => notes.load())
 
       <!-- 每个按钮都要 .stop：否则打标记会连带把这条笔记选中并跳转 -->
       <div class="note-acts" @click.stop>
+        <select
+          class="group-select"
+          :value="note.group_id ?? ''"
+          @change="notes.setProps(note.id, {
+            group_id: ($event.target as HTMLSelectElement).value || null,
+          })"
+        >
+          <option value="">未分组</option>
+          <option v-for="g in groups.groups" :key="g.group_id" :value="g.group_id">
+            {{ g.name }}
+          </option>
+        </select>
+
         <button
           data-act="top"
           :aria-pressed="note.top === 1"

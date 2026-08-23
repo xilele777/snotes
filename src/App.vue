@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref, watch } from 'vue'
 import { hasToken } from './api/token'
+import GroupSidebar from './components/GroupSidebar.vue'
 import MilkdownEditor from './editor/MilkdownEditor.vue'
 import NoteList from './components/NoteList.vue'
 import TokenGate from './components/TokenGate.vue'
@@ -27,6 +28,10 @@ function backToList() {
   <TokenGate v-if="!hasToken" />
 
   <div v-else class="layout" :data-mobile-pane="mobilePane">
+    <aside class="sidebar-pane">
+      <GroupSidebar />
+    </aside>
+
     <section class="list-pane">
       <NoteList />
     </section>
