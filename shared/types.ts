@@ -151,3 +151,13 @@ export interface PullResponse {
   server_time: number
   next_cursor: string | null
 }
+
+/** POST /api/sync/bodies 请求体（规格 §7.1）。 */
+export interface BodiesRequest {
+  ids: string[]
+}
+
+/** POST /api/sync/bodies 响应体。 */
+export interface BodiesResponse {
+  bodies: NoteBody[]
+}

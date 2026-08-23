@@ -1,6 +1,6 @@
 import { Hono } from 'hono'
 import { decodeCursor, encodeCursor } from '../../shared/cursor'
-import type { Group, PullRequest, PullResponse } from '../../shared/types'
+import type { BodiesRequest, BodiesResponse, Group, NoteBody, PullRequest, PullResponse } from '../../shared/types'
 import { nowMs, rowToNoteMeta } from '../db'
 import type { Env } from '../types'
 
@@ -76,4 +76,37 @@ syncRoutes.post('/api/sync/pull', async (c) => {
   }
 
   return c.json(response)
+})
+
+const MAX_BODIES = 50
+
+syncRoutes.post('/api/sync/bodies', async (c) => {
+  const req = await c.req.json<BodiesRequest>().catch(() => null)
+
+  if (!req || !Array.isArray(req.ids) || !req.ids.every((id) => typeof id === 'string' && id)) {
+    return c.json({ error: 'invalid_ids' }, 400)
+  }
+
+  if (req.ids.length > MAX_BODIES) {
+    return c.json({ error: 'too_many_ids' }, 400)
+  }
+
+  if (req.ids.length === 0) {
+    return c.json({ bodies: [] } satisfies BodiesResponse)
+  }
+
+  const placeholders = req.ids.map(() => '?').join(', ')
+  const { results } = await c.env.DB.prepare(
+    `SELECT note_id, content, version FROM note_body WHERE note_id IN (${placeholders})`
+  )
+    .bind(...req.ids)
+    .all<Record<string, unknown>>()
+
+  const bodies: NoteBody[] = results.map((row) => ({
+    note_id: row.note_id as string,
+    content: (row.content as string) ?? '',
+    version: Number(row.version),
+  }))
+
+  return c.json({ bodies } satisfies BodiesResponse)
 })
