@@ -1,0 +1,238 @@
+:root {
+  /* 文字色（UI 规格 §3.1） */
+  --text-primary: #464646;
+  --text-secondary: #878787;
+  --text-tertiary: #bdbdbd;
+  --text-disabled: #c4c4c4;
+  /* 背景色（§3.2） */
+  --bg-app: #fafafa;
+  --bg-surface: #ffffff;
+  --bg-hover: #f6f6f6;
+  --bg-press: #efefef;
+  --bg-divider: #ebebeb;
+  /* 边框色（§3.3） */
+  --border-default: #e0e0e0;
+  --border-light: #ebebeb;
+  --border-input: #dbdbdb;
+  /* 品牌与状态色（§3.4） */
+  --accent: #3692f5;
+  --accent-press: #3083dc;
+  --primary-yellow: #fed634;
+  --create-yellow: #f4dd46;
+  --danger: #ff4949;
+
+  font-family: Helvetica Neue, Helvetica, PingFang SC, Hiragino Sans GB, STHeitiSC-Light,
+    Microsoft YaHei, 微软雅黑, SimSun, sans-serif;
+}
+
+* { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; }
+body { color: var(--text-primary); background: var(--bg-app); font-size: 16px; line-height: 1.7; }
+#app { height: 100%; }
+
+/* === 三栏布局（UI 规格 §2.1） === */
+.layout {
+  display: grid;
+  grid-template-columns: 180px 1fr 1fr;
+  height: 100vh;
+  position: relative;
+}
+.list-pane {
+  background: var(--bg-surface);
+  border-right: 1px solid var(--border-default);
+  overflow-y: auto;
+}
+.editor-pane {
+  background: var(--bg-surface);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+/* === 编辑器顶栏（UI 规格 §2.4 §4.3） === */
+.editor-top-bar {
+  height: 56px;
+  max-width: 810px;
+  width: 100%;
+  margin: 0 auto;
+  border-bottom: 1px solid var(--border-default);
+  display: flex;
+  align-items: center;
+  padding: 0 16px;
+  gap: 8px;
+}
+.back-btn {
+  display: none;
+  border: 0;
+  background: none;
+  color: var(--text-secondary);
+  cursor: pointer;
+  padding: 4px;
+}
+.top-title {
+  font-size: 15px;
+  font-weight: 500;
+  color: var(--text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.editor-body {
+  flex: 1;
+  overflow: auto;
+}
+.editor-body > * {
+  max-width: 810px;
+  margin: 0 auto;
+  padding: 24px;
+}
+.placeholder { color: var(--text-secondary); }
+
+/* === 笔记列表（UI 规格 §4.2） === */
+.note-list { list-style: none; margin: 0; padding: 0; }
+.note-item {
+  position: relative;
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  height: 93px;
+  padding: 12px 16px 0 13px;
+  border-left: 3px solid var(--bg-surface);
+  border-bottom: 1px solid var(--border-light);
+  cursor: pointer;
+  transition: all 0.2s ease-in-out;
+  overflow: hidden;
+}
+.note-item:hover { border-left-color: var(--border-light); }
+.note-item.is-active { border-left-color: var(--skin, var(--accent)); }
+.note-item.is-top .note-title::after { content: ' 置顶'; color: var(--text-secondary); font-size: 12px; font-weight: 400; }
+.note-text { flex: 1; min-width: 0; }
+.note-title { font-size: 14px; font-weight: 700; color: var(--text-primary); display: flex; align-items: center; gap: 4px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.note-title .star { color: var(--primary-yellow); flex: none; }
+.note-summary { font-size: 13px; line-height: 19px; color: var(--text-secondary); margin-top: 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.thumb { width: 48px; height: 48px; object-fit: cover; border-radius: 4px; flex: none; }
+
+/* 操作条：hover 或选中时显示 */
+.note-acts {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  opacity: 0;
+  transition: opacity 0.2s ease-in-out;
+}
+.note-item:hover .note-acts,
+.note-item.is-active .note-acts { opacity: 1; }
+.note-acts button { border: 0; background: none; cursor: pointer; padding: 4px; color: var(--text-secondary); display: flex; }
+.note-acts button:hover { color: var(--text-primary); }
+.icon-pin-on { color: var(--primary-yellow); }
+.colors { display: flex; gap: 3px; margin-left: 2px; }
+.swatch { width: 14px; height: 14px; border-radius: 50%; border: 1px solid var(--border-input); padding: 0; }
+.swatch.is-none { background: repeating-linear-gradient(45deg, var(--bg-surface) 0 3px, var(--text-disabled) 3px 6px); }
+
+/* 左滑删除（UI 规格 §4.2） */
+.note-item .delete {
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 80px;
+  height: 100%;
+  border: 0;
+  background: var(--danger);
+  color: #fff;
+  cursor: pointer;
+  transform: translateX(80px);
+  transition: transform 0.2s ease-in-out;
+}
+.note-item.swiped .delete { transform: translateX(0); }
+.note-item.swiped { transform: translateX(-80px); }
+
+.empty { color: var(--text-secondary); padding: 48px 16px; text-align: center; }
+
+/* 触屏没有 hover，操作条常驻 */
+@media (hover: none) {
+  .note-acts { opacity: 1; }
+}
+
+/* === 浮动新建按钮（UI 规格 §4.2） === */
+.create-btn {
+  position: fixed;
+  right: 20px;
+  bottom: 32px;
+  width: 54px;
+  height: 54px;
+  border: 0;
+  border-radius: 50%;
+  background: var(--create-yellow);
+  color: var(--text-primary);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+  transition: background 0.2s ease-in-out;
+  z-index: 10;
+}
+.create-btn:hover { background: var(--primary-yellow); }
+.create-btn:active { background: var(--primary-yellow); }
+
+/* === 令牌页（UI 规格 §4.5） === */
+.token-gate {
+  min-height: 100vh;
+  background: var(--bg-app);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+}
+.token-card {
+  width: 320px;
+  background: var(--bg-surface);
+  border-radius: 8px;
+  padding: 32px;
+  box-shadow: 0 1px 3px #d7dae0;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.token-title { margin: 0; font-size: 22px; font-weight: 700; color: var(--text-primary); }
+.token-hint { margin: 0; font-size: 14px; color: var(--text-secondary); }
+.token-card input {
+  height: 36px;
+  border: 1px solid var(--border-input);
+  border-radius: 4px;
+  padding: 0 8px;
+  font-size: 14px;
+  color: var(--text-primary);
+}
+.token-card input:focus { outline: none; border-color: var(--accent); }
+.token-card button {
+  height: 36px;
+  border: 0;
+  border-radius: 4px;
+  background: var(--accent);
+  color: #fff;
+  font-size: 14px;
+  cursor: pointer;
+}
+.token-card button:disabled { background: var(--text-disabled); cursor: not-allowed; }
+
+/* === 响应式断点（UI 规格 §2.2） === */
+/* 720px–1020px：侧栏隐藏（Task 18 加 ☰ 滑出），列表+编辑器并排 */
+@media (max-width: 1020px) {
+  .layout { grid-template-columns: 1fr 1fr; }
+}
+/* <720px：列表↔编辑器互斥切换 */
+@media (max-width: 720px) {
+  .layout { grid-template-columns: 1fr; }
+  .layout[data-mobile-pane='list'] .editor-pane { display: none; }
+  .layout[data-mobile-pane='editor'] .list-pane { display: none; }
+  .back-btn { display: flex; }
+}
+
+/* prefers-reduced-motion：过渡降为 0.01s（UI 规格 §5） */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    transition-duration: 0.01s !important;
+    animation-duration: 0.01s !important;
+  }
+}
