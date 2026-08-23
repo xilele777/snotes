@@ -1,6 +1,6 @@
 import { Hono } from 'hono'
 import type { CreateNoteRequest, PatchNoteRequest } from '../../shared/types'
-import { nowMs } from '../db'
+import { nowMs, purgeNotes } from '../db'
 import type { Env } from '../types'
 
 const PROP_FIELDS = ['group_id', 'star', 'top', 'skin_color'] as const
@@ -134,4 +134,38 @@ notesRoutes.patch('/api/notes/:id', async (c) => {
   await c.env.DB.batch(statements)
 
   return c.json({ version, prop_version: propVersion, update_time: now, conflicted })
+})
+
+async function setInvalid(c: { env: Env }, id: string, invalid: 0 | 1) {
+  const current = await c.env.DB.prepare('SELECT prop_version FROM note WHERE id = ?')
+    .bind(id)
+    .first<{ prop_version: number }>()
+
+  if (!current) return null
+
+  const now = nowMs()
+  const propVersion = current.prop_version + 1
+
+  await c.env.DB.prepare(
+    'UPDATE note SET invalid = ?, prop_version = ?, update_time = ? WHERE id = ?'
+  )
+    .bind(invalid, propVersion, now, id)
+    .run()
+
+  return { prop_version: propVersion, update_time: now }
+}
+
+notesRoutes.post('/api/notes/:id/trash', async (c) => {
+  const result = await setInvalid(c, c.req.param('id'), 1)
+  return result ? c.json(result) : c.json({ error: 'not_found' }, 404)
+})
+
+notesRoutes.post('/api/notes/:id/recover', async (c) => {
+  const result = await setInvalid(c, c.req.param('id'), 0)
+  return result ? c.json(result) : c.json({ error: 'not_found' }, 404)
+})
+
+notesRoutes.post('/api/notes/:id/purge', async (c) => {
+  await purgeNotes(c.env, [c.req.param('id')])
+  return c.json({ ok: true })
 })
