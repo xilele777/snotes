@@ -13,3 +13,7 @@ dist
 .dev.vars
 *.local
 *.tsbuildinfo
+
+# vite
+tmp/
+.vite/
