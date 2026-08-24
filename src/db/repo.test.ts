@@ -27,7 +27,7 @@ describe('createNote', () => {
 
     expect(note.id).toMatch(/^[0-9a-f-]{36}$/)
     expect(note.title).toBe('我的标题')
-    expect(note.summary).toBe('我的标题 正文内容')
+    expect(note.summary).toBe('正文内容')
     expect(note.body).toBe('# 我的标题\n正文内容')
     // 0 = 服务端尚未确认任何版本，不是 1
     expect(note.version).toBe(0)

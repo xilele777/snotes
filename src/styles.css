@@ -21,6 +21,8 @@
   --create-yellow: #f4dd46;
   --select-yellow: #f4dc3d;
   --danger: #ff4949;
+  /* 遮罩（抽屉、模态共用） */
+  --mask: rgba(0, 0, 0, 0.4);
 
   font-family: Helvetica Neue, Helvetica, PingFang SC, Hiragino Sans GB, STHeitiSC-Light,
     Microsoft YaHei, 微软雅黑, SimSun, sans-serif;
@@ -32,17 +34,24 @@ body { color: var(--text-primary); background: var(--bg-app); font-size: 16px; l
 #app { height: 100%; }
 
 /* === 三栏布局（UI 规格 §2.1，对照原站 note.wps.cn 实测） === */
-/* 侧栏 180px、列表区固定 360px、编辑器占剩余——原站列表窄、编辑器宽 */
+/* 原站 #side_bar{width:1.8rem}、#list{width:2.75rem}，1rem=100px */
 .layout {
   display: grid;
-  grid-template-columns: 180px 360px 1fr;
+  grid-template-columns: 180px 275px 1fr;
   height: 100vh;
   position: relative;
 }
+/* 侧栏与列表靠底色差分区，不画竖线——原站 #side_bar 本来就没有 border，
+   两侧都加硬边框是把界面切成格子的主要来源。 */
+.sidebar-pane {
+  background: var(--bg-app);
+  overflow: hidden;
+}
 .list-pane {
   background: var(--bg-surface);
-  border-right: 1px solid var(--border-default);
-  overflow-y: auto;
+  /* 原站 #list{border-right:1px solid #ebebeb}，比 --border-default 浅一档 */
+  border-right: 1px solid var(--border-light);
+  overflow: hidden;
 }
 .editor-pane {
   background: var(--bg-surface);
@@ -52,16 +61,18 @@ body { color: var(--text-primary); background: var(--bg-app); font-size: 16px; l
 }
 
 /* === 编辑器顶栏（UI 规格 §2.4 §4.3） === */
+/* 原站 .clz-editor-top-bar{height:.56rem;max-width:8.1rem;width:calc(100% - .8rem)} */
 .editor-top-bar {
   height: 56px;
   max-width: 810px;
   width: 100%;
   margin: 0 auto;
-  border-bottom: 1px solid var(--border-default);
+  border-bottom: 1px solid var(--border-light);
   display: flex;
   align-items: center;
   padding: 0 16px;
   gap: 8px;
+  flex: none;
 }
 .back-btn {
   display: none;
@@ -71,60 +82,85 @@ body { color: var(--text-primary); background: var(--bg-app); font-size: 16px; l
   cursor: pointer;
   padding: 4px;
 }
-.top-title {
-  font-size: 15px;
-  font-weight: 500;
-  color: var(--text-primary);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
 
-/* 编辑器顶栏「更多」菜单（原站 clz_more_icon_div） */
-.more-menu { position: relative; margin-left: auto; flex: none; }
-.more-btn {
+/* 顶栏操作条：标题不再重复展示，三个点里的动作直接摊成一排 */
+/* 原站 .clz_editor_op_btn{border-radius:50%;width:.32rem;height:.32rem}，选中态 #f0f0f0 底 */
+.op-bar {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+.op-btn {
+  width: 32px;
+  height: 32px;
+  padding: 0;
   border: 0;
+  border-radius: 50%;
   background: none;
   color: var(--text-secondary);
   cursor: pointer;
-  padding: 4px;
   display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.2s ease-in-out, color 0.2s ease-in-out;
 }
-.more-btn:hover { color: var(--text-primary); }
-.more-popover {
+.op-btn:hover { background: var(--bg-hover); color: var(--text-primary); }
+/* open = 浮层展开（只压底色），selected = 属性已开启（染品牌黄） */
+.op-btn.open { background: var(--bg-press); color: var(--text-primary); }
+.op-btn.selected { background: var(--bg-press); color: var(--primary-yellow); }
+.op-btn.danger:hover { background: var(--bg-hover); color: var(--danger); }
+/* 颜色按钮显示当前皮肤色本身，比一个通用图标更能说明状态 */
+.op-dot {
+  display: block;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  border: 1px solid var(--border-input);
+}
+.op-dot.is-none {
+  background: repeating-linear-gradient(45deg, var(--bg-surface) 0 3px, var(--text-disabled) 3px 6px);
+}
+
+.op-wrap { position: relative; display: flex; }
+.op-popover {
   position: absolute;
   top: 100%;
   right: 0;
-  margin-top: 4px;
+  margin-top: 6px;
   background: var(--bg-surface);
-  border: 1px solid var(--border-default);
-  border-radius: 6px;
-  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.12);
-  padding: 6px;
-  min-width: 180px;
+  border: 1px solid var(--border-light);
+  border-radius: 8px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
+  padding: 8px;
   z-index: 20;
+}
+.op-popover.colors { display: flex; gap: 8px; }
+.op-popover.groups-pop {
   display: flex;
   flex-direction: column;
   gap: 2px;
+  padding: 6px;
+  min-width: 148px;
+  max-height: 280px;
+  overflow-y: auto;
 }
-.more-item {
+.group-opt {
   border: 0;
   background: none;
-  color: var(--text-primary);
-  font-size: 14px;
   text-align: left;
+  font-size: 13px;
+  color: var(--text-primary);
   padding: 8px 10px;
-  border-radius: 4px;
+  border-radius: 6px;
   cursor: pointer;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
-.more-item:hover { background: var(--bg-hover); }
-.more-item.danger { color: var(--danger); }
-.more-colors {
-  display: flex;
-  gap: 6px;
-  padding: 8px 10px;
-  flex-wrap: wrap;
-}
+.group-opt:hover { background: var(--bg-hover); }
+.group-opt.selected { color: var(--accent); font-weight: 500; }
+
 .more-swatch {
   width: 22px;
   height: 22px;
@@ -136,24 +172,22 @@ body { color: var(--text-primary); background: var(--bg-app); font-size: 16px; l
 .more-swatch.is-none {
   background: repeating-linear-gradient(45deg, var(--bg-surface) 0 4px, var(--text-disabled) 4px 8px);
 }
-.more-group {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  padding: 8px 10px;
-  font-size: 12px;
-  color: var(--text-secondary);
-}
-.more-group select {
-  height: 30px;
+
+/* 回收站详情顶栏：只读提示 + 恢复 / 彻底删除 */
+.trash-notice { font-size: 13px; color: var(--text-secondary); }
+.trash-op {
+  height: 28px;
+  padding: 0 14px;
   border: 1px solid var(--border-input);
-  border-radius: 4px;
+  border-radius: 14px;
   background: var(--bg-surface);
-  font-size: 13px;
-  color: var(--text-primary);
-  padding: 0 6px;
+  color: var(--text-secondary);
+  font-size: 12px;
+  cursor: pointer;
 }
-.more-group select:focus { outline: none; border-color: var(--accent); }
+.trash-op.recover:hover { color: var(--accent); border-color: var(--accent); }
+.trash-op.purge:hover { color: var(--danger); border-color: var(--danger); }
+
 .editor-body {
   flex: 1;
   overflow: auto;
@@ -191,6 +225,8 @@ body { color: var(--text-primary); background: var(--bg-app); font-size: 16px; l
   min-height: calc(100vh - 56px - 48px);
 }
 .editor-body .milkdown .ProseMirror:focus { outline: none; }
+/* 只读态（回收站详情）ProseMirror 会把 contenteditable 置 false，光标别再装成可编辑 */
+.editor-body .milkdown .ProseMirror[contenteditable='false'] { cursor: default; }
 .editor-body .milkdown :is(h1, h2, h3) { font-weight: 700; line-height: 1.3; }
 .editor-body .milkdown h1 { font-size: 24px; margin: 24px 0 12px; }
 .editor-body .milkdown h2 { font-size: 20px; margin: 20px 0 10px; }
@@ -223,42 +259,72 @@ body { color: var(--text-primary); background: var(--bg-app); font-size: 16px; l
 .editor-body .milkdown img { max-width: 100%; border-radius: 4px; }
 
 /* === 笔记列表（UI 规格 §4.2，对照原站 .note_list_item 实测） === */
-/* 列表区 header：原站 listHeader 56px，左侧 logo 名 + 视图标题 */
+/* header 常驻不滚，新建按钮住在这里，滚动条交给 .note-list */
+.list-view {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
 .list-header {
   height: 56px;
-  line-height: 56px;
+  flex: none;
   border-bottom: 1px solid var(--border-light);
-  padding: 0 16px;
+  padding: 0 8px 0 16px;
   display: flex;
   align-items: center;
-  gap: 12px;
-}
-.list-header .header-name {
-  font-size: 16px;
-  font-weight: 700;
-  color: var(--text-primary);
+  gap: 8px;
 }
 .list-header .header-title {
+  flex: 1;
   font-size: 16px;
+  font-weight: 500;
   color: var(--text-primary);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+.header-create,
+.drawer-btn {
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  flex: none;
+  border: 0;
+  border-radius: 50%;
+  background: none;
+  color: var(--text-secondary);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.2s ease-in-out, color 0.2s ease-in-out;
+}
+.header-create:hover { background: var(--primary-yellow); color: var(--text-primary); }
+.drawer-btn { display: none; }
+.drawer-btn:hover { background: var(--bg-hover); color: var(--text-primary); }
 
-.note-list { list-style: none; margin: 0; padding: 0; }
+.note-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  flex: 1;
+  overflow-y: auto;
+}
 /* 列表项：缩略图 float:right，文字流式绕排（原站 note_list_item 结构） */
 .note-item {
   position: relative;
   height: 93px;
   padding: 12px 16px 0 13px;
-  border-left: 3px solid var(--bg-surface);
+  border-left: 3px solid transparent;
   cursor: pointer;
-  transition: all 0.2s ease-in-out;
+  transition: background 0.2s ease-in-out, border-color 0.2s ease-in-out;
   overflow: hidden;
 }
-.note-item:hover { border-left-color: var(--border-light); }
-.note-item.is-active { border-left-color: var(--skin, var(--accent)); }
+.note-item:hover { background: var(--bg-hover); }
+.note-item.is-active {
+  background: var(--bg-hover);
+  border-left-color: var(--skin, var(--primary-yellow));
+}
 /* 缩略图右侧浮动，margin-left 留出文字与图的间距 */
 .note-item .thumb {
   width: 48px;
@@ -268,7 +334,15 @@ body { color: var(--text-primary); background: var(--bg-app); font-size: 16px; l
   float: right;
   margin-left: 16px;
 }
+/*
+  三段文字的高度必须逐个钉死（原站 note_list_item_minipro 就是这么写的：
+  标题 .23rem、摘要 .19rem、日期 .17rem）。只靠 font-size/line-height 的话，
+  摘要为空时 .note-summary 是个空块级元素、高度塌成 0，日期行整体上移，
+  同一列表里有摘要和没摘要的两行看起来就不等高。
+*/
 .note-item .note-title {
+  height: 23px;
+  line-height: 23px;
   font-size: 16px;
   font-weight: 700;
   color: var(--text-primary);
@@ -277,8 +351,9 @@ body { color: var(--text-primary); background: var(--bg-app); font-size: 16px; l
   white-space: nowrap;
 }
 .note-item .note-summary {
-  font-size: 13px;
+  height: 19px;
   line-height: 19px;
+  font-size: 13px;
   color: var(--text-secondary);
   margin-top: 2px;
   overflow: hidden;
@@ -288,6 +363,7 @@ body { color: var(--text-primary); background: var(--bg-app); font-size: 16px; l
 /* 底部日期行：日期 + 常驻标记图标（置顶图钉/星标） */
 .note-item .note-meta {
   margin-top: 12px;
+  height: 17px;
   width: 100%;
   display: flex;
   align-items: center;
@@ -295,21 +371,22 @@ body { color: var(--text-primary); background: var(--bg-app); font-size: 16px; l
 }
 .note-item .note-date {
   font-size: 12px;
+  line-height: 17px;
   color: var(--text-disabled);
 }
-.note-item .note-pin { color: var(--primary-yellow); display: flex; }
+.note-item .note-pin,
 .note-item .note-star { color: var(--primary-yellow); display: flex; }
-/* 分隔线缩进（原站 note_list_bottom_line margin-left:88px） */
+/* 分隔线两侧内缩：拉通整行会把列表切成一格一格，正是要去掉的那种观感
+   （原站 note_list_bottom_line 也是缩进的，margin-left:.88rem） */
 .note-item .note-divider {
   position: absolute;
-  left: 13px;
-  right: 0;
+  left: 16px;
+  right: 16px;
   bottom: 0;
   height: 1px;
   background: var(--bg-divider);
 }
-.note-item .thumb + .note-text ~ .note-divider,
-.note-item:has(.thumb) .note-divider { left: 13px; }
+.note-item:last-child .note-divider { display: none; }
 
 /* 左滑删除（UI 规格 §4.2） */
 .note-item .delete {
@@ -333,29 +410,32 @@ body { color: var(--text-primary); background: var(--bg-app); font-size: 16px; l
   .note-item:hover .delete { transform: translateX(0); }
 }
 
-.empty { color: var(--text-secondary); padding: 48px 16px; text-align: center; }
-
-/* === 浮动新建按钮（UI 规格 §4.2） === */
-.create-btn {
-  position: fixed;
-  right: 20px;
-  bottom: 32px;
-  width: 54px;
-  height: 54px;
-  border: 0;
-  border-radius: 50%;
-  background: var(--create-yellow);
-  color: var(--text-primary);
-  cursor: pointer;
+/* === 空态（UI 规格 §4.2） === */
+.empty-state {
+  flex: 1;
   display: flex;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
-  transition: background 0.2s ease-in-out;
-  z-index: 10;
+  gap: 4px;
+  padding: 32px 24px;
+  text-align: center;
 }
-.create-btn:hover { background: var(--primary-yellow); }
-.create-btn:active { background: var(--primary-yellow); }
+.empty-art { color: var(--border-default); margin-bottom: 12px; }
+.empty-title { margin: 0; font-size: 15px; color: var(--text-secondary); }
+.empty-hint { margin: 0; font-size: 13px; color: var(--text-tertiary); }
+.empty-action {
+  margin-top: 20px;
+  height: 32px;
+  padding: 0 20px;
+  border: 0;
+  border-radius: 16px;
+  background: var(--primary-yellow);
+  color: var(--text-primary);
+  font-size: 13px;
+  cursor: pointer;
+}
+.empty-action:hover { background: var(--select-yellow); }
 
 /* === 令牌页（UI 规格 §4.5） === */
 .token-gate {
@@ -399,17 +479,19 @@ body { color: var(--text-primary); background: var(--bg-app); font-size: 16px; l
 .token-card button:disabled { background: var(--text-disabled); cursor: not-allowed; }
 
 /* === 分组侧栏（UI 规格 §4.1 §2.5） === */
-.sidebar-pane {
-  background: var(--bg-app);
-  border-right: 1px solid var(--border-default);
-  overflow-y: auto;
-  position: relative;
+/* 分组多了滚 .groups，用户区靠 margin-top:auto 常驻底部——
+   原来的 position:fixed 在抽屉态会被 transform 造出的包含块拽走。 */
+.group-sidebar {
+  padding: 8px;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
 }
-.group-sidebar { padding: 8px; display: flex; flex-direction: column; height: 100%; }
 
 .sidebar-search {
   position: relative;
   margin-bottom: 8px;
+  flex: none;
 }
 .sidebar-search .search-icon {
   position: absolute;
@@ -431,6 +513,7 @@ body { color: var(--text-primary); background: var(--bg-app); font-size: 16px; l
 .sidebar-search input:focus { outline: none; }
 
 .views, .groups { list-style: none; margin: 0; padding: 0; }
+.views { flex: none; }
 .views li {
   height: 40px;
   line-height: 40px;
@@ -439,15 +522,39 @@ body { color: var(--text-primary); background: var(--bg-app); font-size: 16px; l
   font-size: 13px;
   color: var(--text-primary);
   cursor: pointer;
-  margin-left: 0;
 }
 .views li:hover { background: var(--bg-hover); }
 .views li.active { background: var(--bg-press); color: var(--accent); font-weight: 500; }
 
 .group-header {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
   font-size: 12px;
   color: var(--text-tertiary);
-  padding: 12px 12px 4px;
+  padding: 14px 4px 4px 12px;
+}
+.group-add {
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: none;
+  color: var(--text-tertiary);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.2s ease-in-out, color 0.2s ease-in-out;
+}
+.group-add:hover { background: var(--bg-press); color: var(--text-primary); }
+
+.groups {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
 }
 .groups li {
   height: 40px;
@@ -460,48 +567,33 @@ body { color: var(--text-primary); background: var(--bg-app); font-size: 16px; l
   cursor: pointer;
   color: var(--text-primary);
 }
-.groups li:hover { background: var(--bg-press); }
-.groups li.active { background: var(--select-yellow); color: var(--text-primary); }
+.groups li:hover { background: var(--bg-hover); }
+/* 整条实心黄太重（那是原站 .setting_item.selected 的样式，不是分组项的）；
+   分组选中用按下态灰底，色点保留身份识别 */
+.groups li.active { background: var(--bg-press); font-weight: 500; }
 .groups li .dot { width: 8px; height: 8px; border-radius: 50%; flex: none; background: var(--text-disabled); }
+.groups li.active .dot { background: var(--primary-yellow); }
 .groups li .group-name { flex: 1; font-size: 12px; text-align: left; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.groups li .rename-btn { border: 0; background: none; cursor: pointer; color: var(--text-tertiary); padding: 4px; display: none; }
+.groups li .rename-btn {
+  border: 0;
+  background: none;
+  cursor: pointer;
+  color: var(--text-tertiary);
+  padding: 4px;
+  display: none;
+  flex: none;
+}
 .groups li:hover .rename-btn { display: flex; }
 .groups li .rename-btn:hover { color: var(--text-primary); }
-.groups li .rename-input {
-  flex: 1;
-  height: 30px;
-  border: 1px solid var(--accent);
-  background: #f8f8f8;
-  border-radius: 4px;
-  padding: 0 6px;
-  font-size: 12px;
-  color: var(--text-primary);
-}
 
-.new-group { padding: 8px 4px; }
-.new-group input {
-  width: 100%;
-  height: 30px;
-  border: 1px solid var(--border-input);
-  border-radius: 4px;
-  padding: 0 8px;
-  font-size: 12px;
-  color: var(--text-primary);
-  background: var(--bg-surface);
-}
-.new-group input:focus { outline: none; border-color: var(--accent); }
-
-/* 底部用户区（UI 规格 §2.5）：fixed bottom、50px 高、170px 宽 */
+/* 底部用户区（UI 规格 §2.5）：50px 高，随侧栏走 */
 .user-area {
-  position: fixed;
-  bottom: 0;
-  left: 0;
-  width: 170px;
+  flex: none;
+  margin-top: auto;
   height: 50px;
-  background: var(--bg-app);
   display: flex;
   align-items: center;
-  padding: 0 16px;
+  padding: 0 12px;
   border-top: 1px solid var(--border-light);
 }
 .sync-idle { position: relative; color: var(--text-tertiary); display: flex; }
@@ -521,47 +613,101 @@ body { color: var(--text-primary); background: var(--bg-app); font-size: 16px; l
   text-align: center;
 }
 
-/* 笔记条目上的分组下拉（Task 18 §4.1） */
-.note-acts .group-select {
-  height: 24px;
-  border: 1px solid var(--border-input);
-  border-radius: 4px;
-  background: var(--bg-surface);
-  font-size: 12px;
-  color: var(--text-secondary);
-  padding: 0 4px;
-  max-width: 90px;
+/* === 分组弹窗（原站 el-dialog + custom-class="group-dialog"） === */
+/* max-width 3.2rem / radius .2rem / padding .24rem，原生 header 隐藏、标题自绘 */
+.dialog-mask {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  background: var(--mask);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
 }
-.note-acts .group-select:focus { outline: none; border-color: var(--accent); }
+.dialog {
+  width: 100%;
+  max-width: 320px;
+  background: var(--bg-surface);
+  border-radius: 20px;
+  padding: 24px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.16);
+}
+.dialog-title {
+  margin: 0 0 20px;
+  font-size: 18px;
+  line-height: 1.3;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+/* 原站 .group-name 是只有下边框的裸输入框，不是描边盒子 */
+.dialog-input {
+  width: 100%;
+  height: 36px;
+  border: 0;
+  border-bottom: 1px solid var(--border-input);
+  border-radius: 0;
+  background: transparent;
+  outline: none;
+  font-size: 16px;
+  color: var(--text-primary);
+  transition: border-color 0.2s ease-in-out;
+}
+.dialog-input:focus { border-bottom-color: var(--primary-yellow); }
+.dialog-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 24px;
+}
+.dialog-btn {
+  border: 0;
+  background: none;
+  font-size: 15px;
+  cursor: pointer;
+}
+.dialog-btn.cancel { color: var(--text-secondary); padding: 7px 4px; }
+.dialog-btn.cancel:hover { color: var(--text-primary); }
+/*
+  原站「确定」是 #fed824 纯黄文字，白底上对比度只有 1.4:1，基本读不出来。
+  这里改成黄底深字的胶囊：品牌色不变，对比度到 11:1。
+*/
+.dialog-btn.ok {
+  height: 32px;
+  padding: 0 20px;
+  border-radius: 16px;
+  background: var(--primary-yellow);
+  color: var(--text-primary);
+  font-weight: 500;
+}
+.dialog-btn.ok:hover:not(:disabled) { background: var(--select-yellow); }
+.dialog-btn.ok:disabled { background: var(--bg-press); color: var(--text-disabled); cursor: not-allowed; }
 
 /* === 搜索高亮（UI 规格 §10） === */
 .note-title .hit { background: var(--primary-yellow); border-radius: 2px; }
 
 /* === 回收站（UI 规格 §4.4） === */
-.trash-view { display: flex; flex-direction: column; height: 100%; }
-.trash-header {
-  height: 56px;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 0 16px;
-  border-bottom: 1px solid var(--border-light);
-}
-.trash-title { font-size: 15px; font-weight: 700; color: var(--text-primary); }
 .clean-all {
+  flex: none;
   font-size: 12px;
   color: var(--text-secondary);
   border: 1px solid var(--border-input);
-  border-radius: 4px;
-  padding: 0 10px;
+  border-radius: 13px;
+  padding: 0 12px;
   height: 26px;
   background: var(--bg-surface);
   cursor: pointer;
 }
 .clean-all:hover { color: var(--danger); border-color: var(--danger); }
-.trash-item { border-left: 3px solid var(--bg-surface); }
-.trash-item:hover { border-left-color: var(--border-light); }
-.trash-acts { display: flex; gap: 4px; opacity: 0; transition: opacity 0.2s ease-in-out; }
+.trash-item .trash-acts {
+  position: absolute;
+  right: 16px;
+  bottom: 12px;
+  display: flex;
+  gap: 6px;
+  opacity: 0;
+  transition: opacity 0.2s ease-in-out;
+}
 .trash-item:hover .trash-acts { opacity: 1; }
 .trash-acts button {
   border: 1px solid var(--border-input);
@@ -574,15 +720,44 @@ body { color: var(--text-primary); background: var(--bg-app); font-size: 16px; l
 }
 .trash-acts .recover:hover { color: var(--accent); border-color: var(--accent); }
 .trash-acts .purge:hover { color: var(--danger); border-color: var(--danger); }
-@media (hover: none) { .trash-acts { opacity: 1; } }
+@media (hover: none) { .trash-item .trash-acts { opacity: 1; } }
 
-/* === 响应式断点（UI 规格 §2.2，对照原站） === */
-/* 720px–1020px：侧栏隐藏，列表窄+编辑器宽并排（不等宽，贴近原站比例） */
-@media (max-width: 1020px) {
-  .layout { grid-template-columns: 360px 1fr; }
-  .sidebar-pane { display: none; }
+/* === 抽屉遮罩 === */
+/* 默认 display:none，>1020px 时它连 grid item 都不是，不会多占一列 */
+.drawer-mask { display: none; }
+
+/* === 响应式断点（UI 规格 §2.2，对照原站实测） === */
+/* 1021–1335px：原站 #list{width:15.75%;min-width:2.35rem}，这一段里 min-width 恒赢，等价定值 235px */
+@media (max-width: 1335px) and (min-width: 1021px) {
+  .layout { grid-template-columns: 180px 235px 1fr; }
 }
-/* <720px：列表↔编辑器互斥切换 */
+/* ≤1020px：侧栏改抽屉覆盖（原站 #side_bar{left:-1.8rem;transition:left .3s ease}）。
+   不给抽屉入口的话，搜索 / 星标 / 回收站 / 分组 / 同步状态会整体失联。
+   列表 30% 对齐原站 @media(max-width:1020px){#list{width:30%}}。 */
+@media (max-width: 1020px) {
+  .layout { grid-template-columns: 30% 1fr; }
+  .sidebar-pane {
+    position: fixed;
+    top: 0;
+    bottom: 0;
+    left: 0;
+    width: 180px;
+    z-index: 30;
+    transform: translateX(-100%);
+    transition: transform 0.3s ease;
+    box-shadow: 2px 0 12px rgba(0, 0, 0, 0.08);
+  }
+  .sidebar-pane.is-open { transform: translateX(0); }
+  .drawer-mask {
+    display: block;
+    position: fixed;
+    inset: 0;
+    z-index: 25;
+    background: var(--mask);
+  }
+  .drawer-btn { display: flex; }
+}
+/* <720px：列表↔编辑器互斥切换，列表占满 */
 @media (max-width: 720px) {
   .layout { grid-template-columns: 1fr; }
   .layout[data-mobile-pane='list'] .editor-pane { display: none; }

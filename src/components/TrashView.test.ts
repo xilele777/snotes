@@ -56,6 +56,32 @@ describe('TrashView', () => {
     expect(wrapper.find('.clean-all').exists()).toBe(true)
   })
 
+  it('点条目选中它——回收站也要能看笔记详情', async () => {
+    const notes = useNotesStore()
+    const ui = useUiStore()
+    const note = await notes.create()
+    await notes.trash(note.id)
+
+    ui.view = 'trash'
+    await notes.load()
+
+    const wrapper = mount(TrashView)
+    await wrapper.vm.$nextTick()
+    await wrapper.find(`[data-note-id="${note.id}"]`).trigger('click')
+
+    expect(notes.currentId).toBe(note.id)
+  })
+
+  it('回收站为空时显示空态', async () => {
+    const ui = useUiStore()
+    ui.view = 'trash'
+
+    const wrapper = mount(TrashView)
+    await wrapper.vm.$nextTick()
+
+    expect(wrapper.find('.empty-state').text()).toContain('回收站是空的')
+  })
+
   it('点彻底删除单条物理删除该笔记', async () => {
     const notes = useNotesStore()
     const ui = useUiStore()

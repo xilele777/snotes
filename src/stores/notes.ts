@@ -31,6 +31,12 @@ export const useNotesStore = defineStore('notes', () => {
 
   async function load() {
     notes.value = await repo.listNotes({ view: ui.view, groupId: ui.activeGroupId })
+
+    // 当前选中项必须始终在当前列表里。切视图、恢复、彻底删除、清空回收站都会让它落空，
+    // 留着一个指不到任何笔记的 currentId，详情页就是一块永远空白的板子。
+    if (currentId.value !== null && !notes.value.some((n) => n.id === currentId.value)) {
+      currentId.value = null
+    }
   }
 
   async function create() {
@@ -65,6 +71,12 @@ export const useNotesStore = defineStore('notes', () => {
     await load()
   }
 
+  /** 回收站里的「彻底删除」：物理删除单条。currentId 的收尾交给 load() 的不变量。 */
+  async function purge(id: string) {
+    await repo.purgeNote(id)
+    await load()
+  }
+
   /**
    * 清空回收站（规格 §7.2 POST /api/trash/clean 的本地入口）。
    * 物理删除所有 invalid=1 的笔记并入队 scope='trash' 的 purge 任务，
@@ -75,5 +87,5 @@ export const useNotesStore = defineStore('notes', () => {
     await load()
   }
 
-  return { notes, currentId, current, visible, load, create, saveBody, setProps, trash, recover, purgeAll }
+  return { notes, currentId, current, visible, load, create, saveBody, setProps, trash, recover, purge, purgeAll }
 })

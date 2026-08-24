@@ -3,6 +3,7 @@ import { createPinia, setActivePinia } from 'pinia'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { db } from '../db/schema'
 import { useNotesStore } from '../stores/notes'
+import { useUiStore } from '../stores/ui'
 import NoteList from './NoteList.vue'
 
 beforeEach(async () => {
@@ -35,15 +36,32 @@ describe('NoteList', () => {
     expect(wrapper.text()).toContain('我的摘要')
   })
 
-  it('列表区 header 显示 logo 名与视图标题', async () => {
+  it('列表区 header 显示视图标题，不再有 logo 字样', async () => {
     const store = useNotesStore()
     await store.create()
 
     const wrapper = mount(NoteList)
     await wrapper.vm.$nextTick()
 
-    expect(wrapper.find('.list-header .header-name').text()).toBe('snotes')
     expect(wrapper.find('.list-header .header-title').text()).toBe('全部笔记')
+    expect(wrapper.find('.list-header .header-name').exists()).toBe(false)
+    expect(wrapper.text()).not.toContain('snotes')
+  })
+
+  it('新建按钮在列表顶栏且能建笔记', async () => {
+    const store = useNotesStore()
+
+    const wrapper = mount(NoteList)
+    await wrapper.vm.$nextTick()
+
+    const create = wrapper.find('.list-header .header-create')
+    expect(create.exists()).toBe(true)
+    expect(create.attributes('aria-label')).toBe('新建笔记')
+
+    await create.trigger('click')
+    await vi.waitFor(() => {
+      expect(store.notes.length).toBe(1)
+    })
   })
 
   it('无标题时显示占位文案', async () => {
@@ -175,5 +193,77 @@ describe('NoteList', () => {
     await wrapper.vm.$nextTick()
 
     expect(wrapper.text()).toContain('还没有笔记')
+    expect(wrapper.find('.empty-state .empty-action').text()).toBe('新建笔记')
+  })
+
+  it('星标视图空态不引导新建——星标是标出来的，不是建出来的', async () => {
+    const ui = useUiStore()
+    ui.view = 'star'
+
+    const wrapper = mount(NoteList)
+    await wrapper.vm.$nextTick()
+
+    expect(wrapper.text()).toContain('没有星标笔记')
+    expect(wrapper.find('.empty-state .empty-action').exists()).toBe(false)
+  })
+
+  it('搜索无结果时空态给的是清除搜索而不是新建', async () => {
+    const store = useNotesStore()
+    const note = await store.create()
+    await store.saveBody(note.id, '会议纪要')
+
+    const ui = useUiStore()
+    ui.query = '不存在的词'
+
+    const wrapper = mount(NoteList)
+    await wrapper.vm.$nextTick()
+
+    expect(wrapper.text()).toContain('没有匹配「不存在的词」的笔记')
+
+    await wrapper.find('.empty-state .empty-action').trigger('click')
+    expect(ui.query).toBe('')
+  })
+
+  // 行高一致的结构前提：摘要块必须常驻，缺了它日期行会整体上移
+  it('只有标题的笔记摘要为空，但摘要块与日期行照样在', async () => {
+    const store = useNotesStore()
+    const note = await store.create()
+    await store.saveBody(note.id, '只有标题')
+
+    const wrapper = mount(NoteList)
+    await wrapper.vm.$nextTick()
+
+    const item = wrapper.find('.note-item')
+    expect(item.find('.note-title').text()).toBe('只有标题')
+    // 摘要不再复读标题
+    expect(item.find('.note-summary').exists()).toBe(true)
+    expect(item.find('.note-summary').text()).toBe('')
+    expect(item.find('.note-meta').exists()).toBe(true)
+  })
+
+  it('多行笔记的摘要从标题的下一行起算', async () => {
+    const store = useNotesStore()
+    const note = await store.create()
+    await store.saveBody(note.id, '# 周会纪要\n讨论了排期')
+
+    const wrapper = mount(NoteList)
+    await wrapper.vm.$nextTick()
+
+    const item = wrapper.find('.note-item')
+    expect(item.find('.note-title').text()).toBe('周会纪要')
+    expect(item.find('.note-summary').text()).toBe('讨论了排期')
+  })
+
+  it('以图片开头的笔记标题不再是一串 base64', async () => {
+    const store = useNotesStore()
+    const note = await store.create()
+    const dataUri = `data:image/png;base64,${'iVBORw0KGgo'.repeat(20)}`
+    await store.saveBody(note.id, `![](${dataUri})\n\n白板照片`)
+
+    const wrapper = mount(NoteList)
+    await wrapper.vm.$nextTick()
+
+    expect(wrapper.find('.note-item .note-title').text()).toBe('白板照片')
+    expect(wrapper.text()).not.toContain('base64')
   })
 })

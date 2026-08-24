@@ -10,7 +10,7 @@ import type { ComponentPublicInstance } from 'vue'
 import { escapeRawHtml } from '../../shared/sanitize'
 import { isAllowedImage, removePlaceholder, replacePlaceholder, uploadImage } from './image-upload'
 
-const props = defineProps<{ noteId: string; modelValue: string }>()
+const props = defineProps<{ noteId: string; modelValue: string; editable?: boolean }>()
 const emit = defineEmits<{
   'update:modelValue': [string]
   /** 提前交卷，第一个参数是内容所属的 noteId */
@@ -76,6 +76,9 @@ function pushMarkdown(editor: Editor, markdown: string) {
  * 从剪贴板里取出图片文件。
  * 不能只读 `clipboardData.files`：拖拽与合成 paste 事件经常只把文件挂在
  * `items` 上、`.files` 是空的，只看 `.files` 会漏掉这种来源。
+ * 但两边常常是同一批文件的两个视图（往 DataTransfer 里 add 一次会同时填充
+ * items 和 files），直接拼起来同一张图会被上传两遍，而且第二个占位的 blob
+ * 替换不掉——replacePlaceholder 只认自己那一次的 URL——就在正文里留下死链。
  */
 function clipboardImageFiles(data: DataTransfer | null): File[] {
   if (!data) return []
@@ -83,7 +86,18 @@ function clipboardImageFiles(data: DataTransfer | null): File[] {
   const fromItems = Array.from(data.items ?? [])
     .map((item) => item.getAsFile())
     .filter((f): f is File => f !== null)
-  return [...fromFiles, ...fromItems].filter(isAllowedImage)
+
+  const seen = new Set<string>()
+  return [...fromFiles, ...fromItems].filter((file) => {
+    if (!isAllowedImage(file)) return false
+
+    // 同一份文件经 files / items 两条路取出来是两个 File 对象，对象身份比不出来，
+    // 只能按元数据判重。两张真不同的图几乎不可能连字节数都一样。
+    const key = `${file.name}|${file.size}|${file.lastModified}|${file.type}`
+    if (seen.has(key)) return false
+    seen.add(key)
+    return true
+  })
 }
 
 async function handleImageFiles(files: File[]) {
@@ -132,6 +146,9 @@ const MilkdownInner = defineComponent({
         .config((ctx) => {
           ctx.update(editorViewOptionsCtx, (prev) => ({
             ...prev,
+            // 回收站详情走 ProseMirror 原生只读，不是 pointer-events:none 那种假只读——
+            // 假只读挡得住鼠标，挡不住键盘聚焦和输入法，照样能把内容改了。
+            editable: () => props.editable !== false,
             handlePaste: (_view, event) => {
               // 只拦图片。全量拦截会把复制来的富文本、文件附件一并吞掉，
               // 而 return true 意味着 ProseMirror 不再执行默认粘贴——文字就丢了。
