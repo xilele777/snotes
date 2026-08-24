@@ -2,6 +2,7 @@ import { mount } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { db } from './db/schema'
+import MetricsView from './components/MetricsView.vue'
 import NoteDetail from './components/NoteDetail.vue'
 import { useNotesStore } from './stores/notes'
 import { useUiStore } from './stores/ui'
@@ -18,11 +19,19 @@ vi.mock('./api/token', async () => {
   const { ref } = await import('vue')
   return { hasToken: ref(true) }
 })
+// 监控页走 apiMetrics，App 级用例不关心它真的拉到什么数据
+const apiMetrics = vi.hoisted(() => vi.fn())
+vi.mock('./api/client', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('./api/client')>()),
+  apiMetrics,
+}))
 
 beforeEach(async () => {
   setActivePinia(createPinia())
   await db.delete()
   await db.open()
+  apiMetrics.mockReset()
+  apiMetrics.mockResolvedValue({ error: 'not_configured' })
 })
 
 describe('App 侧栏抽屉', () => {
@@ -112,6 +121,21 @@ describe('App 回收站详情', () => {
     await wrapper.vm.$nextTick()
 
     expect(wrapper.findComponent(NoteDetail).props('readonly')).toBe(false)
+    wrapper.unmount()
+  })
+})
+
+describe('App 数据监控视图', () => {
+  it('切到 metrics 视图渲染监控页而非笔记详情', async () => {
+    const ui = useUiStore()
+    const wrapper = mount(App, { attachTo: document.body })
+    await wrapper.vm.$nextTick()
+
+    ui.view = 'metrics'
+    await wrapper.vm.$nextTick()
+
+    expect(wrapper.findComponent(MetricsView).exists()).toBe(true)
+    expect(wrapper.findComponent(NoteDetail).exists()).toBe(false)
     wrapper.unmount()
   })
 })

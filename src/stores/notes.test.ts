@@ -107,4 +107,36 @@ describe('notes store', () => {
 
     expect(store.visible).toHaveLength(2)
   })
+
+  it('load 时若无选中项默认选中列表第一条', async () => {
+    const store = useNotesStore()
+    await store.create()
+    await store.create()
+    store.currentId = null
+
+    await store.load()
+
+    // 列表先后没保证（可能同毫秒），断言落在列表当前第一项而非 null 即可
+    expect(store.currentId).toBe(store.notes[0].id)
+    expect(store.currentId).not.toBeNull()
+  })
+
+  it('load 后列表为空时选中项保持 null', async () => {
+    const store = useNotesStore()
+
+    await store.load()
+
+    expect(store.currentId).toBeNull()
+  })
+
+  it('currentId 指不到列表里任何笔记时，load 会重选到列表第一条', async () => {
+    const store = useNotesStore()
+    await store.create()
+    await store.create()
+    store.currentId = '不存在的 id'
+
+    await store.load()
+
+    expect(store.currentId).toBe(store.notes[0].id)
+  })
 })

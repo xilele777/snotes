@@ -84,6 +84,28 @@ describe('GroupSidebar', () => {
     expect(wrapper.text()).not.toContain('临时')
   })
 
+  it('user-area 里渲染数据监控入口', async () => {
+    const wrapper = mount(GroupSidebar)
+    await wrapper.vm.$nextTick()
+
+    const entry = wrapper.find('[data-view="metrics"]')
+    expect(entry.exists()).toBe(true)
+    expect(entry.attributes('aria-label')).toBe('数据监控')
+  })
+
+  it('点监控入口切到 metrics 视图并收起抽屉', async () => {
+    const ui = useUiStore()
+    ui.drawerOpen = true
+
+    const wrapper = mount(GroupSidebar)
+    await wrapper.vm.$nextTick()
+    await wrapper.find('[data-view="metrics"]').trigger('click')
+
+    expect(ui.view).toBe('metrics')
+    expect(ui.activeGroupId).toBeNull()
+    expect(ui.drawerOpen).toBe(false)
+  })
+
   it('删除分组后组内笔记回到未分组而非被删除', async () => {
     const groups = useGroupsStore()
     const g = await groups.create('临时')

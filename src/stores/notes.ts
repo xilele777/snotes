@@ -2,7 +2,7 @@ import { defineStore } from 'pinia'
 import { computed, ref } from 'vue'
 import type { LocalNote } from '../../shared/types'
 import * as repo from '../db/repo'
-import type { NoteProps } from '../db/repo'
+import type { ListView, NoteProps } from '../db/repo'
 import { useUiStore } from './ui'
 
 export const useNotesStore = defineStore('notes', () => {
@@ -30,12 +30,19 @@ export const useNotesStore = defineStore('notes', () => {
   })
 
   async function load() {
-    notes.value = await repo.listNotes({ view: ui.view, groupId: ui.activeGroupId })
+    // metrics 视图不经这里取数（MetricsView 直接调 apiMetrics），所以 types 收窄到列表视图是安全的
+    notes.value = await repo.listNotes({ view: ui.view as ListView, groupId: ui.activeGroupId })
 
     // 当前选中项必须始终在当前列表里。切视图、恢复、彻底删除、清空回收站都会让它落空，
     // 留着一个指不到任何笔记的 currentId，详情页就是一块永远空白的板子。
     if (currentId.value !== null && !notes.value.some((n) => n.id === currentId.value)) {
       currentId.value = null
+    }
+
+    // Bug 7：打开应用 / 切换视图时如果没有选中项，默认选中列表第一条；
+    // 全视图与回收站共享同一 load，行为一致。列表为空时保持 null。
+    if (currentId.value === null && notes.value.length > 0) {
+      currentId.value = notes.value[0].id
     }
   }
 

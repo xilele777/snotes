@@ -48,6 +48,23 @@ async function pasteImage(page: Page) {
   }, PNG_BASE64)
 }
 
+/** 读当前笔记落在 IndexedDB 里的正文，用来确认 debounce 存盘已经完成 */
+function savedBody(page: Page): Promise<string> {
+  return page.evaluate(async () => {
+    const req = indexedDB.open('snotes')
+    const rows = await new Promise<{ body?: string }[]>((resolve) => {
+      req.onsuccess = () => {
+        const db = req.result
+        if (!db.objectStoreNames.contains('notes')) return resolve([])
+        const all = db.transaction('notes').objectStore('notes').getAll()
+        all.onsuccess = () => resolve(all.result)
+      }
+      req.onerror = () => resolve([])
+    })
+    return rows.map((r) => r.body ?? '').join('\n')
+  })
+}
+
 test.beforeEach(async ({ page }) => {
   resetServer()
   await signIn(page)
@@ -124,6 +141,9 @@ test('删除后进回收站，能看详情，可恢复', async ({ page }) => {
   // 删除按钮在桌面端默认是滑出视口的；hover 笔记条目后露出，再点。
   await page.locator('.note-item').first().hover()
   await page.locator('.note-item').first().getByRole('button', { name: '删除' }).click()
+  // 删除统一定点到一个确认弹窗（Bug 4），确认后才真正删除
+  await expect(page.locator('.confirm-dialog')).toBeVisible()
+  await page.locator('[data-op="confirm"]').click()
 
   // 删掉唯一一条笔记后列表换成空态，<ul class="note-list"> 整个不渲染了，
   // 所以这里断言空态而不是「note-list 里没有它」——后者会因元素不存在而报错。
@@ -142,6 +162,64 @@ test('删除后进回收站，能看详情，可恢复', async ({ page }) => {
   await page.locator('[data-view="all"]').click()
 
   await expect(page.locator('.note-item').first()).toContainText('待删除')
+})
+
+test('顶栏撤销/重做按钮能撤掉又恢复输入', async ({ page }) => {
+  await createNote(page)
+  await page.locator('.milkdown').click()
+  await page.keyboard.type('第一段')
+  await page.keyboard.press('Enter')
+  await page.keyboard.type('第二段')
+
+  await expect(page.locator('.milkdown .ProseMirror')).toContainText('第二段')
+
+  // undo 撤销最近一次输入（第二段），redo 再把它找回来
+  await page.locator('[data-op="undo"]').click()
+  await expect(page.locator('.milkdown .ProseMirror')).not.toContainText('第二段')
+
+  await page.locator('[data-op="redo"]').click()
+  await expect(page.locator('.milkdown .ProseMirror')).toContainText('第二段')
+})
+
+test('GFM 表格在编辑器里渲染成 table', async ({ page }) => {
+  await createNote(page)
+  await page.locator('.milkdown').click()
+
+  // Milkdown 的表输入规则：`|2x2| `（尾随空格）生成 2 行 × 2 列表格
+  await page.keyboard.type('|2x2| ')
+
+  const table = page.locator('.milkdown table')
+  await expect(table).toHaveCount(1, { timeout: 5_000 })
+  await expect(table.locator('th')).toHaveCount(2)
+  await expect(table.locator('td')).toHaveCount(2)
+
+  // 光标落在首个表头格，直接输入标题文字
+  await page.keyboard.type('名称')
+
+  // 必须等正文真的落到 IndexedDB 再刷新：编辑器是 800ms debounce 存盘，
+  // pagehide 那条兜底 flush 发的是异步 IDB 写，赶不上导航，刷新后就是一篇空笔记。
+  await expect
+    .poll(() => savedBody(page), { timeout: 5_000 })
+    .toContain('名称')
+
+  // 刷新后表格应从 markdown 反解析回格子（Bug 3 回归点：没有 GFM preset，这里就是纯文本管道符）
+  await page.reload()
+  await expect(table).toHaveCount(1, { timeout: 5_000 })
+  await expect(page.locator('.milkdown table th').first()).toHaveText('名称')
+})
+
+test('刷新后默认选中列表第一条并打开详情', async ({ page }) => {
+  await createNote(page)
+  await page.locator('.milkdown').click()
+  await page.keyboard.type('# 默认选中我')
+
+  await expect(page.locator('.note-item').first()).toContainText('默认选中我')
+
+  await page.reload()
+
+  // 没显式选过任何笔记，加载时应自动选中第一条并展示详情
+  await expect(page.locator('.editor-top-bar')).toBeVisible()
+  await expect(page.locator('.milkdown .ProseMirror')).toContainText('默认选中我')
 })
 
 test('以图片开头的笔记，列表标题不是一串 base64', async ({ page }) => {

@@ -12,3 +12,20 @@ if (typeof globalThis.crypto?.randomUUID !== 'function') {
       ),
   })
 }
+
+// jsdom 不实现 window.matchMedia，而 isMobile()/窄屏分支要读它。
+// jsdom 的固定视口是 1024×768，窄屏分支在单测里恒为 false——测试默认按桌面色走；
+// 要测移动端路径时在具体用例里覆写 matchMedia 返回值即可。
+if (typeof window.matchMedia !== 'function') {
+  window.matchMedia = (query) =>
+    ({
+      matches: false,
+      media: query,
+      onchange: null,
+      addListener: () => undefined,
+      removeListener: () => undefined,
+      addEventListener: () => undefined,
+      removeEventListener: () => undefined,
+      dispatchEvent: () => false,
+    }) as unknown as MediaQueryList
+}

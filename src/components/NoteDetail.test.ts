@@ -19,7 +19,6 @@ beforeEach(async () => {
   setActivePinia(createPinia())
   await db.delete()
   await db.open()
-  vi.stubGlobal('confirm', () => true)
 })
 
 /** 顶栏动作都带 data-op，避免按下标取按钮——加一颗图标就会把所有断言错位 */
@@ -154,7 +153,7 @@ describe('NoteDetail 顶栏操作条', () => {
     wrapper.unmount()
   })
 
-  it('删除按钮把当前笔记移入回收站', async () => {
+  it('删除按钮先弹确认，确认后才把笔记移入回收站', async () => {
     const notes = useNotesStore()
     const note = await notes.create()
     notes.currentId = note.id
@@ -163,10 +162,48 @@ describe('NoteDetail 顶栏操作条', () => {
     await wrapper.vm.$nextTick()
     await op(wrapper, 'trash').trigger('click')
 
+    // 未确认前不动任何数据
+    expect(wrapper.find('.confirm-dialog').exists()).toBe(true)
+    expect(notes.notes.find((n) => n.id === note.id)).toBeDefined()
+
+    await wrapper.find('[data-op="confirm"]').trigger('click')
+
     await vi.waitFor(() => {
       expect(notes.notes.find((n) => n.id === note.id) == null).toBe(true)
     })
     expect((await db.notes.get(note.id))!.invalid).toBe(1)
+    wrapper.unmount()
+  })
+
+  it('删除弹窗点取消不删任何东西', async () => {
+    const notes = useNotesStore()
+    const note = await notes.create()
+    notes.currentId = note.id
+
+    const wrapper = mount(NoteDetail, { attachTo: document.body })
+    await wrapper.vm.$nextTick()
+    await op(wrapper, 'trash').trigger('click')
+    await wrapper.find('[data-op="cancel"]').trigger('click')
+
+    expect(wrapper.find('.confirm-dialog').exists()).toBe(false)
+    expect(notes.notes.find((n) => n.id === note.id)).toBeDefined()
+    wrapper.unmount()
+  })
+
+  it('撤销/重做按钮渲染在编辑态顶栏，点击只是空转不报错', async () => {
+    const notes = useNotesStore()
+    const note = await notes.create()
+    notes.currentId = note.id
+
+    const wrapper = mount(NoteDetail, { attachTo: document.body })
+    await wrapper.vm.$nextTick()
+
+    expect(op(wrapper, 'undo').exists()).toBe(true)
+    expect(op(wrapper, 'redo').exists()).toBe(true)
+    // 编辑器是 @milkdown/vue 空壳，expose 的方法点了不该抛
+    await op(wrapper, 'undo').trigger('click')
+    await op(wrapper, 'redo').trigger('click')
+    expect(notes.notes.find((n) => n.id === note.id)).toBeDefined()
     wrapper.unmount()
   })
 
@@ -213,6 +250,8 @@ describe('NoteDetail 回收站只读态', () => {
     expect(op(wrapper, 'purge').exists()).toBe(true)
     expect(op(wrapper, 'top').exists()).toBe(false)
     expect(op(wrapper, 'trash').exists()).toBe(false)
+    expect(op(wrapper, 'undo').exists()).toBe(false)
+    expect(op(wrapper, 'redo').exists()).toBe(false)
     wrapper.unmount()
   })
 
@@ -241,10 +280,14 @@ describe('NoteDetail 回收站只读态', () => {
     wrapper.unmount()
   })
 
-  it('彻底删除物理删除笔记并清空当前选中', async () => {
+  it('彻底删除先弹确认，确认后物理删除笔记并清空当前选中', async () => {
     const { notes, note, wrapper } = await mountTrashed()
 
     await op(wrapper, 'purge').trigger('click')
+    expect(wrapper.find('.confirm-dialog').exists()).toBe(true)
+    expect(wrapper.find('.dialog-title').text()).toBe('彻底删除这条笔记？')
+
+    await wrapper.find('[data-op="confirm"]').trigger('click')
 
     // DB 删除先完成、load() 清 currentId 后完成，两件事得放进同一个 waitFor
     await vi.waitFor(async () => {

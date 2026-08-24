@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
 import type { ListView } from '../db/repo'
+import { pushNav } from '../navigation'
 import GroupDialog from './GroupDialog.vue'
 import { useGroupsStore } from '../stores/groups'
 import { useNotesStore } from '../stores/notes'
@@ -22,11 +23,23 @@ const dialogInitial = computed(
 onMounted(() => groups.load())
 
 async function switchView(view: ListView, groupId: string | null = null) {
+  if (ui.view === view && ui.activeGroupId === groupId) return
+  // Bug 2：视图切换是一层界面变化，先入栈；返回时能回到上一个视图
+  pushNav()
   ui.view = view
   ui.activeGroupId = groupId
   // 抽屉态下选完就该收起来，否则遮罩一直盖着刚切过去的列表
   ui.drawerOpen = false
   await notes.load()
+}
+
+/** 监控页没有笔记列表，不触发 notes.load()，也不该被 listNotes 的 ListView 过滤打扰 */
+function goMetrics() {
+  if (ui.view === 'metrics') return
+  pushNav()
+  ui.view = 'metrics'
+  ui.activeGroupId = null
+  ui.drawerOpen = false
 }
 
 function openCreate() {
@@ -107,6 +120,21 @@ async function submitDialog(name: string) {
         </svg>
         <span v-if="ui.failedCount > 0" class="failed-badge">{{ ui.failedCount }}</span>
       </span>
+
+      <!-- 数据监控入口（Bug 8）：云端同步图标旁边 -->
+      <button
+        class="metrics-entry"
+        :class="{ active: ui.view === 'metrics' }"
+        data-view="metrics"
+        title="数据监控"
+        aria-label="数据监控"
+        @click="goMetrics"
+      >
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M3 3v18h18" />
+          <path d="M7 15l4-5 3 3 5-7" />
+        </svg>
+      </button>
     </div>
 
     <GroupDialog

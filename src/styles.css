@@ -258,6 +258,26 @@ body { color: var(--text-primary); background: var(--bg-app); font-size: 16px; l
 }
 .editor-body .milkdown img { max-width: 100%; border-radius: 4px; }
 
+/* GFM：表格 / 删除线（Bug 3）。表格对照原站 note.wps.cn 的细边框，
+   不做花哨斑马纹，避免长表格读行困难。 */
+.editor-body .milkdown table {
+  border-collapse: collapse;
+  margin: 8px 0;
+}
+.editor-body .milkdown th,
+.editor-body .milkdown td {
+  border: 1px solid var(--border-default);
+  padding: 6px 10px;
+  font-size: 14px;
+  text-align: left;
+}
+.editor-body .milkdown th {
+  background: var(--bg-app);
+  font-weight: 600;
+}
+.editor-body .milkdown del { color: var(--text-tertiary); }
+.editor-body .milkdown li.task-list-item { list-style: none; }
+
 /* === 笔记列表（UI 规格 §4.2，对照原站 .note_list_item 实测） === */
 /* header 常驻不滚，新建按钮住在这里，滚动条交给 .note-list */
 .list-view {
@@ -388,7 +408,7 @@ body { color: var(--text-primary); background: var(--bg-app); font-size: 16px; l
 }
 .note-item:last-child .note-divider { display: none; }
 
-/* 左滑删除（UI 规格 §4.2） */
+/* 左滑删除（UI 规格 §4.2）。移动端：左滑露出整条红色删除条，展开态把条目左推 80px。 */
 .note-item .delete {
   position: absolute;
   top: 0;
@@ -402,12 +422,39 @@ body { color: var(--text-primary); background: var(--bg-app); font-size: 16px; l
   transform: translateX(80px);
   transition: transform 0.2s ease-in-out;
 }
+.note-item .delete .delete-icon { display: none; }
 .note-item.swiped .delete { transform: translateX(0); }
 .note-item.swiped { transform: translateX(-80px); }
-/* 桌面端 hover 也露删除按钮：左滑是移动端唯一入口，桌面端不能只靠 hover，
-   但 E2E 跑在桌面浏览器里，没有滑动，得让删除按钮可点。 */
+/* 桌面端（Bug 4）：「整块红条滑出」太吵，改成 hover 时右上角浮一个 28px 圆垃圾桶。
+   基准里 transform 平移 80px 是移动端专属，桌面端用 opacity 控制显隐而非位移。 */
 @media (hover: hover) {
-  .note-item:hover .delete { transform: translateX(0); }
+  .note-item .delete {
+    top: 8px;
+    right: 8px;
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    background: var(--bg-surface);
+    border: 1px solid var(--border-input);
+    color: var(--text-secondary);
+    transform: none;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    opacity: 0;
+    pointer-events: none;
+  }
+  .note-item .delete .delete-icon { display: block; }
+  .note-item .delete .delete-label { display: none; }
+  .note-item:hover .delete {
+    opacity: 1;
+    pointer-events: auto;
+  }
+  .note-item .delete:hover {
+    background: var(--danger);
+    border-color: var(--danger);
+    color: #fff;
+  }
 }
 
 /* === 空态（UI 规格 §4.2） === */
@@ -593,6 +640,7 @@ body { color: var(--text-primary); background: var(--bg-app); font-size: 16px; l
   height: 50px;
   display: flex;
   align-items: center;
+  gap: 4px;
   padding: 0 12px;
   border-top: 1px solid var(--border-light);
 }
@@ -612,6 +660,78 @@ body { color: var(--text-primary); background: var(--bg-app); font-size: 16px; l
   padding: 0 3px;
   text-align: center;
 }
+/* 数据监控入口（Bug 8）：与同步图标同一行，右侧小圆钮 */
+.metrics-entry {
+  width: 28px;
+  height: 28px;
+  margin-left: auto;
+  border: 0;
+  border-radius: 50%;
+  background: none;
+  color: var(--text-tertiary);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.2s ease-in-out, color 0.2s ease-in-out;
+}
+.metrics-entry:hover { background: var(--bg-press); color: var(--text-primary); }
+.metrics-entry.active { background: var(--bg-press); color: var(--accent); }
+
+/* === 监控页（Bug 8）：卡片 + 纯 CSS 柱状趋势 === */
+.metrics-view { display: flex; flex-direction: column; height: 100%; }
+.metrics-refresh {
+  width: 32px;
+  height: 32px;
+  border: 0;
+  border-radius: 50%;
+  background: none;
+  color: var(--text-secondary);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.metrics-refresh:hover { background: var(--bg-hover); color: var(--text-primary); }
+.metrics-body { flex: 1; overflow-y: auto; padding: 20px; }
+.metrics-hint { color: var(--text-secondary); font-size: 14px; }
+.metrics-error p { color: var(--danger); font-size: 14px; }
+.metrics-retry {
+  height: 32px;
+  padding: 0 20px;
+  border: 0;
+  border-radius: 16px;
+  background: var(--primary-yellow);
+  color: var(--text-primary);
+  font-size: 13px;
+  cursor: pointer;
+}
+.metrics-retry:hover { background: var(--select-yellow); }
+
+.metric-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 12px; }
+.metric-card {
+  border: 1px solid var(--border-light);
+  border-radius: 10px;
+  padding: 14px 16px;
+  background: var(--bg-surface);
+}
+.card-title { margin: 0 0 12px; font-size: 13px; font-weight: 600; color: var(--text-secondary); }
+.card-list { margin: 0; display: flex; flex-direction: column; gap: 8px; }
+.card-list > div { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+.card-list dt { font-size: 12px; color: var(--text-tertiary); }
+.card-list dd { margin: 0; font-size: 16px; font-weight: 600; color: var(--text-primary); }
+.card-empty { margin: 0; font-size: 13px; color: var(--text-tertiary); }
+
+.metric-charts { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 16px; margin-top: 20px; }
+.chart-title { margin: 0 0 10px; font-size: 13px; font-weight: 600; color: var(--text-secondary); }
+.bar-chart { display: flex; gap: 6px; align-items: flex-end; flex-wrap: wrap; }
+.bar-col { display: flex; flex-direction: column; align-items: center; gap: 4px; width: 18px; }
+.bar-stack { display: flex; flex-direction: column; justify-content: flex-end; gap: 1px; height: 96px; width: 14px; }
+.bar { width: 14px; min-height: 1px; border-radius: 2px; }
+.bar-day { font-size: 10px; color: var(--text-tertiary); }
+.bar-legend { flex-basis: 100%; display: flex; gap: 12px; margin-top: 6px; }
+.legend-item { display: flex; align-items: center; gap: 4px; font-size: 11px; color: var(--text-secondary); }
+.legend-item i { width: 8px; height: 8px; border-radius: 2px; display: inline-block; }
 
 /* === 分组弹窗（原站 el-dialog + custom-class="group-dialog"） === */
 /* max-width 3.2rem / radius .2rem / padding .24rem，原生 header 隐藏、标题自绘 */
@@ -639,6 +759,13 @@ body { color: var(--text-primary); background: var(--bg-app); font-size: 16px; l
   line-height: 1.3;
   font-weight: 700;
   color: var(--text-primary);
+}
+/* 确认弹窗（Bug 4）：标题下加一行说明，避免删除类操作一句「确定」就糊弄过去 */
+.confirm-message {
+  margin: 0;
+  font-size: 14px;
+  color: var(--text-secondary);
+  line-height: 1.5;
 }
 /* 原站 .group-name 是只有下边框的裸输入框，不是描边盒子 */
 .dialog-input {
@@ -721,6 +848,46 @@ body { color: var(--text-primary); background: var(--bg-app); font-size: 16px; l
 .trash-acts .recover:hover { color: var(--accent); border-color: var(--accent); }
 .trash-acts .purge:hover { color: var(--danger); border-color: var(--danger); }
 @media (hover: none) { .trash-item .trash-acts { opacity: 1; } }
+
+/* === 滚动条（Bug 5：对照原站 note.wps.cn 的细滚动条） === */
+/* 滚动区域统一瘦滚动条：6px 宽、圆角、轨道透明、拇指 --border-default */
+.note-list,
+.editor-body,
+.groups,
+.op-popover.groups-pop {
+  scrollbar-width: thin;
+  scrollbar-color: var(--border-default) transparent;
+}
+.note-list::-webkit-scrollbar,
+.editor-body::-webkit-scrollbar,
+.groups::-webkit-scrollbar,
+.op-popover.groups-pop::-webkit-scrollbar {
+  width: 6px;
+}
+.note-list::-webkit-scrollbar-track,
+.editor-body::-webkit-scrollbar-track,
+.groups::-webkit-scrollbar-track,
+.op-popover.groups-pop::-webkit-scrollbar-track {
+  background: transparent;
+}
+.note-list::-webkit-scrollbar-thumb,
+.editor-body::-webkit-scrollbar-thumb,
+.groups::-webkit-scrollbar-thumb,
+.op-popover.groups-pop::-webkit-scrollbar-thumb {
+  background: var(--border-default);
+  border-radius: 3px;
+}
+.note-list::-webkit-scrollbar-thumb:hover,
+.editor-body::-webkit-scrollbar-thumb:hover,
+.groups::-webkit-scrollbar-thumb:hover,
+.op-popover.groups-pop::-webkit-scrollbar-thumb:hover {
+  background: var(--text-tertiary);
+}
+/* 全局兜底：超出以上清单的滚动容器也不至于出现粗系统条 */
+html {
+  scrollbar-width: thin;
+  scrollbar-color: var(--border-default) transparent;
+}
 
 /* === 抽屉遮罩 === */
 /* 默认 display:none，>1020px 时它连 grid item 都不是，不会多占一列 */

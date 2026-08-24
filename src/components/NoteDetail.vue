@@ -3,6 +3,7 @@ import { onMounted, onUnmounted, ref } from 'vue'
 import MilkdownEditor from '../editor/MilkdownEditor.vue'
 import { useGroupsStore } from '../stores/groups'
 import { useNotesStore } from '../stores/notes'
+import ConfirmDialog from './ConfirmDialog.vue'
 
 const props = withDefaults(defineProps<{ readonly?: boolean }>(), { readonly: false })
 defineEmits<{ back: [] }>()
@@ -38,10 +39,19 @@ function onFlush(id: string, md: string) {
   notes.saveBody(id, md)
 }
 
-async function purge() {
-  if (!notes.current) return
-  if (!confirm('彻底删除后无法恢复。确定继续？')) return
-  await notes.purge(notes.current.id)
+/** 触发编辑器里的撤销/重做（history 插件）；只读态顶栏不渲染这两个钮，为空安全 */
+const editorRef = ref<InstanceType<typeof MilkdownEditor> | null>(null)
+
+/** 删除动作统一定点到这个弹窗；null = 未打开 */
+const confirmAction = ref<'trash' | 'purge' | null>(null)
+
+function runDelete() {
+  if (confirmAction.value === 'trash' && notes.current) {
+    notes.trash(notes.current.id)
+  } else if (confirmAction.value === 'purge' && notes.current) {
+    notes.purge(notes.current.id)
+  }
+  confirmAction.value = null
 }
 </script>
 
@@ -60,7 +70,7 @@ async function purge() {
         <span class="trash-notice">此笔记在回收站中</span>
         <div v-if="notes.current" class="op-bar">
           <button class="trash-op recover" data-op="recover" @click="notes.recover(notes.current.id)">恢复</button>
-          <button class="trash-op purge" data-op="purge" @click="purge">彻底删除</button>
+          <button class="trash-op purge" data-op="purge" @click="confirmAction = 'purge'">彻底删除</button>
         </div>
       </template>
 
@@ -69,6 +79,20 @@ async function purge() {
         对照原站 .clz_editor_op_btn —— 32px 圆形按钮、选中态 #f0f0f0 底。
       -->
       <div v-else-if="notes.current" class="op-bar">
+        <button class="op-btn" data-op="undo" title="撤销 (Ctrl+Z)" aria-label="撤销" @click="editorRef?.undo?.()">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <polyline points="1 4 1 10 7 10" />
+            <path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10" />
+          </svg>
+        </button>
+
+        <button class="op-btn" data-op="redo" title="重做 (Ctrl+Y)" aria-label="重做" @click="editorRef?.redo?.()">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <polyline points="23 4 23 10 17 10" />
+            <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10" />
+          </svg>
+        </button>
+
         <button
           class="op-btn"
           data-op="top"
@@ -168,7 +192,7 @@ async function purge() {
           data-op="trash"
           title="删除"
           aria-label="删除"
-          @click="notes.trash(notes.current.id)"
+          @click="confirmAction = 'trash'"
         >
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
             <path d="M4 7h16M9 7V5h6v2M7 7l1 13h8l1-13" />
@@ -181,6 +205,7 @@ async function purge() {
       <p v-if="!notes.current" class="placeholder">选择或新建一条笔记</p>
       <MilkdownEditor
         v-else
+        ref="editorRef"
         :note-id="notes.current.id"
         :model-value="notes.current.body"
         :editable="!readonly"
@@ -188,5 +213,15 @@ async function purge() {
         @flush="onFlush"
       />
     </div>
+
+    <!-- 删除统一先确认：移入回收站可恢复，彻底删除不可恢复 -->
+    <ConfirmDialog
+      :open="confirmAction !== null"
+      :title="confirmAction === 'purge' ? '彻底删除这条笔记？' : '删除这条笔记？'"
+      :message="confirmAction === 'purge' ? '彻底删除后无法恢复，请谨慎操作。' : '笔记会移入回收站，可随时恢复。'"
+      :confirm-text="confirmAction === 'purge' ? '彻底删除' : '删除'"
+      @confirm="runDelete"
+      @cancel="confirmAction = null"
+    />
   </main>
 </template>

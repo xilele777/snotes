@@ -170,7 +170,7 @@ describe('NoteList', () => {
     expect(wrapper.find('.note-item .delete').exists()).toBe(true)
   })
 
-  it('点击展开的删除按钮移入回收站', async () => {
+  it('点击展开的删除按钮先确认再移入回收站', async () => {
     const store = useNotesStore()
     const note = await store.create()
 
@@ -182,10 +182,31 @@ describe('NoteList', () => {
     pointer(item.element, 'pointerup', 50)
     await wrapper.find('.note-item .delete').trigger('click')
 
+    // 未确认前数据不动
+    expect(wrapper.find('.confirm-dialog').exists()).toBe(true)
+    await wrapper.find('[data-op="confirm"]').trigger('click')
+
     await vi.waitFor(() => {
       expect((store.notes.find((n) => n.id === note.id)) == null).toBe(true)
     })
     expect((await db.notes.get(note.id))!.invalid).toBe(1)
+  })
+
+  it('删除确认弹窗可取消且不删笔记', async () => {
+    const store = useNotesStore()
+    const note = await store.create()
+
+    const wrapper = mount(NoteList)
+    await wrapper.vm.$nextTick()
+
+    const item = wrapper.find('.note-item')
+    pointer(item.element, 'pointerdown', 100)
+    pointer(item.element, 'pointerup', 50)
+    await wrapper.find('.note-item .delete').trigger('click')
+    await wrapper.find('[data-op="cancel"]').trigger('click')
+
+    expect(wrapper.find('.confirm-dialog').exists()).toBe(false)
+    expect(store.notes.find((n) => n.id === note.id)).toBeDefined()
   })
 
   it('列表为空时显示空态', async () => {

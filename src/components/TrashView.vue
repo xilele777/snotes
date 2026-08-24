@@ -1,22 +1,28 @@
 <script setup lang="ts">
+import { ref } from 'vue'
+import { openDrawer } from '../navigation'
 import EmptyState from './EmptyState.vue'
 import NoteListItem from './NoteListItem.vue'
+import ConfirmDialog from './ConfirmDialog.vue'
 import { useNotesStore } from '../stores/notes'
-import { useUiStore } from '../stores/ui'
 
 const notes = useNotesStore()
-const ui = useUiStore()
 
-async function cleanAll() {
-  if (!confirm('清空回收站将永久删除这些笔记，无法恢复。确定继续？')) return
-  await notes.purgeAll()
+/** 确认弹窗：null 关闭；{ kind: 'single' } 是某条笔记的彻底删除，'clean' 是清空回收站 */
+const confirm = ref<{ kind: 'single'; id: string } | { kind: 'clean' } | null>(null)
+
+async function runConfirm() {
+  if (confirm.value === null) return
+  if (confirm.value.kind === 'single') await notes.purge(confirm.value.id)
+  else await notes.purgeAll()
+  confirm.value = null
 }
 </script>
 
 <template>
   <div class="list-view">
     <div class="list-header">
-      <button class="drawer-btn" title="打开侧栏" aria-label="打开侧栏" @click="ui.drawerOpen = true">
+      <button class="drawer-btn" title="打开侧栏" aria-label="打开侧栏" @click="openDrawer()">
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
           <path d="M4 7h16M4 12h16M4 17h16" />
         </svg>
@@ -24,7 +30,9 @@ async function cleanAll() {
 
       <span class="header-title">回收站</span>
 
-      <button v-if="notes.notes.length > 0" class="clean-all" @click="cleanAll">清空</button>
+      <button v-if="notes.notes.length > 0" class="clean-all" @click="confirm = { kind: 'clean' }">
+        清空
+      </button>
     </div>
 
     <EmptyState v-if="notes.notes.length === 0" title="回收站是空的" hint="删掉的笔记会先放到这里" />
@@ -41,10 +49,19 @@ async function cleanAll() {
         <template #actions>
           <div class="trash-acts" @click.stop>
             <button class="recover" @click="notes.recover(note.id)">恢复</button>
-            <button class="purge" @click="notes.purge(note.id)">彻底删除</button>
+            <button class="purge" @click="confirm = { kind: 'single', id: note.id }">彻底删除</button>
           </div>
         </template>
       </NoteListItem>
     </ul>
+
+    <ConfirmDialog
+      :open="confirm !== null"
+      :title="confirm?.kind === 'single' ? '彻底删除这条笔记？' : '清空回收站？'"
+      :message="confirm?.kind === 'single' ? '彻底删除后无法恢复。' : '回收站里的所有笔记将永久删除，无法恢复。'"
+      :confirm-text="confirm?.kind === 'single' ? '彻底删除' : '清空回收站'"
+      @confirm="runConfirm"
+      @cancel="confirm = null"
+    />
   </div>
 </template>

@@ -1,4 +1,5 @@
 import { clearToken, getToken } from './token'
+import type { MetricsData } from '../../shared/types'
 
 export class ApiError extends Error {
   constructor(
@@ -43,4 +44,18 @@ export async function apiFetch<T>(path: string, init: RequestInit = {}): Promise
 export async function apiUpload<T>(path: string, form: FormData): Promise<T> {
   const res = await request(path, { method: 'POST', body: form })
   return res.json() as Promise<T>
+}
+
+export interface MetricsResponse {
+  ok: true
+  data: MetricsData
+}
+export interface MetricsErrorResponse {
+  error: string
+  message?: string
+}
+
+/** 监控页（Bug 8）：拉 D1/R2/HTTP 指标。走同一套 Bearer 鉴权头。 */
+export function apiMetrics(): Promise<MetricsResponse | MetricsErrorResponse> {
+  return apiFetch('/api/metrics/types', { method: 'POST' })
 }

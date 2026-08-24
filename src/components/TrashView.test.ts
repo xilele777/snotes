@@ -10,8 +10,6 @@ beforeEach(async () => {
   setActivePinia(createPinia())
   await db.delete()
   await db.open()
-  // TrashView 调 confirm()，jsdom 下默认为 undefined，提前 stub
-  vi.stubGlobal('confirm', () => true)
 })
 
 describe('TrashView', () => {
@@ -82,7 +80,7 @@ describe('TrashView', () => {
     expect(wrapper.find('.empty-state').text()).toContain('回收站是空的')
   })
 
-  it('点彻底删除单条物理删除该笔记', async () => {
+  it('点彻底删除单条弹确认，确认后物理删除该笔记', async () => {
     const notes = useNotesStore()
     const ui = useUiStore()
     const note = await notes.create()
@@ -95,7 +93,36 @@ describe('TrashView', () => {
     await wrapper.vm.$nextTick()
     await wrapper.find('.purge').trigger('click')
 
+    expect(wrapper.find('.confirm-dialog').exists()).toBe(true)
+    await wrapper.find('[data-op="confirm"]').trigger('click')
+
     // 单条彻底删除走 repo.purgeNote：本地删行 + 入队 scope='note' 的 purge 任务
-    expect(await db.notes.get(note.id)).toBeUndefined()
+    await vi.waitFor(async () => {
+      expect(await db.notes.get(note.id)).toBeUndefined()
+    })
+  })
+
+  it('点「清空」弹确认，确认后整个回收站被清空', async () => {
+    const notes = useNotesStore()
+    const ui = useUiStore()
+    const a = await notes.create()
+    const b = await notes.create()
+    await notes.trash(a.id)
+    await notes.trash(b.id)
+
+    ui.view = 'trash'
+    await notes.load()
+
+    const wrapper = mount(TrashView)
+    await wrapper.vm.$nextTick()
+    await wrapper.find('.clean-all').trigger('click')
+
+    expect(wrapper.find('.dialog-title').text()).toBe('清空回收站？')
+    await wrapper.find('[data-op="confirm"]').trigger('click')
+
+    await vi.waitFor(async () => {
+      expect((await db.notes.toArray()).length).toBe(0)
+      expect(notes.notes).toHaveLength(0)
+    })
   })
 })

@@ -1,14 +1,16 @@
 <script setup lang="ts">
-import { Editor, defaultValueCtx, editorViewOptionsCtx, rootCtx } from '@milkdown/kit/core'
+import { commandsCtx, Editor, defaultValueCtx, editorViewCtx, editorViewOptionsCtx, rootCtx } from '@milkdown/kit/core'
 import { clipboard } from '@milkdown/kit/plugin/clipboard'
+import { history, redoCommand, undoCommand } from '@milkdown/kit/plugin/history'
 import { listener, listenerCtx } from '@milkdown/kit/plugin/listener'
 import { commonmark } from '@milkdown/kit/preset/commonmark'
+import { gfm } from '@milkdown/kit/preset/gfm'
 import { replaceAll } from '@milkdown/kit/utils'
 import { Milkdown, MilkdownProvider, useEditor } from '@milkdown/vue'
 import { defineComponent, h, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import type { ComponentPublicInstance } from 'vue'
 import { escapeRawHtml } from '../../shared/sanitize'
-import { isAllowedImage, removePlaceholder, replacePlaceholder, uploadImage } from './image-upload'
+import { clipboardImageFiles, uploadImage } from './image-upload'
 
 const props = defineProps<{ noteId: string; modelValue: string; editable?: boolean }>()
 const emit = defineEmits<{
@@ -62,41 +64,75 @@ function onMarkdownChange(markdown: string) {
   }, DEBOUNCE_MS)
 }
 
-defineExpose({ onMarkdownChange })
+/** 顶栏撤销/重做按钮：按 command 的 key 走 milkdown 命令总线 */
+function runCommand(command: { key: typeof undoCommand.key }) {
+  const editor = inner.value?.getEditor?.()
+  if (!editor) return
+  editor.action((ctx) => {
+    ctx.get(commandsCtx).call(command.key)
+  })
+}
 
-function pushMarkdown(editor: Editor, markdown: string) {
-  latest = markdown
-  syncingExternally = true
-  editor.action(replaceAll(markdown))
-  syncingExternally = false
-  emit('update:modelValue', markdown)
+defineExpose({ onMarkdownChange, undo: () => runCommand(undoCommand), redo: () => runCommand(redoCommand) })
+
+/**
+ * 在光标处插入图片节点（替代旧的全篇 replaceAll 追加：那会把图片甩到整份
+ * markdown 末尾、连光标和撤销历史一起丢掉）。用事务改 ProseMirror 文档，
+ * 插入后不置 syncingExternally，让 listener 把新内容经 debounce 持久化。
+ */
+function insertImageAtCursor(editor: Editor, src: string): boolean {
+  return editor.action((ctx) => {
+    const view = ctx.get(editorViewCtx)
+    const image = view.state.schema.nodes.image
+    if (!image) return false
+    const node = image.create({ src, alt: '' })
+    view.dispatch(view.state.tr.replaceSelectionWith(node))
+    return true
+  })
+}
+
+/** 上传成功后把占位图的 src 换成正式地址 */
+function updateImageSrc(editor: Editor, fromUrl: string, toUrl: string) {
+  editor.action((ctx) => {
+    const view = ctx.get(editorViewCtx)
+    const { state } = view
+    const image = state.schema.nodes.image
+    if (!image) return
+    const tr = state.tr
+    let touched = false
+    state.doc.descendants((node, pos) => {
+      if (node.type === image && node.attrs.src === fromUrl) {
+        tr.setNodeMarkup(pos, undefined, { ...node.attrs, src: toUrl })
+        touched = true
+        return false
+      }
+      return true
+    })
+    if (touched) view.dispatch(tr)
+  })
 }
 
 /**
- * 从剪贴板里取出图片文件。
- * 不能只读 `clipboardData.files`：拖拽与合成 paste 事件经常只把文件挂在
- * `items` 上、`.files` 是空的，只看 `.files` 会漏掉这种来源。
- * 但两边常常是同一批文件的两个视图（往 DataTransfer 里 add 一次会同时填充
- * items 和 files），直接拼起来同一张图会被上传两遍，而且第二个占位的 blob
- * 替换不掉——replacePlaceholder 只认自己那一次的 URL——就在正文里留下死链。
+ * 上传失败时删掉占位节点。只删内联节点本身，外面包它的段落（换行结构）留着，
+ * 否则图片后面紧跟的文字会被连带拖进删除范围。
  */
-function clipboardImageFiles(data: DataTransfer | null): File[] {
-  if (!data) return []
-  const fromFiles = Array.from(data.files ?? [])
-  const fromItems = Array.from(data.items ?? [])
-    .map((item) => item.getAsFile())
-    .filter((f): f is File => f !== null)
-
-  const seen = new Set<string>()
-  return [...fromFiles, ...fromItems].filter((file) => {
-    if (!isAllowedImage(file)) return false
-
-    // 同一份文件经 files / items 两条路取出来是两个 File 对象，对象身份比不出来，
-    // 只能按元数据判重。两张真不同的图几乎不可能连字节数都一样。
-    const key = `${file.name}|${file.size}|${file.lastModified}|${file.type}`
-    if (seen.has(key)) return false
-    seen.add(key)
-    return true
+function removeImageAt(editor: Editor, fromUrl: string) {
+  editor.action((ctx) => {
+    const view = ctx.get(editorViewCtx)
+    const { state } = view
+    const image = state.schema.nodes.image
+    if (!image) return
+    const tr = state.tr
+    let touched = false
+    state.doc.descendants((node, pos) => {
+      if (node.type === image && node.attrs.src === fromUrl) {
+        tr.delete(pos, pos + node.nodeSize)
+        touched = true
+        return false
+      }
+      return true
+    })
+    if (touched) view.dispatch(tr)
   })
 }
 
@@ -104,19 +140,23 @@ async function handleImageFiles(files: File[]) {
   const editor = inner.value?.getEditor?.()
   if (!editor || files.length === 0) return
 
+  // 逐张来：光标处插占位 → 上传 → 成功换 src / 失败删节点。
+  // 不做整篇 replaceAll，光标和撤销历史都保留着。
   for (const file of files) {
     const placeholder = URL.createObjectURL(file)
 
-    // 先插入占位，界面立即看到图
-    pushMarkdown(editor, `${latest}\n\n![](${placeholder})`)
+    if (!insertImageAtCursor(editor, placeholder)) {
+      URL.revokeObjectURL(placeholder)
+      continue
+    }
 
     try {
       const { url } = await uploadImage(file, props.noteId)
-      pushMarkdown(editor, replacePlaceholder(latest, placeholder, url))
+      updateImageSrc(editor, placeholder, url)
     } catch (error) {
       // 必须把占位抹掉。blob URL 只在当初那个页面上下文里有效，
       // 留着它就是一条会同步到其他设备、且永远修不好的死链。
-      pushMarkdown(editor, removePlaceholder(latest, placeholder))
+      removeImageAt(editor, placeholder)
       alert(`图片上传失败：${error instanceof Error ? error.message : String(error)}`)
     } finally {
       URL.revokeObjectURL(placeholder)
@@ -140,9 +180,14 @@ const MilkdownInner = defineComponent({
           ctx.set(defaultValueCtx, escapeRawHtml(props.modelValue))
           ctx.get(listenerCtx).markdownUpdated((_ctx, markdown) => onMarkdownChange(markdown))
         })
+        // commonmark 在前、gfm 在后：表格删除线任务清单属于 GFM 扩展，
+        // 层叠顺序反了会导致 GFM 的 schema 扩展覆盖不到 commonmark 的节点
         .use(commonmark)
+        .use(gfm)
         .use(listener)
         .use(clipboard)
+        // Milestone 8：撤销/重做（自带 Mod-z / Mod-y / Shift-Mod-z 快捷键）
+        .use(history)
         .config((ctx) => {
           ctx.update(editorViewOptionsCtx, (prev) => ({
             ...prev,
@@ -171,13 +216,28 @@ const MilkdownInner = defineComponent({
       getEditor() {
         return get()
       },
+      undo() {
+        const editor = get()
+        if (!editor) return
+        editor.action((ctx) => ctx.get(commandsCtx).call(undoCommand.key))
+      },
+      redo() {
+        const editor = get()
+        if (!editor) return
+        editor.action((ctx) => ctx.get(commandsCtx).call(redoCommand.key))
+      },
     })
 
     return () => h(Milkdown)
   },
 })
 
-const inner = ref<ComponentPublicInstance<{ replaceContent: (md: string) => void; getEditor: () => Editor | undefined }> | null>(null)
+const inner = ref<ComponentPublicInstance<{
+  replaceContent: (md: string) => void
+  getEditor: () => Editor | undefined
+  undo: () => void
+  redo: () => void
+}> | null>(null)
 
 watch(
   () => props.noteId,

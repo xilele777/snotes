@@ -21,5 +21,14 @@
       "binding": "R2",
       "bucket_name": "snotes-images"
     }
-  ]
+  ],
+  // 监控页（Bug 8）：DB 和 bucket 的标识不是机密，直接进配置。
+  // CF_ACCOUNT_ID / CF_API_TOKEN 是机密，必须用 `npx wrangler secret put` 注入：
+  //   CF_ACCOUNT_ID = <Cloudflare 账号 ID>
+  //   CF_API_TOKEN  = 具备 Account > Analytics > Read 权限的 API Token
+  // 配了 CF_ZONE_ID 才启用 HTTP 请求量卡片（需要 Zone > Analytics > Read）。
+  "vars": {
+    "D1_DATABASE_ID": "66325ab4-c335-4976-9a62-b0c9e5e21e97",
+    "R2_BUCKET_NAME": "snotes-images"
+  }
 }

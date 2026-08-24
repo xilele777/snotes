@@ -1,7 +1,9 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
+import { isMobile, openDrawer, pushNav } from '../navigation'
 import EmptyState from './EmptyState.vue'
 import NoteListItem from './NoteListItem.vue'
+import ConfirmDialog from './ConfirmDialog.vue'
 import { useNotesStore } from '../stores/notes'
 import { useUiStore } from '../stores/ui'
 import { useGroupsStore } from '../stores/groups'
@@ -24,6 +26,22 @@ function onPointerUp(e: PointerEvent, noteId: string) {
   if (delta < -SWIPE_THRESHOLD) swipedId.value = noteId
   else if (delta > SWIPE_THRESHOLD) swipedId.value = null
   swipeStartX.value = null
+}
+
+/** 左滑删除也要过确认弹窗（Bug 4） */
+const confirmTrashId = ref<string | null>(null)
+function runTrash() {
+  if (confirmTrashId.value !== null) {
+    notes.trash(confirmTrashId.value)
+    swipedId.value = null
+  }
+  confirmTrashId.value = null
+}
+
+/** 移动端进详情算一层界面切换，先入栈再换 currentId；桌面端两个面板同屏，不需入栈 */
+function selectNote(id: string) {
+  if (isMobile() && ui.mobilePane === 'list') pushNav()
+  notes.currentId = id
 }
 
 // 列表 header 视图标题：全部笔记 / 星标 / 分组名
@@ -65,7 +83,7 @@ onMounted(() => notes.load())
   <div class="list-view">
     <!-- 列表区 header：≤1020px 出抽屉按钮，右侧常驻新建（原站 listHeader 56px） -->
     <div class="list-header">
-      <button class="drawer-btn" title="打开侧栏" aria-label="打开侧栏" @click="ui.drawerOpen = true">
+      <button class="drawer-btn" title="打开侧栏" aria-label="打开侧栏" @click="openDrawer()">
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
           <path d="M4 7h16M4 12h16M4 17h16" />
         </svg>
@@ -96,15 +114,29 @@ onMounted(() => notes.load())
         :active="note.id === notes.currentId"
         :swiped="swipedId === note.id"
         :query="ui.query"
-        @click="notes.currentId = note.id"
+        @click="selectNote(note.id)"
         @pointerdown="onPointerDown"
         @pointerup="(e: PointerEvent) => onPointerUp(e, note.id)"
       >
         <template #actions>
-          <!-- 左滑露出的删除按钮，宽 80px、--danger 背景（UI 规格 §4.2） -->
-          <button class="delete" title="删除" @click.stop="notes.trash(note.id)">删除</button>
+          <!-- 左滑露出 80px 红色删除条；桌面端 hover 变成一个 28px 小圆垃圾桶 -->
+          <button class="delete" title="删除" aria-label="删除" @click.stop="confirmTrashId = note.id">
+            <svg class="delete-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+              <path d="M4 7h16M9 7V5h6v2M7 7l1 13h8l1-13" />
+            </svg>
+            <span class="delete-label">删除</span>
+          </button>
         </template>
       </NoteListItem>
     </ul>
+
+    <ConfirmDialog
+      :open="confirmTrashId !== null"
+      title="删除这条笔记？"
+      message="笔记会移入回收站，可随时恢复。"
+      confirm-text="删除"
+      @confirm="runTrash"
+      @cancel="confirmTrashId = null"
+    />
   </div>
 </template>

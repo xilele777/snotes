@@ -171,3 +171,41 @@ export interface LocalNote extends NoteMeta {
   body_version: number
   dirty: DirtyState
 }
+
+/* === 监控页（Bug 8）D1/R2/HITP 指标 === */
+
+/** 近 N 天趋势里的一个点。除 date 外，各指标按需填自己的聚合字段。 */
+export interface MetricsTrendPoint {
+  date: string
+  [key: string]: string | number
+}
+
+/** D1：读/写行数、SQL 次数、平均耗时（近 7 天按天聚合） */
+export interface D1Usage {
+  readsToday: number
+  writesToday: number
+  sqlToday: number
+  avgMs: number
+  trend: MetricsTrendPoint[]
+}
+
+/** R2：存储量/对象数（最新快照）+ Class A / Class B 操作数 */
+export interface R2Usage {
+  objects: number
+  bytes: number
+  classAToday: number
+  classBToday: number
+  trend: MetricsTrendPoint[]
+}
+
+/** HTTP 请求量；error='no_permission' 表示账号缺 zone 权限或未配置 CF_ZONE_ID */
+export interface HttpUsage {
+  requestsToday: number
+  trend: MetricsTrendPoint[]
+}
+
+export interface MetricsData {
+  d1: D1Usage | null
+  r2: R2Usage | null
+  http: HttpUsage | { error: 'no_permission' } | null
+}

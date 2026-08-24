@@ -1,11 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { ApiError } from '../api/client'
-import {
-  isAllowedImage,
-  removePlaceholder,
-  replacePlaceholder,
-  uploadImage,
-} from './image-upload'
+import { clipboardImageFiles, isAllowedImage, uploadImage } from './image-upload'
 
 const apiUpload = vi.hoisted(() => vi.fn())
 vi.mock('../api/client', async (importOriginal) => ({
@@ -25,8 +20,8 @@ beforeEach(() => {
   apiUpload.mockResolvedValue({ file_key: 'n1/abc.jpg', url: '/api/images/n1/abc.jpg' })
 })
 
-const file = (type: string, size = 10) =>
-  new File([new Uint8Array(size)], 'a', { type })
+const file = (type: string, size = 10, name = 'a') =>
+  new File([new Uint8Array(size)], name, { type })
 
 describe('isAllowedImage', () => {
   it('接受白名单内的四种格式', () => {
@@ -53,51 +48,41 @@ describe('isAllowedImage', () => {
   })
 })
 
-describe('replacePlaceholder', () => {
-  it('把 blob 占位替换为正式 URL', () => {
-    const md = '前文\n![](blob:http://x/abc)\n后文'
+describe('clipboardImageFiles', () => {
+  /** 构造与 DataTransferItem 形状一致的假 items：jsdom 没有 DataTransfer，这里按契约喂数据 */
+  const itemOf = (f: File) => ({ getAsFile: () => f })
+  const fakeDt = (files: File[]) => ({ items: files.map(itemOf) })
 
-    expect(replacePlaceholder(md, 'blob:http://x/abc', '/api/images/k.jpg')).toBe(
-      '前文\n![](/api/images/k.jpg)\n后文'
-    )
+  it('从 items 取文件，同一张图只留一份', () => {
+    const img = file('image/png', 20, 'a.png')
+
+    // 浏览器里 items 与 files 是同一批文件的两个视图，item.getAsFile() 会重复暴露；
+    // 从 items 单视图读，天然只有一份（Bug 1 修复点）
+    expect(clipboardImageFiles(fakeDt([img]))).toHaveLength(1)
   })
 
-  it('只替换匹配的那一个占位', () => {
-    const md = '![](blob:a) ![](blob:b)'
+  it('同一批 items 里元数据完全一致的两份文件，按元数据去重后只剩一份', () => {
+    const a = file('image/png', 20, 'a.png')
+    const b = file('image/png', 20, 'a.png') // 与 a 元数据完全一致
 
-    expect(replacePlaceholder(md, 'blob:a', '/api/images/k.jpg')).toBe(
-      '![](/api/images/k.jpg) ![](blob:b)'
-    )
+    expect(clipboardImageFiles(fakeDt([a, b]))).toHaveLength(1)
   })
 
-  it('占位含正则元字符也能正确替换', () => {
-    const md = '![](blob:http://x/a.b?c=1)'
+  it('过滤掉非白名单类型与超限文件', () => {
+    const files = [
+      file('image/svg+xml', 20, 'evil.svg'),
+      file('image/png', 10 * 1024 * 1024 + 1, 'huge.png'),
+      file('image/webp', 30, 'ok.webp'),
+    ]
 
-    expect(replacePlaceholder(md, 'blob:http://x/a.b?c=1', '/api/images/k.jpg')).toBe(
-      '![](/api/images/k.jpg)'
-    )
+    const res = clipboardImageFiles(fakeDt(files))
+    expect(res).toHaveLength(1)
+    expect(res[0].name).toBe('ok.webp')
   })
 
-  it('找不到占位时原样返回', () => {
-    expect(replacePlaceholder('![](blob:a)', 'blob:zzz', '/x')).toBe('![](blob:a)')
-  })
-})
-
-describe('removePlaceholder', () => {
-  it('连同前后的空行一起抹掉，不留死链', () => {
-    const md = '前文\n\n![](blob:a)\n\n后文'
-
-    // 留着占位的话，这条死链会随正文同步到其他设备，
-    // 而 blob URL 只在当初那个页面上下文里有效，别处永远是一个破图标
-    expect(removePlaceholder(md, 'blob:a')).toBe('前文\n\n后文')
-  })
-
-  it('只抹掉匹配的那一个', () => {
-    expect(removePlaceholder('![](blob:a) ![](blob:b)', 'blob:a')).toBe('![](blob:b)')
-  })
-
-  it('找不到占位时原样返回', () => {
-    expect(removePlaceholder('![](blob:a)', 'blob:zzz')).toBe('![](blob:a)')
+  it('没有 items（如纯文本剪贴板）时返回空数组', () => {
+    expect(clipboardImageFiles(null)).toEqual([])
+    expect(clipboardImageFiles({})).toEqual([])
   })
 })
 
