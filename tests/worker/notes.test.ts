@@ -81,6 +81,27 @@ describe('PATCH /api/notes/:id', () => {
     expect(stored).toMatchObject({ content: '新正文', version: 2 })
   })
 
+  it('重放已经成功的同一正文 PATCH 时幂等，不递增版本也不标记冲突', async () => {
+    const req = noteReq()
+    await json('/api/notes', 'POST', req)
+
+    const payload = {
+      content: '新正文',
+      title: '新正文',
+      summary: '新正文',
+      base_version: 1,
+    }
+    const first = await json(`/api/notes/${req.id}`, 'PATCH', payload)
+    const firstBody = await first.json<{ version: number; update_time: number }>()
+
+    const replay = await json(`/api/notes/${req.id}`, 'PATCH', payload)
+    expect(await replay.json()).toMatchObject({
+      version: firstBody.version,
+      update_time: firstBody.update_time,
+      conflicted: false,
+    })
+  })
+
   it('改属性递增 prop_version，不动 version 也不碰正文', async () => {
     const req = noteReq()
     await json('/api/notes', 'POST', req)

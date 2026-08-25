@@ -111,6 +111,32 @@ describe('pushOnce', () => {
     expect(body).toMatchObject({ content: 'b', base_version: expect.any(Number) })
   })
 
+  it('create 成功后紧接着的 body 任务使用最新版本，避免自冲突', async () => {
+    const note = await createNote('初始')
+    // 编辑发生在 create 请求之前，因此旧任务里会留下 base_version=0。
+    await updateBody(note.id, '剪切后粘贴的内容')
+
+    apiFetch.mockImplementation(async (path: string, init: RequestInit) => {
+      if (path === '/api/notes' && init.method === 'POST') {
+        return { version: 1, prop_version: 1, update_time: 1, conflicted: false }
+      }
+
+      const body = JSON.parse(init.body as string) as { base_version: number }
+      return {
+        version: 2,
+        prop_version: 1,
+        update_time: 2,
+        conflicted: body.base_version < 1,
+      }
+    })
+
+    const result = await pushOnce()
+
+    expect(result.conflicts).toEqual([])
+    const body = JSON.parse((apiFetch.mock.calls[1][1] as RequestInit).body as string)
+    expect(body.base_version).toBe(1)
+  })
+
   it('prop 任务只发属性字段，不含 content', async () => {
     const note = await createNote('a')
     await pushOnce()
@@ -228,6 +254,24 @@ describe('pushOnce', () => {
     const result = await pushOnce()
 
     expect(result.conflicts).toEqual([{ note_id: note.id, local_body: '本地新内容' }])
+  })
+
+  it('请求在途期间再次编辑时，只保存本次请求实际覆盖的版本', async () => {
+    const note = await createNote('a')
+    await pushOnce()
+    await updateBody(note.id, '本次发出的版本')
+
+    apiFetch.mockImplementation(async () => {
+      // 模拟网络请求尚未返回时，用户又完成一次剪切/粘贴。
+      await updateBody(note.id, '请求在途期间的新版本')
+      return { version: 9, prop_version: 1, update_time: 1, conflicted: true }
+    })
+
+    const result = await pushOnce()
+
+    expect(result.conflicts).toEqual([{ note_id: note.id, local_body: '本次发出的版本' }])
+    const pending = await db.outbox.where('[note_id+kind]').equals([note.id, 'body']).first()
+    expect((pending!.payload as { content: string }).content).toBe('请求在途期间的新版本')
   })
 
   it('属性任务的 conflicted 不生成冲突副本', async () => {

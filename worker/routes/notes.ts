@@ -65,9 +65,22 @@ notesRoutes.patch('/api/notes/:id', async (c) => {
   const req = await c.req.json<PatchNoteRequest>().catch(() => null)
   if (!req) return c.json({ error: 'invalid_body' }, 400)
 
-  const current = await c.env.DB.prepare('SELECT version, prop_version FROM note WHERE id = ?')
+  const current = await c.env.DB.prepare(
+    `SELECT n.version, n.prop_version, n.update_time, n.title, n.summary, n.thumbnail, b.content
+       FROM note n
+       LEFT JOIN note_body b ON b.note_id = n.id
+      WHERE n.id = ?`
+  )
     .bind(id)
-    .first<{ version: number; prop_version: number }>()
+    .first<{
+      version: number
+      prop_version: number
+      update_time: number
+      title: string
+      summary: string
+      thumbnail: string | null
+      content: string | null
+    }>()
 
   if (!current) return c.json({ error: 'not_found' }, 404)
 
@@ -93,18 +106,37 @@ notesRoutes.patch('/api/notes/:id', async (c) => {
     return c.json({ error: 'base_prop_version_required' }, 400)
   }
 
+  // PATCH 可能已经在 D1 成功，但响应在网络中丢失，客户端随后会重放同一任务。
+  // 若正文和三个派生字段都与当前状态一致，它就是一次幂等重放：不再推进版本，
+  // 也不能报告 conflicted，否则客户端会为同一份文字生成新的冲突副本。
+  const changesBody =
+    touchesBody &&
+    (req.content !== current.content ||
+      req.title !== current.title ||
+      req.summary !== current.summary ||
+      (req.thumbnail ?? null) !== current.thumbnail)
+
+  if (!changesBody && touchedProps.length === 0) {
+    return c.json({
+      version: current.version,
+      prop_version: current.prop_version,
+      update_time: current.update_time,
+      conflicted: false,
+    })
+  }
+
   const conflicted =
-    (touchesBody && req.base_version! < current.version) ||
+    (changesBody && req.base_version! < current.version) ||
     (touchedProps.length > 0 && req.base_prop_version! < current.prop_version)
 
   const now = nowMs()
-  const version = touchesBody ? current.version + 1 : current.version
+  const version = changesBody ? current.version + 1 : current.version
   const propVersion = touchedProps.length > 0 ? current.prop_version + 1 : current.prop_version
 
   const sets: string[] = ['update_time = ?', 'version = ?', 'prop_version = ?']
   const values: unknown[] = [now, version, propVersion]
 
-  if (touchesBody) {
+  if (changesBody) {
     for (const f of BODY_FIELDS) {
       if (f === 'content') continue
       sets.push(`${f} = ?`)
@@ -121,7 +153,7 @@ notesRoutes.patch('/api/notes/:id', async (c) => {
     c.env.DB.prepare(`UPDATE note SET ${sets.join(', ')} WHERE id = ?`).bind(...values, id),
   ]
 
-  if (touchesBody) {
+  if (changesBody) {
     statements.push(
       c.env.DB.prepare('UPDATE note_body SET content = ?, version = ? WHERE note_id = ?').bind(
         req.content,

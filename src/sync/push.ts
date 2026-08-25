@@ -32,7 +32,22 @@ function patch(path: string, payload: unknown) {
 }
 
 async function send(task: OutboxTask): Promise<ServerAck> {
-  const payload = (task.payload ?? {}) as Record<string, unknown>
+  // 基线必须取“实际发出这一刻”服务端已确认的版本。
+  // 任务入队后，前一条 create/body 请求可能已经成功，或者请求在途期间
+  // 用户又编辑了正文；此时 outbox 里保存的 base_version/base_prop_version
+  // 可能已经过期。继续使用旧基线会把客户端自己的连续编辑误判成冲突。
+  let payload = (task.payload ?? {}) as Record<string, unknown>
+  if (task.kind === 'body' || task.kind === 'prop') {
+    const note = await db.notes.get(task.note_id)
+    if (note) {
+      payload = {
+        ...payload,
+        ...(task.kind === 'body'
+          ? { base_version: note.version }
+          : { base_prop_version: note.prop_version }),
+      }
+    }
+  }
   const isGroup = payload.scope === 'group'
 
   if (isGroup) {
@@ -98,10 +113,14 @@ export async function pushOnce(): Promise<PushResult> {
     try {
       const ack = await send(task)
 
-      // 只有正文类任务才生成冲突副本——那才是会丢失文字的场景
+      // 只有正文类任务才生成冲突副本——那才是会丢失文字的场景。
+      // 保存本次实际发送的正文，而不是当前 note.body；请求在途期间用户
+      // 可能已经又编辑了一次，当前值并不是发生冲突的那一版。
       if (ack.conflicted && (task.kind === 'body' || task.kind === 'create')) {
-        const note = await db.notes.get(task.note_id)
-        if (note) result.conflicts.push({ note_id: task.note_id, local_body: note.body })
+        const taskPayload = (task.payload ?? {}) as Record<string, unknown>
+        if (typeof taskPayload.content === 'string') {
+          result.conflicts.push({ note_id: task.note_id, local_body: taskPayload.content })
+        }
       }
 
       await applyAck(task, ack)
