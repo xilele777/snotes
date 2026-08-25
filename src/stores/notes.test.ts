@@ -1,5 +1,5 @@
 import { createPinia, setActivePinia } from 'pinia'
-import { beforeEach, describe, expect, it } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { db } from '../db/schema'
 import { useNotesStore } from './notes'
 import { useUiStore } from './ui'
@@ -138,5 +138,38 @@ describe('notes store', () => {
     await store.load()
 
     expect(store.currentId).toBe(store.notes[0].id)
+  })
+})
+
+describe('notes store 移动端默认选中', () => {
+  it('移动端 load 时不默认选中第一条，保持 null 以先展示目录页', async () => {
+    // isMobile 依赖 window.matchMedia，单测里置为窄屏分支
+    vi.stubGlobal('matchMedia', (query: string) =>
+      ({ matches: query.includes('720'), media: query, onchange: null,
+        addEventListener: () => undefined, removeEventListener: () => undefined,
+        addListener: () => undefined, removeListener: () => undefined,
+        dispatchEvent: () => false }) as unknown as MediaQueryList)
+
+    const store = useNotesStore()
+    await store.create()
+    await store.create()
+    store.currentId = null
+
+    await store.load()
+
+    expect(store.currentId).toBeNull()
+
+    vi.unstubAllGlobals()
+  })
+
+  it('桌面端 load 时仍默认选中列表第一条', async () => {
+    const store = useNotesStore()
+    await store.create()
+    await store.create()
+    store.currentId = null
+
+    await store.load()
+
+    expect(store.currentId).not.toBeNull()
   })
 })

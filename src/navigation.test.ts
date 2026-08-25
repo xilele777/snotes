@@ -26,26 +26,23 @@ describe('navigation 导航栈', () => {
     })
   })
 
-  it('initNavigation 在根快照前放一个 state=null 的哨兵条目', () => {
+  it('initNavigation 不再额外压 state=null 的哨兵条目', () => {
     initNavigation()
-    // back() 异步触发 popstate；哨兵的 state 必须是 null
+    // 根快照就在栈底：back() 之后已无更早条目，history.length 不应再增大
+    // （哨兵方案会让 history 多出一条 null 条目）。
+    const lenBefore = window.history.length
     window.history.back()
-    return new Promise((resolve) => {
-      window.addEventListener('popstate', () => {
-        expect(window.history.state).toBeNull()
-        resolve(undefined)
-      }, { once: true })
-    })
+    expect(window.history.length).toBe(lenBefore)
   })
 
-  it('根界面按返回退到哨兵时，onPopState 用 forward 挡回根，保持应用在前', () => {
+  it('根界面按返回触发 popstate(null) 时不再 forward 挡回，直接放行退出', () => {
     initNavigation()
     const forward = vi.spyOn(window.history, 'forward')
 
-    // 用户在根界面按系统返回，退到哨兵
+    // 目录页按系统返回：浏览器已无更早条目，状态落到 null
     window.dispatchEvent(new PopStateEvent('popstate', { state: null }))
 
-    expect(forward).toHaveBeenCalledTimes(1)
+    expect(forward).not.toHaveBeenCalled()
     forward.mockRestore()
   })
 

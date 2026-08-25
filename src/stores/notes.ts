@@ -3,6 +3,7 @@ import { computed, ref } from 'vue'
 import type { LocalNote } from '../../shared/types'
 import * as repo from '../db/repo'
 import type { ListView, NoteProps } from '../db/repo'
+import { isMobile } from '../navigation'
 import { useUiStore } from './ui'
 
 export const useNotesStore = defineStore('notes', () => {
@@ -39,9 +40,10 @@ export const useNotesStore = defineStore('notes', () => {
       currentId.value = null
     }
 
-    // Bug 7：打开应用 / 切换视图时如果没有选中项，默认选中列表第一条；
-    // 全视图与回收站共享同一 load，行为一致。列表为空时保持 null。
-    if (currentId.value === null && notes.value.length > 0) {
+    // 桌面端同屏目录+详情，打开应用 / 切视图时若没选中项，默认选中列表第一条，
+    // 详情区立刻有内容；移动端 <720px 目录与详情互斥，默认选中会直接把详情页顶成首屏。
+    // 移动端保持 null，像便签那样先展示目录；currentId 失效落空时也不替它补选。
+    if (currentId.value === null && notes.value.length > 0 && !isMobile()) {
       currentId.value = notes.value[0].id
     }
   }
