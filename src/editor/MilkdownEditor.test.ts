@@ -100,4 +100,32 @@ describe('MilkdownEditor 外壳', () => {
 
     expect(wrapper.emitted('flush')![0]).toEqual(['n1', '半句话'])
   })
+  it('含 blob: 占位的正文不 emit——避免死链落库或被同步推走', async () => {
+    const wrapper = mount(MilkdownEditor, {
+      props: { noteId: 'n1', modelValue: 'a' },
+    })
+
+    // 粘贴后编辑器先持有 blob: 占位，上传完成前这条 markdown 不该持久化
+    wrapper.vm.onMarkdownChange('![](blob:https://example.com/abc)')
+    vi.advanceTimersByTime(2000)
+
+    expect(wrapper.emitted('update:modelValue')).toBeUndefined()
+  })
+
+  it('blob: 占位换成真实 URL 后才 emit', async () => {
+    const wrapper = mount(MilkdownEditor, {
+      props: { noteId: 'n1', modelValue: 'a' },
+    })
+
+    wrapper.vm.onMarkdownChange('![](blob:https://example.com/abc)')
+    vi.advanceTimersByTime(2000)
+
+    // 上传完成，src 替换成真实地址，现在才落库
+    wrapper.vm.onMarkdownChange('![](/api/images/n1/abc.jpg)')
+    vi.advanceTimersByTime(2000)
+
+    expect(wrapper.emitted('update:modelValue')).toHaveLength(1)
+    expect(wrapper.emitted('update:modelValue')![0]).toEqual(['![](/api/images/n1/abc.jpg)'])
+  })
+
 })

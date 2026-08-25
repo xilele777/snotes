@@ -55,7 +55,17 @@ function onMarkdownChange(markdown: string) {
   if (syncingExternally) return
   if (markdown === latest) return
 
+  // 占位图还在上传中（src 是 blob:），此时持久化会把只在当前页有效的 blob:
+  // 写进库，并可能被同步推到服务端，其它设备拉下来就是死链且再也不会收敛。
+  // 等真实 URL 替换进来、触发新一轮 markdownUpdated 后再落库。
+  // 仍更新 latest：替换后那条 markdown 同值时直接走上面的早退，不会漏存。
   latest = markdown
+  if (/]\(blob:[^)]+\)/.test(markdown)) {
+    pendingId = null
+    clearTimer()
+    return
+  }
+
   pendingId = props.noteId
   clearTimer()
   timer = setTimeout(() => {
@@ -64,15 +74,14 @@ function onMarkdownChange(markdown: string) {
   }, DEBOUNCE_MS)
 }
 
-/** 顶栏撤销/重做按钮：按 command 的 key 走 milkdown 命令总线 */
-function runCommand(command: { key: typeof undoCommand.key }) {
-  const editor = inner.value?.getEditor?.()
-  if (!editor) return
-  editor.action((ctx) => {
-    ctx.get(commandsCtx).call(command.key)
-  })
-}
-
+  /** 顶栏撤销/重做按钮：按 command 的 key 走 milkdown 命令总线 */
+  function runCommand(command: { key: typeof undoCommand.key }) {
+    const editor = inner.value?.getEditor?.()
+    if (!editor) return
+    editor.action((ctx) => {
+      ctx.get(commandsCtx).call(command.key)
+    })
+  }
 defineExpose({ onMarkdownChange, undo: () => runCommand(undoCommand), redo: () => runCommand(redoCommand) })
 
 /**
@@ -93,25 +102,38 @@ function insertImageAtCursor(editor: Editor, src: string): boolean {
 
 /** 上传成功后把占位图的 src 换成正式地址 */
 function updateImageSrc(editor: Editor, fromUrl: string, toUrl: string) {
-  editor.action((ctx) => {
-    const view = ctx.get(editorViewCtx)
-    const { state } = view
-    const image = state.schema.nodes.image
-    if (!image) return
-    const tr = state.tr
-    let touched = false
-    state.doc.descendants((node, pos) => {
-      if (node.type === image && node.attrs.src === fromUrl) {
-        tr.setNodeMarkup(pos, undefined, { ...node.attrs, src: toUrl })
-        touched = true
-        return false
-      }
-      return true
+  // 预载真实图片，下载完再替换占位。否则替换瞬间 <img> 节点被销毁重建，
+  // 新图还没下载完就先空白一帧——视觉上就是「闪一下」。
+  const img = new Image()
+  img.src = toUrl
+  const ready = img.complete
+    ? Promise.resolve()
+    : new Promise<void>((resolve) => {
+        img.onload = () => resolve()
+        // 加载失败也要继续：换成破图占位比永远停在 blob:（只在本页有效）好
+        img.onerror = () => resolve()
+      })
+
+  ready.then(() => {
+    editor.action((ctx) => {
+      const view = ctx.get(editorViewCtx)
+      const { state } = view
+      const image = state.schema.nodes.image
+      if (!image) return
+      const tr = state.tr
+      let touched = false
+      state.doc.descendants((node, pos) => {
+        if (node.type === image && node.attrs.src === fromUrl) {
+          tr.setNodeMarkup(pos, undefined, { ...node.attrs, src: toUrl })
+          touched = true
+          return false
+        }
+        return true
+      })
+      if (touched) view.dispatch(tr)
     })
-    if (touched) view.dispatch(tr)
   })
 }
-
 /**
  * 上传失败时删掉占位节点。只删内联节点本身，外面包它的段落（换行结构）留着，
  * 否则图片后面紧跟的文字会被连带拖进删除范围。
