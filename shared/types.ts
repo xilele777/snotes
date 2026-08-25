@@ -207,10 +207,28 @@ export interface HttpUsage {
   trend: MetricsTrendPoint[]
 }
 
+/** 免费额度对照：当月累计用量 vs Cloudflare 免费额度。 */
+export interface QuotaItem {
+  label: string
+  /** 当月累计用量 */
+  used: number
+  /** 免费额度上限 */
+  limit: number
+  /** 单位标签，如 行、次、GB */
+  unit: '行' | '次' | 'GB' | '请求'
+}
+export interface Quota {
+  /** 当月已过天数（含今天），用于换算日均进度 */
+  monthDays: number
+  items: QuotaItem[]
+}
+
 export interface MetricsData {
   d1: D1Usage | null
   r2: R2Usage | null
   http: HttpUsage | { error: 'no_permission' } | null
+  /** 当月用量 vs 免费额度；即使个别指标查不到也给出已知项 */
+  quota: Quota
 }
 
 

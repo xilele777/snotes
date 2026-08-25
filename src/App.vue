@@ -56,7 +56,7 @@ onUnmounted(() => window.removeEventListener('keydown', onKeydown))
 <template>
   <TokenGate v-if="!hasToken" />
 
-  <div v-else class="layout" :data-mobile-pane="ui.mobilePane">
+  <div v-else class="layout" :data-mobile-pane="ui.mobilePane" :data-view="ui.view">
     <!-- ≤1020px 侧栏变抽屉：不给入口的话搜索、星标、回收站、分组会整体失联 -->
     <aside class="sidebar-pane" :class="{ 'is-open': ui.drawerOpen }">
       <GroupSidebar />

@@ -75,6 +75,16 @@ export function lastNDays(n: number, now = Date.now()): string[] {
   }
   return days
 }
+/** 当月至今（含今天）的 UTC 日期键数组，升序。用于按计费月聚合用量。 */
+export function monthToDateDays(now = Date.now()): string[] {
+  const d = new Date(now)
+  const start = Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), 1)
+  const days: string[] = []
+  for (let t = start; t <= now; t += 86_400_000) {
+    days.push(dayKey(t))
+  }
+  return days
+}
 
 /* === D1 === */
 

@@ -678,6 +678,13 @@ body { color: var(--text-primary); background: var(--bg-app); font-size: 16px; l
 .metrics-entry:hover { background: var(--bg-press); color: var(--text-primary); }
 .metrics-entry.active { background: var(--bg-press); color: var(--accent); }
 
+/* 监控页（Bug 8）占满右侧两栏：列表栏跨到详情栏位置，详情栏此时已被 v-if 隐藏。
+   1020px 以下 grid 只剩两栏（侧栏改抽屉），list-pane 顺位为第 1 列，跨到末列即可占满。 */
+.layout[data-view='metrics'] .list-pane { grid-column: 2 / -1; }
+@media (max-width: 1020px) {
+  .layout[data-view='metrics'] .list-pane { grid-column: 1 / -1; }
+}
+
 /* === 监控页（Bug 8）：卡片 + 纯 CSS 柱状趋势 === */
 .metrics-view { display: flex; flex-direction: column; height: 100%; }
 .metrics-refresh {
@@ -693,7 +700,29 @@ body { color: var(--text-primary); background: var(--bg-app); font-size: 16px; l
   justify-content: center;
 }
 .metrics-refresh:hover { background: var(--bg-hover); color: var(--text-primary); }
-.metrics-body { flex: 1; overflow-y: auto; padding: 20px; }
+/* 监控页顶栏（Bug 8）：标题 + 副标题 + 刷新按钮一行 */
+.metrics-topbar { height: 56px; flex: none; border-bottom: 1px solid var(--border-light); padding: 0 8px 0 16px; display: flex; align-items: center; gap: 8px; }
+.metrics-title { flex: 1; display: flex; align-items: baseline; gap: 10px; min-width: 0; }
+.metrics-sub { font-size: 12px; color: var(--text-tertiary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* 7 天概览：大字号 KPI 卡，跨整屏铺开 */
+.metrics-overview { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 12px; margin-bottom: 20px; }
+.ov-card { border: 1px solid var(--border-light); border-radius: 10px; padding: 14px 16px; background: var(--bg-surface); display: flex; flex-direction: column; gap: 4px; }
+.ov-label { font-size: 12px; color: var(--text-tertiary); }
+.ov-value { font-size: 24px; font-weight: 700; color: var(--text-primary); line-height: 1.2; }
+.ov-sub { font-size: 12px; color: var(--text-secondary); }
+.ov-card[data-tone='up'] .ov-sub { color: #2e9e5b; }
+.ov-card[data-tone='down'] .ov-sub { color: var(--danger); }
+/* 趋势洞察 */
+.metrics-insights { border: 1px solid var(--border-light); border-radius: 10px; padding: 14px 16px; background: var(--bg-surface); margin-bottom: 20px; }
+.insights-title { margin: 0 0 10px; font-size: 13px; font-weight: 600; color: var(--text-secondary); }
+.insights-list { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 8px; }
+.insight-item { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--text-primary); }
+.insight-dot { width: 8px; height: 8px; border-radius: 50%; flex: none; background: var(--text-tertiary); }
+.insight-item[data-tone='up'] .insight-dot { background: #2e9e5b; }
+.insight-item[data-tone='down'] .insight-dot { background: var(--danger); }
+
+
+.metrics-body { flex: 1; overflow-y: auto; padding: 24px 32px; max-width: 1120px; }
 .metrics-hint { color: var(--text-secondary); font-size: 14px; }
 .metrics-error p { color: var(--danger); font-size: 14px; }
 .metrics-retry {
@@ -708,7 +737,27 @@ body { color: var(--text-primary); background: var(--bg-app); font-size: 16px; l
 }
 .metrics-retry:hover { background: var(--select-yellow); }
 
-.metric-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 12px; }
+/* 免费额度用量进度条：safe=蓝 / warn=黄(>=80%) / over=红(超费) */
+.metrics-quota { border: 1px solid var(--border-light); border-radius: 10px; padding: 14px 16px; background: var(--bg-surface); margin-bottom: 20px; }
+.quota-head { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; margin-bottom: 12px; flex-wrap: wrap; }
+.quota-title { margin: 0; font-size: 13px; font-weight: 600; color: var(--text-secondary); }
+.quota-meta { font-size: 12px; color: var(--text-tertiary); display: flex; align-items: center; gap: 8px; }
+.quota-alert { color: var(--danger); font-weight: 600; font-size: 12px; }
+.quota-list { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 14px; }
+.quota-item { display: grid; grid-template-columns: 1fr auto; grid-template-rows: auto auto; column-gap: 12px; row-gap: 4px; align-items: center; }
+.quota-row { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; grid-column: 1 / -1; }
+.quota-name { font-size: 13px; color: var(--text-primary); }
+.quota-nums { font-size: 12px; color: var(--text-secondary); display: inline-flex; align-items: center; gap: 6px; }
+.quota-flag { font-size: 11px; font-style: normal; color: #fff; background: var(--danger); border-radius: 4px; padding: 1px 6px; }
+.quota-track { grid-column: 1 / -1; height: 8px; border-radius: 4px; background: var(--bg-press); overflow: hidden; }
+.quota-fill { height: 100%; border-radius: 4px; background: var(--accent); transition: width 0.3s ease-in-out; }
+.quota-pct { font-size: 11px; color: var(--text-tertiary); grid-column: 2; grid-row: 2; }
+.quota-item[data-status='safe'] .quota-fill { background: var(--accent); }
+.quota-item[data-status='warn'] .quota-fill { background: #ffac00; }
+.quota-item[data-status='over'] .quota-fill { background: var(--danger); }
+.quota-item[data-status='over'] .quota-name { color: var(--danger); }
+
+.metric-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; margin-bottom: 20px; }
 .metric-card {
   border: 1px solid var(--border-light);
   border-radius: 10px;
@@ -722,12 +771,19 @@ body { color: var(--text-primary); background: var(--bg-app); font-size: 16px; l
 .card-list dd { margin: 0; font-size: 16px; font-weight: 600; color: var(--text-primary); }
 .card-empty { margin: 0; font-size: 13px; color: var(--text-tertiary); }
 
-.metric-charts { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 16px; margin-top: 20px; }
-.chart-title { margin: 0 0 10px; font-size: 13px; font-weight: 600; color: var(--text-secondary); }
-.bar-chart { display: flex; gap: 6px; align-items: flex-end; flex-wrap: wrap; }
-.bar-col { display: flex; flex-direction: column; align-items: center; gap: 4px; width: 18px; }
-.bar-stack { display: flex; flex-direction: column; justify-content: flex-end; gap: 1px; height: 96px; width: 14px; }
-.bar { width: 14px; min-height: 1px; border-radius: 2px; }
+.metric-charts { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 16px; }
+.chart-block { border: 1px solid var(--border-light); border-radius: 10px; padding: 14px 16px; background: var(--bg-surface); }
+.chart-head { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; margin-bottom: 12px; }
+.chart-title { margin: 0; font-size: 13px; font-weight: 600; color: var(--text-secondary); }
+.chart-total { font-size: 11px; color: var(--text-tertiary); }
+.chart-peak { margin: 8px 0 0; font-size: 11px; color: var(--text-tertiary); }
+.bar-chart { display: flex; gap: 8px; align-items: flex-end; flex-wrap: wrap; }
+.bar-col { display: flex; flex-direction: column; align-items: center; gap: 4px; width: 24px; }
+.bar-stack { display: flex; flex-direction: column; justify-content: flex-end; gap: 1px; height: 120px; width: 20px; }
+.bar { width: 20px; min-height: 1px; border-radius: 2px; transition: opacity 0.15s ease-in-out; }
+.bar-col:hover .bar { opacity: 0.7; }
+.bar-col:hover .bar-stack .bar { opacity: 1; }
+.bar-stack:hover .bar { opacity: 0.85; }
 .bar-day { font-size: 10px; color: var(--text-tertiary); }
 .bar-legend { flex-basis: 100%; display: flex; gap: 12px; margin-top: 6px; }
 .legend-item { display: flex; align-items: center; gap: 4px; font-size: 11px; color: var(--text-secondary); }
@@ -924,6 +980,12 @@ html {
   }
   .drawer-btn { display: flex; }
 }
+/* 监控页窄屏：减小内边距，概览/卡片单列 */
+@media (max-width: 1020px) {
+  .metrics-body { padding: 16px; }
+  .ov-value { font-size: 20px; }
+}
+
 /* <720px：列表↔编辑器互斥切换，列表占满 */
 @media (max-width: 720px) {
   .layout { grid-template-columns: 1fr; }
