@@ -2,9 +2,17 @@
 import type { LocalNoteState, NoteMeta, PullPlan } from './types'
 
 export function planPull(remote: NoteMeta[], local: Map<string, LocalNoteState>): PullPlan {
-  const plan: PullPlan = { insert: [], updateProp: [], fetchBody: [] }
+  const plan: PullPlan = { insert: [], updateProp: [], deleteLocal: [], fetchBody: [] }
 
   for (const note of remote) {
+    // invalid=2 是墓碑：远端已物理删除，本地无条件删掉对应副本（Bug 2）。
+    // 该笔记在服务端已不存在，本地即便有未推送正文也推不回去（会 not_found），
+    // 用户「彻底删除 / 清空回收站」的意图已落地，删本地副本即可。
+    if (note.invalid === 2) {
+      if (local.has(note.id)) plan.deleteLocal.push(note)
+      continue
+    }
+
     const current = local.get(note.id)
 
     if (!current) {

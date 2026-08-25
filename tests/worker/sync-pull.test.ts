@@ -60,6 +60,14 @@ describe('POST /api/sync/pull', () => {
     expect(body.notes[0]).toMatchObject({ id: 'trashed', invalid: 1 })
   })
 
+  it('墓碑笔记（invalid=2）照常返回，客户端据此删本地副本', async () => {
+    await seed('purged', 100, { invalid: 2 })
+
+    const body = await pull({ since: 0 })
+
+    expect(body.notes[0]).toMatchObject({ id: 'purged', invalid: 2 })
+  })
+
   it('分页：达到 limit 时给出 next_cursor', async () => {
     await seed('a', 100)
     await seed('b', 200)
@@ -158,3 +166,4 @@ describe('POST /api/sync/pull', () => {
     expect(second.notes.map((n) => n.id)).toContain(created.id)
   })
 })
+

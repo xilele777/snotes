@@ -243,6 +243,37 @@ describe('pullOnce', () => {
     expect((await db.notes.get('r1'))!.body).toBe('本地写的')
   })
 
+  it('远端墓碑（invalid=2）会触发本地物理删除该笔记', async () => {
+    await db.notes.add({ ...meta(), body: '本地副本', body_version: 1, dirty: 'none' })
+    await db.outbox.add({
+      note_id: 'r1',
+      kind: 'body',
+      payload: { content: '本地写的', base_version: 1 },
+      retry: 0,
+      next_at: 0,
+      seq: 1,
+      failed: 0,
+    })
+    mockPull(page({ notes: [meta({ invalid: 2 as 0 | 1 | 2, prop_version: 5 })] }))
+
+    await pullOnce()
+
+    // 墓碑让本地副本被物理删除
+    expect(await db.notes.get('r1')).toBeUndefined()
+    // 名下未推送任务一并清掉，避免推到已不存在的笔记
+    expect(await db.outbox.where('note_id').equals('r1').count()).toBe(0)
+  })
+
+  it('远端墓碑不会无谓删掉本地不存在的笔记', async () => {
+    mockPull(page({ notes: [meta({ invalid: 2 as 0 | 1 | 2, prop_version: 5 })] }))
+
+    await pullOnce()
+
+    expect(await db.notes.get('r1')).toBeUndefined()
+    // 本轮没有任何写入，不触发 emitRemoteApplied 之外的影响——游标仍推进
+    expect(await getMeta<number>(SYNC_CURSOR_KEY)).toBe(5000)
+  })
+
   it('失败态的任务不再挡住 pull——否则那条笔记永远收不到远端更新', async () => {
     await db.notes.add({ ...meta(), body: '本地写的', body_version: 1, dirty: 'body' })
     await db.outbox.add({

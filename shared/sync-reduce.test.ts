@@ -76,7 +76,7 @@ describe('planPull', () => {
     const first = planPull(remote, local)
     const second = planPull(remote, local)
 
-    expect(first).toEqual({ insert: [], updateProp: [], fetchBody: [] })
+    expect(first).toEqual({ insert: [], updateProp: [], deleteLocal: [], fetchBody: [] })
     expect(second).toEqual(first)
   })
 
@@ -86,7 +86,7 @@ describe('planPull', () => {
       localMap(state({ id: 'a', version: 7, body_version: 7, prop_version: 7 }))
     )
 
-    expect(plan).toEqual({ insert: [], updateProp: [], fetchBody: [] })
+    expect(plan).toEqual({ insert: [], updateProp: [], deleteLocal: [], fetchBody: [] })
   })
 
   it('已插入但正文没拉到的笔记（body_version=0），下一轮会重新列入待拉', () => {
@@ -129,6 +129,36 @@ describe('planPull', () => {
     expect(plan.updateProp[0].invalid).toBe(1)
   })
 
+  it('墓碑（invalid=2）归入 deleteLocal，无论本地版本如何都无条件删除本地副本', () => {
+    const plan = planPull(
+      [note({ id: 'a', invalid: 2, prop_version: 9, version: 9 })],
+      localMap(state({ id: 'a', version: 1, body_version: 1, prop_version: 1 }))
+    )
+
+    expect(plan.deleteLocal.map((n) => n.id)).toEqual(['a'])
+    expect(plan.insert).toEqual([])
+    expect(plan.updateProp).toEqual([])
+    expect(plan.fetchBody).toEqual([])
+  })
+
+  it('墓碑即便本地有未推送正文也归入 deleteLocal——该笔记服务端已不存在，本地写推不回去', () => {
+    const plan = planPull(
+      [note({ id: 'a', invalid: 2, prop_version: 9 })],
+      localMap(state({ id: 'a', version: 1, body_version: 1, prop_version: 1, body_pending: true }))
+    )
+
+    expect(plan.deleteLocal.map((n) => n.id)).toEqual(['a'])
+  })
+
+  it('本地不存在的墓碑不进 deleteLocal——删一个不存在的笔记是无操作', () => {
+    const plan = planPull(
+      [note({ id: 'a', invalid: 2, prop_version: 9 })],
+      new Map()
+    )
+
+    expect(plan.deleteLocal).toEqual([])
+  })
+
   it('混合批次各归其位', () => {
     const plan = planPull(
       [
@@ -149,3 +179,4 @@ describe('planPull', () => {
     expect(plan.fetchBody.sort()).toEqual(['body', 'new'])
   })
 })
+

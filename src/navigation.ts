@@ -7,8 +7,9 @@ import type { MobilePane, UiView } from './stores/ui'
  *
  * 每次会产生「层级变化」的动作（移动端进详情、开抽屉、切视图）之前，先把当前
  * 完整界面状态 pushState 入栈；系统返回 / PWA 独立窗口返回触发 popstate，恢复
- * 上一份快照。启动时 replaceState 根快照，保证根界面按返回「保持在前」而不是
- * 直接退出应用。
+ * 上一份快照。启动时在根快照之前先压一个 state=null 的「哨兵」条目，根界面按
+ * 返回会退到哨兵，popstate 检测到 null 就 forward() 回根——从而「保持在前」而
+ * 不是直接退出应用回桌面（standalone PWA 单条目 history 的默认行为）。
  */
 export interface NavSnapshot {
   currentId: string | null
@@ -39,7 +40,11 @@ export function isMobile(): boolean {
 let initialized = false
 
 export function initNavigation() {
-  history.replaceState(snapshot(), '')
+  // 哨兵条目：state=null，位于根快照之前。根界面按返回退到这里时，
+  // onPopState 用 forward() 把用户挡回根，避免 standalone 直接退出。
+  history.replaceState(null, '')
+  history.pushState(snapshot(), '')
+
   if (initialized) return
   initialized = true
   window.addEventListener('popstate', onPopState)
@@ -94,5 +99,13 @@ function onPopState(e: PopStateEvent) {
   })
 
   const state = e.state as NavSnapshot | null
-  if (state) restore(state)
+
+  // 退到哨兵条目：用户在根界面按了系统返回。standalone PWA 此时不退出，
+  // 而是前进回根快照，让应用保持在前——用户想真正退出需再按一次（此时已无更早条目）。
+  if (state === null) {
+    history.forward()
+    return
+  }
+
+  restore(state)
 }

@@ -13,7 +13,8 @@ export interface NoteMeta {
   star: 0 | 1
   top: 0 | 1
   skin_color: string | null
-  invalid: 0 | 1
+  /** 0=正常，1=回收站（可恢复），2=墓碑（已被物理删除，客户端据此删本地副本） */
+  invalid: 0 | 1 | 2
   create_time: number
   update_time: number
 }
@@ -75,6 +76,8 @@ export interface LocalNoteState {
 export interface PullPlan {
   insert: NoteMeta[]
   updateProp: NoteMeta[]
+  /** 远端已物理删除（invalid=2 墓碑），本地需删掉对应副本 */
+  deleteLocal: NoteMeta[]
   fetchBody: string[]
 }
 
@@ -209,3 +212,5 @@ export interface MetricsData {
   r2: R2Usage | null
   http: HttpUsage | { error: 'no_permission' } | null
 }
+
+

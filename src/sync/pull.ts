@@ -97,7 +97,16 @@ export async function pullOnce(): Promise<PullResult> {
       })
     }
 
-    applied += plan.insert.length + plan.updateProp.length
+    if (plan.deleteLocal.length > 0) {
+      // 远端墓碑：物理删本地副本，并清掉它名下所有未推送任务——
+      // 该笔记在服务端已不存在，剩下的 create/body/prop 推上去也只会 not_found。
+      await db.notes.bulkDelete(plan.deleteLocal.map((n) => n.id))
+      for (const note of plan.deleteLocal) {
+        await db.outbox.where('note_id').equals(note.id).delete()
+      }
+    }
+
+    applied += plan.insert.length + plan.updateProp.length + plan.deleteLocal.length
     pendingBodies.push(...plan.fetchBody)
 
     cursor = response.next_cursor
@@ -143,3 +152,4 @@ export async function pullOnce(): Promise<PullResult> {
 
   return { pages, applied, bodies }
 }
+

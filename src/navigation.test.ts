@@ -26,6 +26,29 @@ describe('navigation 导航栈', () => {
     })
   })
 
+  it('initNavigation 在根快照前放一个 state=null 的哨兵条目', () => {
+    initNavigation()
+    // back() 异步触发 popstate；哨兵的 state 必须是 null
+    window.history.back()
+    return new Promise((resolve) => {
+      window.addEventListener('popstate', () => {
+        expect(window.history.state).toBeNull()
+        resolve(undefined)
+      }, { once: true })
+    })
+  })
+
+  it('根界面按返回退到哨兵时，onPopState 用 forward 挡回根，保持应用在前', () => {
+    initNavigation()
+    const forward = vi.spyOn(window.history, 'forward')
+
+    // 用户在根界面按系统返回，退到哨兵
+    window.dispatchEvent(new PopStateEvent('popstate', { state: null }))
+
+    expect(forward).toHaveBeenCalledTimes(1)
+    forward.mockRestore()
+  })
+
   it('openDrawer 先入栈再展开，恢复入栈的那份快照能收回抽屉', () => {
     const ui = useUiStore()
     initNavigation()
