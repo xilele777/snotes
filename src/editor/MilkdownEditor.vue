@@ -3,13 +3,14 @@ import { commandsCtx, Editor, defaultValueCtx, editorViewCtx, editorViewOptionsC
 import { clipboard } from '@milkdown/kit/plugin/clipboard'
 import { history, redoCommand, undoCommand } from '@milkdown/kit/plugin/history'
 import { listener, listenerCtx } from '@milkdown/kit/plugin/listener'
-import { commonmark } from '@milkdown/kit/preset/commonmark'
+import { commonmark, paragraphAttr } from '@milkdown/kit/preset/commonmark'
 import { gfm } from '@milkdown/kit/preset/gfm'
-import { replaceAll } from '@milkdown/kit/utils'
+import { $nodeSchema, replaceAll } from '@milkdown/kit/utils'
+import { Fragment } from '@milkdown/kit/prose/model'
 import { Milkdown, MilkdownProvider, useEditor } from '@milkdown/vue'
 import { defineComponent, h, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import type { ComponentPublicInstance } from 'vue'
-import { escapeRawHtml } from '../../shared/sanitize'
+import { escapeRawHtml, migrateLegacyBr } from '../../shared/sanitize'
 import { clipboardImageFiles, uploadImage } from './image-upload'
 
 const props = defineProps<{ noteId: string; modelValue: string; editable?: boolean }>()
@@ -25,6 +26,57 @@ let timer: ReturnType<typeof setTimeout> | undefined
 let syncingExternally = false
 let latest = props.modelValue
 let pendingId: string | null = null
+
+/**
+ * 空段落的占位字符。Milkdown 默认把空段落序列化成 `<br />`（一个 html 节点）
+ * 来保留空行视觉，但它在加载时会被 escapeRawHtml 转成 `&lt;br />` 字面文本，
+ * 既破坏空行又留下乱码。改用零宽空格：remark 往返不折叠空段落、escapeRawHtml
+ * 不触碰它、视觉上又不可见——空行视觉改由编辑器 CSS 撑高度来保证。
+ */
+const EMPTY_LINE = '\u200B'
+
+/**
+ * 覆盖 commonmark 的段落 schema：toMarkdown 里空段落写零宽空格而非 `<br />`。
+ * 其余行为（toDOM/parseDOM/parseMarkdown 与末尾 hardbreak 处理）与原 schema 一致。
+ */
+const paragraphSchema = $nodeSchema('paragraph', (ctx) => ({
+  content: 'inline*',
+  group: 'block',
+  parseDOM: [{ tag: 'p' }],
+  toDOM: (node) => ['p', ctx.get(paragraphAttr.key)(node), 0],
+  parseMarkdown: {
+    match: (node) => node.type === 'paragraph',
+    runner: (state, node, type) => {
+      state.openNode(type)
+      if (node.children) state.next(node.children)
+      else state.addText((node.value as string) || '')
+      state.closeNode()
+    },
+  },
+  toMarkdown: {
+    match: (node) => node.type.name === 'paragraph',
+    runner: (state, node) => {
+      const lastNode = ctx.get(editorViewCtx).state?.doc.lastChild
+      state.openNode('paragraph')
+      if ((!node.content || node.content.size === 0) && node !== lastNode) {
+        state.addNode('text', void 0, EMPTY_LINE)
+      } else {
+        // 与原 serializeText 一致：段落以 hardbreak 结尾时剔除它，避免多一行
+        if (!(node.childCount >= 1 && node.lastChild?.type.name === 'hardbreak')) {
+          state.next(node.content)
+        } else {
+          const contentArr: any[] = []
+          node.content.forEach((n, _i, i) => {
+            if (i === node.childCount - 1) return
+            contentArr.push(n)
+          })
+          state.next(Fragment.fromArray(contentArr))
+        }
+      }
+      state.closeNode()
+    },
+  },
+}))
 
 function clearTimer() {
   if (timer !== undefined) {
@@ -199,12 +251,13 @@ const MilkdownInner = defineComponent({
       Editor.make()
         .config((ctx) => {
           ctx.set(rootCtx, root)
-          ctx.set(defaultValueCtx, escapeRawHtml(props.modelValue))
+          ctx.set(defaultValueCtx, escapeRawHtml(migrateLegacyBr(props.modelValue)))
           ctx.get(listenerCtx).markdownUpdated((_ctx, markdown) => onMarkdownChange(markdown))
         })
         // commonmark 在前、gfm 在后：表格删除线任务清单属于 GFM 扩展，
         // 层叠顺序反了会导致 GFM 的 schema 扩展覆盖不到 commonmark 的节点
         .use(commonmark)
+        .use(paragraphSchema)
         .use(gfm)
         .use(listener)
         .use(clipboard)
@@ -271,7 +324,7 @@ watch(
     if (!editor) return
 
     syncingExternally = true
-    editor.replaceContent(escapeRawHtml(props.modelValue))
+    editor.replaceContent(escapeRawHtml(migrateLegacyBr(props.modelValue)))
     syncingExternally = false
     latest = props.modelValue
   }

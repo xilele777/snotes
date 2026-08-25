@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { escapeRawHtml } from './sanitize'
+import { escapeRawHtml, migrateLegacyBr } from './sanitize'
 
 describe('escapeRawHtml', () => {
   it('转义脚本标签', () => {
@@ -53,5 +53,55 @@ describe('escapeRawHtml', () => {
 
   it('空串返回空串', () => {
     expect(escapeRawHtml('')).toBe('')
+  })
+
+  it('空行用零宽空格承载时 escapeRawHtml 原样保留——不再依赖会被转义的 <br />', () => {
+    const md = '第一段\u200B' + '\n\n' + '\u200B' + '\n\n' + '第二段'
+    // 零宽空格没有 <，escapeRawHtml 不触碰；空段落靠它保留，不靠 <br />
+    expect(escapeRawHtml(md)).toBe(md)
+    // 确认旧载体 <br /> 仍会被这道防线转义——我们换的是载体，不是开防线口子
+    expect(escapeRawHtml('第一段\n\n<br />\n\n第二段')).toBe('第一段\n\n&lt;br />\n\n第二段')
+  })
+})
+
+describe('migrateLegacyBr', () => {
+  it('把整行 <br /> 占位的历史空行还原成零宽空格空段落', () => {
+    expect(migrateLegacyBr('第一段\n\n<br />\n\n第二段')).toBe('第一段\n\n\u200B\n\n第二段')
+  })
+
+  it('识别全部 br 变体', () => {
+    for (const br of ['<br />', '<br>', '<br >', '<br/>']) {
+      expect(migrateLegacyBr('a\n\n' + br + '\n\nb')).toBe('a\n\n\u200B\n\nb')
+    }
+  })
+
+  it('行内 br 不动——那是用户主动写的原始 HTML', () => {
+    expect(migrateLegacyBr('行内<br>换行')).toBe('行内<br>换行')
+    expect(migrateLegacyBr('前 <br /> 后')).toBe('前 <br /> 后')
+  })
+
+  it('围栏代码块内的 br 不动', () => {
+    const md = '```html\n<div><br /></div>\n```\n<br />\n尾'
+    expect(migrateLegacyBr(md)).toBe('```html\n<div><br /></div>\n```\n\u200B\n尾')
+  })
+
+  it('缩进代码块内的 br 不动', () => {
+    const md = '    <br />\n\n<br />\n尾'
+    expect(migrateLegacyBr(md)).toBe('    <br />\n\n\u200B\n尾')
+  })
+
+  it('行内代码内的 br 不动——那是要展示的内容', () => {
+    expect(migrateLegacyBr('看 ``<br>`` 这段')).toBe('看 ``<br>`` 这段')
+    expect(migrateLegacyBr('看 `<br>` 这段')).toBe('看 `<br>` 这段')
+  })
+
+  it('不含 br 时原样返回', () => {
+    expect(migrateLegacyBr('普通笔记\n\n空行')).toBe('普通笔记\n\n空行')
+    expect(migrateLegacyBr('')).toBe('')
+  })
+
+  it('与 escapeRawHtml 串联：旧数据加载时空行被还原而非留下 &lt;br />', () => {
+    const legacy = '第一段\n\n<br />\n\n第二段'
+    expect(escapeRawHtml(migrateLegacyBr(legacy))).toBe('第一段\n\n\u200B\n\n第二段')
   })
 })
