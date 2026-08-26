@@ -58,7 +58,6 @@ const rows = computed(() => {
     <div v-if="open" class="dialog-mask" @click.self="emit('close')">
       <div class="dialog info-dialog" role="dialog" aria-modal="true" aria-label="文档信息">
         <h3 class="dialog-title">文档信息</h3>
-        <p v-if="note" class="info-name">{{ note.title || '无标题' }}</p>
         <ul class="info-list">
           <li v-for="r in rows" :key="r.label">
             <span class="info-label">{{ r.label }}</span>

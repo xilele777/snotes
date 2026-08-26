@@ -1123,15 +1123,8 @@ html {
 
 /* === 文档信息弹窗 === */
 .info-dialog { max-width: 360px; }
-.info-name {
-  margin: 0 0 16px;
-  font-size: 15px;
-  font-weight: 600;
-  color: var(--text-primary);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
+.info-dialog .dialog-footer,
+.wordcount-dialog .dialog-footer { justify-content: center; }
 .info-list { margin: 0 0 20px; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 14px; }
 .info-list li { display: grid; grid-template-columns: 80px 1fr; grid-template-rows: auto auto; column-gap: 12px; row-gap: 2px; align-items: baseline; }
 .info-label { font-size: 12px; color: var(--text-tertiary); grid-row: 1; }
