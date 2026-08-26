@@ -1,4 +1,4 @@
-import type { D1Usage, HttpUsage, MetricsTrendPoint } from '../../shared/types'
+import type { D1Usage, MetricsTrendPoint, WorkersUsage } from '../../shared/types'
 
 /**
  * CF GraphQL Analytics 标准查询层（Bug 8）。
@@ -134,7 +134,7 @@ const D1_ZERO: D1DayAgg = {
 
 export function extractD1Usage(data: Record<string, unknown>, days: string[]): D1Usage | null {
   const rows = accountRows(data, 'd1AnalyticsAdaptiveGroups')
-  if (rows.length === 0) return null
+  // GraphQL 成功但没有任何聚合行，代表本月还没有 D1 用量；应显示 0 而不是「不可用」。
 
   const byDay = new Map<string, D1DayAgg>()
   for (const row of rows) {
@@ -206,9 +206,9 @@ export function buildR2StorageQuery(accountTag: string, bucketName: string, days
   }
 }
 
-export function extractR2Storage(data: Record<string, unknown>): { objects: number; bytes: number } | null {
+export function extractR2Storage(data: Record<string, unknown>): { objects: number; bytes: number } {
   const rows = accountRows(data, 'r2StorageAdaptiveGroups')
-  if (rows.length === 0) return null
+  if (rows.length === 0) return { objects: 0, bytes: 0 }
   const max = (rows[0].max ?? {}) as { objectCount?: number; payloadSize?: number }
   return { objects: max.objectCount ?? 0, bytes: max.payloadSize ?? 0 }
 }
@@ -274,7 +274,7 @@ export function extractR2Operations(
   days: string[]
 ): { classAToday: number; classBToday: number; trend: MetricsTrendPoint[] } | null {
   const rows = accountRows(data, 'r2OperationsAdaptiveGroups')
-  if (rows.length === 0) return null
+  // 成功响应没有行时表示当前周期尚无操作，而不是查询失败。
 
   const byDay = new Map<string, R2OpDay>()
   for (const row of rows) {
@@ -298,18 +298,18 @@ export function extractR2Operations(
   return { classAToday: today.classA, classBToday: today.classB, trend }
 }
 
-/* === HTTP 请求量（可选：需要 CF_ZONE_ID） === */
+/* === Workers Invocations：账号级请求量（免费额度按天计算） === */
 
-export const HTTP_QUERY = /* GraphQL */ `
-  query HttpMetrics($zoneTag: String!, $date_geq: String!, $date_leq: String!) {
+export const WORKERS_QUERY = /* GraphQL */ `
+  query WorkersMetrics($accountTag: String!, $datetime_geq: String!, $datetime_leq: String!) {
     viewer {
-      zones(filter: { zoneTag: $zoneTag }) {
-        httpRequests1dGroups(
-          limit: 31
-          filter: { date_geq: $date_geq, date_leq: $date_leq }
-          orderBy: [date_ASC]
+      accounts(filter: { accountTag: $accountTag }) {
+        workersInvocationsAdaptiveGroups(
+          limit: 10000
+          filter: { datetime_geq: $datetime_geq, datetime_leq: $datetime_leq }
+          orderBy: [datetime_ASC]
         ) {
-          dimensions { date }
+          dimensions { datetime }
           sum { requests }
         }
       }
@@ -317,24 +317,26 @@ export const HTTP_QUERY = /* GraphQL */ `
   }
 `
 
-export function buildHttpQuery(zoneTag: string, days: string[]) {
+export function buildWorkersQuery(accountTag: string, days: string[]) {
+  const to = days[days.length - 1]
   return {
-    query: HTTP_QUERY,
-    variables: { zoneTag, date_geq: days[0], date_leq: days[days.length - 1] },
+    query: WORKERS_QUERY,
+    variables: {
+      accountTag,
+      datetime_geq: `${days[0]}T00:00:00Z`,
+      datetime_leq: `${to}T23:59:59.999Z`,
+    },
   }
 }
 
-export function extractHttpUsage(data: Record<string, unknown>, days: string[]): HttpUsage | null {
-  const viewer = data.viewer as { zones?: Array<Record<string, unknown>> } | undefined
-  const rows = viewer?.zones?.[0]?.httpRequests1dGroups
-  const list = Array.isArray(rows) ? (rows as Array<Record<string, any>>) : []
-  if (list.length === 0) return null
-
+export function extractWorkersUsage(data: Record<string, unknown>, days: string[]): WorkersUsage {
+  const rows = accountRows(data, 'workersInvocationsAdaptiveGroups')
   const byDay = new Map<string, number>()
-  for (const row of list) {
-    const date = row.dimensions?.date as string | undefined
+  for (const row of rows) {
+    const date = row.dimensions?.datetime as string | undefined
     if (!date) continue
-    byDay.set(date, (byDay.get(date) ?? 0) + ((row.sum?.requests as number) ?? 0))
+    const key = date.slice(0, 10)
+    byDay.set(key, (byDay.get(key) ?? 0) + ((row.sum?.requests as number) ?? 0))
   }
 
   const trend: MetricsTrendPoint[] = days.map((date) => ({
@@ -342,5 +344,5 @@ export function extractHttpUsage(data: Record<string, unknown>, days: string[]):
     requests: byDay.get(date) ?? 0,
   }))
 
-  return { requestsToday: trend[trend.length - 1].requests as number, trend }
+  return { requestsToday: trend[trend.length - 1]!.requests as number, trend }
 }

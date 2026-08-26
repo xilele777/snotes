@@ -27,7 +27,6 @@ metricsRoutes.post('/api/metrics/types', async (c) => {
     apiToken: env.CF_API_TOKEN,
     d1DatabaseId: env.D1_DATABASE_ID,
     r2BucketName: env.R2_BUCKET_NAME,
-    zoneId: env.CF_ZONE_ID,
   })
 
   return c.json({ ok: true, data })

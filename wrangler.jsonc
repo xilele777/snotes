@@ -26,7 +26,7 @@
   // CF_ACCOUNT_ID / CF_API_TOKEN 是机密，必须用 `npx wrangler secret put` 注入：
   //   CF_ACCOUNT_ID = <Cloudflare 账号 ID>
   //   CF_API_TOKEN  = 具备 Account > Analytics > Read 权限的 API Token
-  // 配了 CF_ZONE_ID 才启用 HTTP 请求量卡片（需要 Zone > Analytics > Read）。
+  // 监控页使用账号级 Analytics，不再依赖 CF_ZONE_ID。
   "vars": {
     "D1_DATABASE_ID": "66325ab4-c335-4976-9a62-b0c9e5e21e97",
     "R2_BUCKET_NAME": "snotes-images"

@@ -4,11 +4,10 @@ import { createApp } from '../../worker/app'
 import { collectMetrics } from '../../worker/metrics/collect'
 import {
   extractD1Usage,
-  extractHttpUsage,
   extractR2Operations,
   extractR2Storage,
+  extractWorkersUsage,
   gql,
-  lastNDays,
 } from '../../worker/metrics/graphql'
 
 const OK = { Authorization: 'Bearer test-token' }
@@ -50,8 +49,11 @@ describe('extractD1Usage', () => {
     expect(usage.trend[1]).toEqual({ date: '2026-08-24', reads: 1, writes: 9, sql: 10, avgMs: 500 })
   })
 
-  it('没有行数据返回 null', () => {
-    expect(extractD1Usage({ viewer: { accounts: [{ d1AnalyticsAdaptiveGroups: [] }] } }, ['2026-08-24'])).toBeNull()
+  it('成功响应没有行数据时返回零用量', () => {
+    const usage = extractD1Usage({ viewer: { accounts: [{ d1AnalyticsAdaptiveGroups: [] }] } }, ['2026-08-24'])
+    expect(usage?.readsToday).toBe(0)
+    expect(usage?.writesToday).toBe(0)
+    expect(usage?.trend[0]).toEqual({ date: '2026-08-24', reads: 0, writes: 0, sql: 0, avgMs: 0 })
   })
 })
 
@@ -68,8 +70,8 @@ describe('extractR2Storage', () => {
     expect(extractR2Storage(data)).toEqual({ objects: 3, bytes: 1024 })
   })
 
-  it('没有行数据返回 null', () => {
-    expect(extractR2Storage({ viewer: { accounts: [{ r2StorageAdaptiveGroups: [] }] } })).toBeNull()
+  it('没有行数据返回零快照', () => {
+    expect(extractR2Storage({ viewer: { accounts: [{ r2StorageAdaptiveGroups: [] }] } })).toEqual({ objects: 0, bytes: 0 })
   })
 })
 
@@ -97,25 +99,39 @@ describe('extractR2Operations', () => {
     expect(ops.trend[0]).toEqual({ date: '2026-08-24', classA: 5, classB: 6 })
   })
 
-  it('没有行数据返回 null', () => {
-    expect(extractR2Operations({ viewer: { accounts: [{ r2OperationsAdaptiveGroups: [] }] } }, ['2026-08-24'])).toBeNull()
+  it('成功响应没有行数据时返回零操作', () => {
+    const ops = extractR2Operations({ viewer: { accounts: [{ r2OperationsAdaptiveGroups: [] }] } }, ['2026-08-24'])
+    expect(ops).toEqual({ classAToday: 0, classBToday: 0, trend: [{ date: '2026-08-24', classA: 0, classB: 0 }] })
   })
 })
 
-describe('extractHttpUsage', () => {
-  it('聚合 zone 的每日请求数', () => {
+describe('extractWorkersUsage', () => {
+  it('聚合账号级 Workers 每日请求数', () => {
     const days = ['2026-08-24']
     const data = {
       viewer: {
-        zones: [{ httpRequests1dGroups: [{ dimensions: { date: '2026-08-24' }, sum: { requests: 7 } }] }],
+        accounts: [
+          {
+            workersInvocationsAdaptiveGroups: [
+              { dimensions: { datetime: '2026-08-24T10:00:00Z' }, sum: { requests: 4 } },
+              { dimensions: { datetime: '2026-08-24T11:00:00Z' }, sum: { requests: 3 } },
+            ],
+          },
+        ],
       },
     }
 
-    expect(extractHttpUsage(data, days)?.requestsToday).toBe(7)
+    expect(extractWorkersUsage(data, days)).toEqual({
+      requestsToday: 7,
+      trend: [{ date: '2026-08-24', requests: 7 }],
+    })
   })
 
-  it('没有行数据返回 null', () => {
-    expect(extractHttpUsage({ viewer: { zones: [{ httpRequests1dGroups: [] }] } }, ['2026-08-24'])).toBeNull()
+  it('没有行数据返回零请求', () => {
+    expect(extractWorkersUsage({ viewer: { accounts: [{ workersInvocationsAdaptiveGroups: [] }] } }, ['2026-08-24'])).toEqual({
+      requestsToday: 0,
+      trend: [{ date: '2026-08-24', requests: 0 }],
+    })
   })
 })
 
@@ -163,9 +179,9 @@ describe('gql', () => {
 describe('collectMetrics', () => {
   afterEach(() => vi.unstubAllGlobals())
 
-  it('各区块独立取数：D1/R2 有数据，HTTP 无 rows 时给 no_permission', async () => {
-    const days = lastNDays(7)
-    const today = days[days.length - 1]
+  it('一次聚合月度用量：趋势、存储与额度使用同一份数据', async () => {
+    const days = [new Date().toISOString().slice(0, 10)]
+    const today = days[0]!
 
     vi.stubGlobal(
       'fetch',
@@ -210,8 +226,18 @@ describe('collectMetrics', () => {
             },
           })
         }
-        if (query.includes('httpRequests1dGroups')) {
-          return ok({ viewer: { zones: [{ httpRequests1dGroups: [] }] } })
+        if (query.includes('workersInvocationsAdaptiveGroups')) {
+          return ok({
+            viewer: {
+              accounts: [
+                {
+                  workersInvocationsAdaptiveGroups: [
+                    { dimensions: { datetime: `${today}T10:00:00Z` }, sum: { requests: 80 } },
+                  ],
+                },
+              ],
+            },
+          })
         }
         return ok({ viewer: {} })
       })
@@ -222,7 +248,6 @@ describe('collectMetrics', () => {
       apiToken: 'token',
       d1DatabaseId: 'd1',
       r2BucketName: 'bucket',
-      zoneId: 'zone',
     })
 
     expect(result.d1?.readsToday).toBe(100)
@@ -233,13 +258,17 @@ describe('collectMetrics', () => {
     expect(result.r2?.bytes).toBe(1024)
     expect(result.r2?.classAToday).toBe(4)
     expect(result.r2?.classBToday).toBe(6)
-    const http = result.http
-    expect(http && 'error' in http ? http.error : null).toBe('no_permission')
+    expect(result.workers?.requestsToday).toBe(80)
+    expect(result.quota.items.find((item) => item.label.startsWith('Workers'))).toMatchObject({
+      used: 80,
+      limit: 100_000,
+      status: 'safe',
+      available: true,
+    })
   })
 
   it('D1 查询失败时 d1 为 null，R2 照常返回', async () => {
-    const days = lastNDays(7)
-    const today = days[days.length - 1]
+    const today = new Date().toISOString().slice(0, 10)
 
     vi.stubGlobal(
       'fetch',
@@ -283,6 +312,7 @@ describe('collectMetrics', () => {
     })
 
     expect(result.d1).toBeNull()
+    expect(result.quota.items.filter((item) => item.status === 'unavailable')).toHaveLength(2)
     expect(result.r2).not.toBeNull()
   })
 })

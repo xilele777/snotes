@@ -208,32 +208,53 @@ export interface R2Usage {
   trend: MetricsTrendPoint[]
 }
 
-/** HTTP 请求量；error='no_permission' 表示账号缺 zone 权限或未配置 CF_ZONE_ID */
-export interface HttpUsage {
+/** 账号级 Workers Invocations，用于对照免费版请求额度。 */
+export interface WorkersUsage {
   requestsToday: number
   trend: MetricsTrendPoint[]
 }
 
-/** 免费额度对照：当月累计用量 vs Cloudflare 免费额度。 */
+export type QuotaStatus = 'safe' | 'warning' | 'over' | 'unavailable'
+
+/** 单个免费额度项。used 的口径由 cycle 决定：daily=单日峰值，monthly=当月累计。 */
 export interface QuotaItem {
   label: string
-  /** 当月累计用量 */
+  /** daily / monthly / snapshot，分别表示按日额度、自然月额度和当前存储快照 */
+  cycle: 'daily' | 'monthly' | 'snapshot'
+  /** 判定用量：daily 取本月单日最高，monthly 取当月累计，snapshot 取最新值 */
   used: number
   /** 免费额度上限 */
   limit: number
-  /** 单位标签，如 行、次、GB */
+  /** 已用百分比，不封顶，便于看到超过 100% 的幅度 */
+  percent: number
+  status: QuotaStatus
+  /** 辅助读数：daily 显示今日，monthly 显示今日，snapshot 显示对象数 */
+  secondaryLabel?: string
+  secondaryValue?: number
+  /** 本月单日最高发生日期；仅 daily 提供 */
+  peakDate?: string
+  /** 面向用户的判定说明 */
+  explanation: string
+  /** 数据不可用或查询失败时为 false */
+  available: boolean
+  /** 单位标签，如 行、次、GB、请求 */
   unit: '行' | '次' | 'GB' | '请求'
 }
+
 export interface Quota {
   /** 当月已过天数（含今天），用于换算日均进度 */
   monthDays: number
+  /** safe / warning / over / unavailable，代表整页最严重状态 */
+  status: QuotaStatus
+  overCount: number
+  warningCount: number
   items: QuotaItem[]
 }
 
 export interface MetricsData {
   d1: D1Usage | null
   r2: R2Usage | null
-  http: HttpUsage | { error: 'no_permission' } | null
+  workers: WorkersUsage | null
   /** 当月用量 vs 免费额度；即使个别指标查不到也给出已知项 */
   quota: Quota
 }

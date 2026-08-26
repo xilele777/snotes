@@ -8,6 +8,5 @@ export interface Env {
   /** 机密：`wrangler secret put CF_ACCOUNT_ID` / `CF_API_TOKEN` 注入，不进前端 */
   CF_ACCOUNT_ID?: string
   CF_API_TOKEN?: string
-  /** 可选：配了才查询 HTTP 请求量，否则监控页 HTTP 卡片显示「未配置」 */
   CF_ZONE_ID?: string
 }
