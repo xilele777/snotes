@@ -1,5 +1,5 @@
 import { defineStore } from 'pinia'
-import { computed, ref } from 'vue'
+import { computed, ref, watch } from 'vue'
 import type { LocalNote } from '../../shared/types'
 import * as repo from '../db/repo'
 import type { ListView, NoteProps } from '../db/repo'
@@ -12,6 +12,35 @@ export const useNotesStore = defineStore('notes', () => {
   const currentId = ref<string | null>(null)
 
   const current = computed(() => notes.value.find((n) => n.id === currentId.value))
+
+  /**
+   * 打开笔记（currentId 切到非 null）记一次本地统计：递增 open_count、刷新
+   * last_open_time。纯本地行为，不动 update_time、不入 outbox，因此不污染
+   * 列表排序与同步。同时把内存里这条的统计值就地更新，文档信息弹窗与统计页
+   * 能立刻看到最新值，无需整表 load（load 会按 update_time 重排，反而抖动）。
+   *
+   * immediate 打开应用时 load() 默认选中第一条也会触发一次——那条本来就是被
+   * 「打开」了，计数符合预期。切换到 null（删除/清空）不计。
+   *
+   * currentId 是稀有交互；用 sync watcher 保证「null -> id」即使发生在同一个
+   * tick，也不会因为首尾值相同而被 Vue 合并掉这一次真实的状态迁移。
+   */
+  watch(currentId, (id) => {
+    if (id === null) return
+    void repo.openNote(id).then((result) => {
+      if (!result) return
+      const item = notes.value.find((n) => n.id === id)
+      if (item) {
+        item.open_count = result.open_count
+        item.last_open_time = result.last_open_time
+      }
+    })
+    const item = notes.value.find((n) => n.id === id)
+    if (item) {
+      item.open_count = (item.open_count ?? 0) + 1
+      item.last_open_time = Date.now()
+    }
+  }, { flush: 'sync' })
 
   const visible = computed(() => {
     const q = ui.query.trim().toLowerCase()

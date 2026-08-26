@@ -223,6 +223,53 @@ describe('NoteDetail 顶栏操作条', () => {
     expect(wrapper.find('.op-popover.colors').exists()).toBe(false)
     wrapper.unmount()
   })
+
+  it('顶栏渲染文档信息与字数统计入口', async () => {
+    const notes = useNotesStore()
+    const note = await notes.create()
+    notes.currentId = note.id
+
+    const wrapper = mount(NoteDetail, { attachTo: document.body })
+    await wrapper.vm.$nextTick()
+
+    expect(op(wrapper, 'info').exists()).toBe(true)
+    expect(op(wrapper, 'wordcount').exists()).toBe(true)
+    wrapper.unmount()
+  })
+
+  it('点文档信息入口打开信息弹窗', async () => {
+    const notes = useNotesStore()
+    const note = await notes.create()
+    notes.currentId = note.id
+
+    const wrapper = mount(NoteDetail, { attachTo: document.body })
+    await wrapper.vm.$nextTick()
+    await op(wrapper, 'info').trigger('click')
+    await wrapper.vm.$nextTick()
+
+    const dialog = document.querySelector('.info-dialog')
+    expect(dialog).toBeTruthy()
+    expect(dialog!.textContent).toContain('文档信息')
+    wrapper.unmount()
+  })
+
+  it('点字数统计入口打开字数弹窗，显示当前字数', async () => {
+    const notes = useNotesStore()
+    const note = await notes.create()
+    await notes.saveBody(note.id, '今天天气不错 hello')
+    notes.currentId = note.id
+
+    const wrapper = mount(NoteDetail, { attachTo: document.body })
+    await wrapper.vm.$nextTick()
+    await op(wrapper, 'wordcount').trigger('click')
+    await wrapper.vm.$nextTick()
+
+    const dialog = document.querySelector('.wordcount-dialog')
+    expect(dialog).toBeTruthy()
+    // 中文 6 字 + 英文 1 词 = 7
+    expect(dialog!.textContent).toContain('7')
+    wrapper.unmount()
+  })
 })
 
 describe('NoteDetail 回收站只读态', () => {

@@ -42,6 +42,15 @@ function goMetrics() {
   ui.drawerOpen = false
 }
 
+/** 统计页同样是全屏视图，不触发 notes.load() */
+function goStats() {
+  if (ui.view === 'stats') return
+  pushNav()
+  ui.view = 'stats'
+  ui.activeGroupId = null
+  ui.drawerOpen = false
+}
+
 function openCreate() {
   editingId.value = null
   dialogOpen.value = true
@@ -78,6 +87,9 @@ async function submitDialog(name: string) {
       </li>
       <li data-view="trash" :class="{ active: ui.view === 'trash' }" @click="switchView('trash')">
         回收站
+      </li>
+      <li data-view="stats" :class="{ active: ui.view === 'stats' }" @click="goStats">
+        统计
       </li>
     </ul>
 

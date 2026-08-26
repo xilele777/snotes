@@ -7,6 +7,7 @@ import {
   getMeta,
   getNote,
   listNotes,
+  openNote,
   purgeNote,
   purgeTrash,
   recoverNote,
@@ -205,6 +206,45 @@ describe('listNotes', () => {
 
     const list = await listNotes({ view: 'star' })
     expect(list.map((n) => n.id)).toEqual([a.id])
+  })
+})
+
+describe('openNote', () => {
+  it('递增 open_count、刷新 last_open_time，不动 update_time', async () => {
+    const note = await createNote('a')
+    const before = (await getNote(note.id))!
+    const beforeUpdate = before.update_time
+
+    await openNote(note.id)
+    await openNote(note.id)
+
+    const after = (await getNote(note.id))!
+    expect(after.open_count).toBe(2)
+    expect(after.last_open_time).toBeGreaterThan(beforeUpdate)
+    // 打开笔记不应改动 update_time，否则会把点开的笔记顶到列表最新
+    expect(after.update_time).toBe(beforeUpdate)
+  })
+
+  it('不写入 outbox，不进同步流程', async () => {
+    const note = await createNote('a')
+    await db.outbox.clear()
+    await openNote(note.id)
+    expect(await db.outbox.count()).toBe(0)
+  })
+
+  it('旧笔记缺失字段时按 0 兜底再 +1', async () => {
+    const note = await createNote('a')
+    // 模拟升级前创建的旧笔记：直接抹掉本地统计字段
+    await db.notes.update(note.id, { open_count: undefined as unknown as number, last_open_time: undefined as unknown as number })
+
+    await openNote(note.id)
+    const after = (await getNote(note.id))!
+    expect(after.open_count).toBe(1)
+    expect(after.last_open_time).toBeGreaterThan(0)
+  })
+
+  it('不存在的 id 静默返回', async () => {
+    await expect(openNote('不存在')).resolves.toBeUndefined()
   })
 })
 

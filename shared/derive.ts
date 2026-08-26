@@ -82,3 +82,41 @@ export function derive(md: string): DerivedFields {
     thumbnail: extractThumbnail(md),
   }
 }
+
+/**
+ * 统计笔记正文的字数。
+ *
+ * 中文按「字」计（每个 CJK 字符算一字），拉丁文按「词」计（连续字母数字算一词），
+ * 标点、空白、Markdown 语法符号不计数。这样一条「今天写了两百字」的中文笔记
+ * 与一条英文笔记的计数口径对用户而言都直观。返回值为三项：字数、行数、字符总数。
+ */
+export interface NoteWordCount {
+  /** 字数：CJK 按字，拉丁按词 */
+  words: number
+  /** 非空行数 */
+  lines: number
+  /** 去掉 Markdown 语法后的可见字符总数 */
+  chars: number
+}
+
+const WORD_TOKEN_RE = /[\u4e00-\u9fff\u3400-\u4dbf]|[\u3040-\u30ff\uac00-\ud7af]|[A-Za-z0-9]+/g
+
+export function countWords(md: string): NoteWordCount {
+  if (!md) return { words: 0, lines: 0, chars: 0 }
+
+  const visibleLines = md.split('\n').map(stripLine)
+  const nonEmpty = visibleLines.filter((l) => l !== '')
+
+  let words = 0
+  let chars = 0
+  for (const line of visibleLines) {
+    if (line === '') continue
+    chars += line.length
+    line.replace(WORD_TOKEN_RE, () => {
+      words += 1
+      return ''
+    })
+  }
+
+  return { words, lines: nonEmpty.length, chars }
+}

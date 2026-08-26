@@ -5,6 +5,7 @@ import GroupSidebar from './components/GroupSidebar.vue'
 import MetricsView from './components/MetricsView.vue'
 import NoteDetail from './components/NoteDetail.vue'
 import NoteList from './components/NoteList.vue'
+import StatsView from './components/StatsView.vue'
 import TokenGate from './components/TokenGate.vue'
 import TrashView from './components/TrashView.vue'
 import { resolveShortcut } from './components/shortcut'
@@ -65,6 +66,7 @@ onUnmounted(() => window.removeEventListener('keydown', onKeydown))
 
     <section class="list-pane">
       <MetricsView v-if="ui.view === 'metrics'" />
+      <StatsView v-else-if="ui.view === 'stats'" />
       <TrashView v-else-if="ui.view === 'trash'" />
       <NoteList v-else />
     </section>
@@ -72,10 +74,10 @@ onUnmounted(() => window.removeEventListener('keydown', onKeydown))
     <!--
       回收站详情与编辑详情用同一个组件，只是 readonly 不同。
       key 区分两者：ProseMirror 的 editable 在建实例时读一次，不重挂就切不干净。
-      监控页没有笔记详情，details 区整块隐藏。
+      监控页与统计页没有笔记详情，details 区整块隐藏。
     -->
     <NoteDetail
-      v-if="ui.view !== 'metrics'"
+      v-if="ui.view !== 'metrics' && ui.view !== 'stats'"
       :key="ui.view === 'trash' ? 'trash' : 'main'"
       :readonly="ui.view === 'trash'"
       @back="backToList"

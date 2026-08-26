@@ -106,6 +106,19 @@ describe('GroupSidebar', () => {
     expect(ui.drawerOpen).toBe(false)
   })
 
+  it('点统计入口切到 stats 视图并收起抽屉', async () => {
+    const ui = useUiStore()
+    ui.drawerOpen = true
+
+    const wrapper = mount(GroupSidebar)
+    await wrapper.vm.$nextTick()
+    await wrapper.find('[data-view="stats"]').trigger('click')
+
+    expect(ui.view).toBe('stats')
+    expect(ui.activeGroupId).toBeNull()
+    expect(ui.drawerOpen).toBe(false)
+  })
+
   it('删除分组后组内笔记回到未分组而非被删除', async () => {
     const groups = useGroupsStore()
     const g = await groups.create('临时')

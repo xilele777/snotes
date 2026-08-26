@@ -1,5 +1,37 @@
 import { describe, expect, it } from 'vitest'
-import { derive, extractSummary, extractThumbnail, extractTitle } from './derive'
+import { countWords, derive, extractSummary, extractThumbnail, extractTitle } from './derive'
+
+describe('countWords', () => {
+  it('空正文返回 0', () => {
+    expect(countWords('')).toEqual({ words: 0, lines: 0, chars: 0 })
+  })
+
+  it('中文按字计数', () => {
+    expect(countWords('今天天气不错').words).toBe(6)
+  })
+
+  it('英文按词计数，标点与空白不计', () => {
+    expect(countWords('hello world, foo bar!').words).toBe(4)
+  })
+
+  it('中英混排各自按口径计', () => {
+    expect(countWords('今天 hello 写了 200 字').words).toBe(7)
+  })
+
+  it('去除 Markdown 语法符号后计字', () => {
+    const wc = countWords('# 标题\n\n- 列表项\n**加粗**')
+    expect(wc.words).toBe(7)
+    expect(wc.lines).toBe(3)
+  })
+
+  it('行数只算非空行', () => {
+    expect(countWords('a\n\n\nb').lines).toBe(2)
+  })
+
+  it('可见字符总数不含 Markdown 标记', () => {
+    expect(countWords('# hi').chars).toBe(2)
+  })
+})
 
 describe('extractTitle', () => {
   it('取首个非空行', () => {

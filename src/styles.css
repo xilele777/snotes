@@ -678,11 +678,13 @@ body { color: var(--text-primary); background: var(--bg-app); font-size: 16px; l
 .metrics-entry:hover { background: var(--bg-press); color: var(--text-primary); }
 .metrics-entry.active { background: var(--bg-press); color: var(--accent); }
 
-/* 监控页（Bug 8）占满右侧两栏：列表栏跨到详情栏位置，详情栏此时已被 v-if 隐藏。
+/* 监控页 / 统计页占满右侧两栏：列表栏跨到详情栏位置，详情栏此时已被 v-if 隐藏。
    1020px 以下 grid 只剩两栏（侧栏改抽屉），list-pane 顺位为第 1 列，跨到末列即可占满。 */
-.layout[data-view='metrics'] .list-pane { grid-column: 2 / -1; }
+.layout[data-view='metrics'] .list-pane,
+.layout[data-view='stats'] .list-pane { grid-column: 2 / -1; }
 @media (max-width: 1020px) {
-  .layout[data-view='metrics'] .list-pane { grid-column: 1 / -1; }
+  .layout[data-view='metrics'] .list-pane,
+  .layout[data-view='stats'] .list-pane { grid-column: 1 / -1; }
 }
 
 /* === 监控页（Bug 8）：卡片 + 纯 CSS 柱状趋势 === */
@@ -1000,4 +1002,109 @@ html {
     transition-duration: 0.01s !important;
     animation-duration: 0.01s !important;
   }
+}
+/* === 文档信息 / 字数统计 顶栏入口（NoteDetail） === */
+.meta-entries {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  margin-left: 8px;
+}
+.meta-entry {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  height: 32px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: 16px;
+  background: none;
+  color: var(--text-secondary);
+  cursor: pointer;
+  font-size: 12px;
+  transition: background 0.2s ease-in-out, color 0.2s ease-in-out;
+}
+.meta-entry:hover { background: var(--bg-hover); color: var(--text-primary); }
+.meta-entry-text { line-height: 1; white-space: nowrap; }
+@media (max-width: 720px) {
+  /* 移动端空间紧张，信息入口只留图标，字数入口的数字保留 */
+  .meta-entry-text { display: none; }
+  .meta-entry[data-op='wordcount'] .meta-entry-text { display: inline; }
+}
+
+/* === 文档信息弹窗 === */
+.info-dialog { max-width: 360px; }
+.info-name {
+  margin: 0 0 16px;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.info-list { margin: 0 0 20px; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 14px; }
+.info-list li { display: grid; grid-template-columns: 80px 1fr; grid-template-rows: auto auto; column-gap: 12px; row-gap: 2px; align-items: baseline; }
+.info-label { font-size: 12px; color: var(--text-tertiary); grid-row: 1; }
+.info-value { font-size: 14px; font-weight: 600; color: var(--text-primary); grid-column: 2; }
+.info-sub { font-size: 12px; color: var(--text-tertiary); grid-column: 2; grid-row: 2; }
+
+/* === 字数统计弹窗 === */
+.wordcount-dialog { max-width: 320px; text-align: center; }
+.wordcount-list { margin: 8px 0 12px; padding: 0; list-style: none; display: flex; justify-content: space-around; gap: 8px; }
+.wordcount-item { display: flex; flex-direction: column; align-items: center; gap: 4px; flex: 1; }
+.wordcount-item.primary .wordcount-num { color: var(--accent); }
+.wordcount-num { font-size: 30px; font-weight: 700; color: var(--text-primary); line-height: 1.1; }
+.wordcount-label { font-size: 12px; color: var(--text-tertiary); }
+.wordcount-hint { margin: 0 0 16px; font-size: 12px; color: var(--text-tertiary); line-height: 1.5; }
+
+/* === 统计页（StatsView） === */
+.stats-view .metrics-body { padding: 24px 32px; }
+.stats-section { border: 1px solid var(--border-light); border-radius: 10px; padding: 14px 16px; background: var(--bg-surface); margin-bottom: 20px; }
+.stats-section .chart-title { margin: 0 0 12px; }
+
+/* 更新热力图：53 周 × 7 天，横向滚动避免挤窄 */
+.stats-heatmap { border: 1px solid var(--border-light); border-radius: 10px; padding: 14px 16px; background: var(--bg-surface); margin-bottom: 20px; }
+.heatmap-scroll { overflow-x: auto; padding-bottom: 4px; }
+.heatmap-grid { display: flex; gap: 3px; min-width: max-content; }
+.heatmap-col { display: flex; flex-direction: column; gap: 3px; }
+.heatmap-cell {
+  width: 12px;
+  height: 12px;
+  border-radius: 2px;
+  background: var(--bg-press);
+  transition: background 0.15s ease-in-out;
+}
+.heatmap-cell[data-level='1'] { background: #cfe8b4; }
+.heatmap-cell[data-level='2'] { background: #8fd14f; }
+.heatmap-cell[data-level='3'] { background: #4caf50; }
+.heatmap-cell[data-level='4'] { background: #2e7d32; }
+.heatmap-legend { display: flex; align-items: center; gap: 4px; margin-top: 10px; font-size: 11px; color: var(--text-tertiary); }
+.heatmap-legend .heatmap-cell { width: 12px; height: 12px; }
+
+/* 近 7 天迷你柱状 */
+.mini-bars { display: flex; gap: 8px; align-items: flex-end; height: 100px; }
+.mini-bar-col { display: flex; flex-direction: column; align-items: center; gap: 4px; flex: 1; height: 100%; justify-content: flex-end; }
+.mini-bar { width: 100%; max-width: 24px; min-height: 2px; border-radius: 2px; background: var(--accent); }
+.mini-bar.update { background: #ffac00; }
+.mini-bar-day { font-size: 10px; color: var(--text-tertiary); }
+
+/* 分组分布条 */
+.group-bars { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 12px; }
+.group-bar { display: flex; align-items: center; gap: 10px; }
+.group-dot { width: 10px; height: 10px; border-radius: 50%; flex: none; background: var(--text-disabled); }
+.group-bar-name { font-size: 13px; color: var(--text-primary); min-width: 72px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.group-bar-track { flex: 1; height: 8px; border-radius: 4px; background: var(--bg-press); overflow: hidden; }
+.group-bar-fill { height: 100%; border-radius: 4px; background: var(--accent); transition: width 0.3s ease-in-out; }
+.group-bar-count { font-size: 12px; color: var(--text-secondary); min-width: 28px; text-align: right; }
+
+/* 最常打开 */
+.most-opened { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 10px; }
+.most-opened-item { display: flex; align-items: center; gap: 10px; }
+.most-opened-item .rank { width: 20px; height: 20px; border-radius: 50%; background: var(--bg-press); color: var(--text-secondary); font-size: 11px; font-weight: 600; display: flex; align-items: center; justify-content: center; flex: none; }
+.most-opened-title { flex: 1; font-size: 13px; color: var(--text-primary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.most-opened-count { font-size: 12px; color: var(--text-tertiary); }
+
+@media (prefers-reduced-motion: reduce) {
+  .heatmap-cell, .group-bar-fill, .quota-fill, .mini-bar { transition: none !important; }
 }

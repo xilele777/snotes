@@ -2,8 +2,8 @@ import { defineStore } from 'pinia'
 import { ref } from 'vue'
 import type { ListView } from '../db/repo'
 
-/** 界面视图。metrics 不是笔记列表，是监控页，故与 ListView 分开表达。 */
-export type UiView = ListView | 'metrics'
+/** 界面视图。metrics 是监控页、stats 是统计页，都不是笔记列表，故与 ListView 分开表达。 */
+export type UiView = ListView | 'metrics' | 'stats'
 
 /** <720px 时列表与编辑器互斥，这里是当前显示哪一格 */
 export type MobilePane = 'list' | 'editor'

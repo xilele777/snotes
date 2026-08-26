@@ -1,4 +1,5 @@
 import { createPinia, setActivePinia } from 'pinia'
+import { nextTick } from 'vue'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { db } from '../db/schema'
 import { useNotesStore } from './notes'
@@ -171,5 +172,47 @@ describe('notes store 移动端默认选中', () => {
     await store.load()
 
     expect(store.currentId).not.toBeNull()
+  })
+})
+
+describe('notes store 打开跟踪', () => {
+  it('切换 currentId 到非 null 时递增 open_count 且不改 update_time', async () => {
+    const store = useNotesStore()
+    const note = await store.create()
+    await store.saveBody(note.id, '内容')
+
+    // 先把打开次数与时间归位到一个已知状态：手动写库再 load，
+    // 规避 create 选中触发的异步 openNote 与 load 的竞争。
+    await db.notes.update(note.id, { open_count: 0, last_open_time: 0 })
+    await store.load()
+
+    const before = store.notes.find((n) => n.id === note.id)!
+    const beforeUpdate = before.update_time
+    expect(before.open_count).toBe(0)
+
+    store.currentId = null
+    store.currentId = note.id
+    // watch 默认异步 flush，等它触发后再读内存数组
+    await nextTick()
+
+    const after = store.notes.find((n) => n.id === note.id)!
+    expect(after.open_count).toBe(1)
+    expect(after.update_time).toBe(beforeUpdate)
+
+    await vi.waitFor(async () => {
+      const row = await db.notes.get(note.id)
+      expect(row!.open_count).toBe(1)
+    })
+  })
+
+  it('切到 null 不计打开次数', async () => {
+    const store = useNotesStore()
+    const note = await store.create()
+    const before = store.notes.find((n) => n.id === note.id)!.open_count ?? 0
+
+    store.currentId = null
+
+    const after = store.notes.find((n) => n.id === note.id)!.open_count ?? 0
+    expect(after).toBe(before)
   })
 })

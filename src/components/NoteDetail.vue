@@ -1,9 +1,12 @@
 <script setup lang="ts">
-import { onMounted, onUnmounted, ref } from 'vue'
+import { computed, onMounted, onUnmounted, ref } from 'vue'
+import { countWords } from '../../shared/derive'
 import MilkdownEditor from '../editor/MilkdownEditor.vue'
 import { useGroupsStore } from '../stores/groups'
 import { useNotesStore } from '../stores/notes'
 import ConfirmDialog from './ConfirmDialog.vue'
+import NoteInfoDialog from './NoteInfoDialog.vue'
+import WordCountDialog from './WordCountDialog.vue'
 
 const props = withDefaults(defineProps<{ readonly?: boolean }>(), { readonly: false })
 defineEmits<{ back: [] }>()
@@ -53,6 +56,13 @@ function runDelete() {
   }
   confirmAction.value = null
 }
+
+/** 文档信息 / 字数统计弹窗开关 */
+const showInfo = ref(false)
+const showWordCount = ref(false)
+
+/** 当前笔记字数统计（实时随正文变化） */
+const wordCount = computed(() => countWords(notes.current?.body ?? ''))
 </script>
 
 <template>
@@ -64,6 +74,24 @@ function runDelete() {
           <path d="M15 18l-6-6 6-6" />
         </svg>
       </button>
+
+      <!-- 文档信息 & 字数统计入口：点击弹窗查看，回收站只读态也可见 -->
+      <div v-if="notes.current" class="meta-entries">
+        <button class="meta-entry" data-op="info" title="文档信息" aria-label="文档信息" @click="showInfo = true">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="10" />
+            <line x1="12" y1="16" x2="12" y2="12" />
+            <line x1="12" y1="8" x2="12.01" y2="8" />
+          </svg>
+          <span class="meta-entry-text">信息</span>
+        </button>
+        <button class="meta-entry" data-op="wordcount" title="字数统计" aria-label="字数统计" @click="showWordCount = true">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M4 7h16M4 12h16M4 17h10" />
+          </svg>
+          <span class="meta-entry-text">{{ wordCount.words }}</span>
+        </button>
+      </div>
 
       <!-- 回收站详情：只读，动作换成恢复 / 彻底删除 -->
       <template v-if="readonly">
@@ -223,5 +251,8 @@ function runDelete() {
       @confirm="runDelete"
       @cancel="confirmAction = null"
     />
+
+    <NoteInfoDialog :open="showInfo" :note="notes.current" @close="showInfo = false" />
+    <WordCountDialog :open="showWordCount" :count="wordCount" @close="showWordCount = false" />
   </main>
 </template>

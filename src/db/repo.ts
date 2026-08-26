@@ -63,6 +63,9 @@ export async function createNote(content: string): Promise<LocalNote> {
     // 0 = 服务端还没确认过任何版本；create 成功后由 applyAck 写成 1
     body_version: 0,
     dirty: 'both',
+    // 纯本地统计字段：打开次数 / 最近打开时间，不同步服务端
+    open_count: 0,
+    last_open_time: 0,
   }
 
   await db.transaction('rw', db.notes, db.outbox, async () => {
@@ -193,6 +196,30 @@ export async function purgeTrash(): Promise<void> {
 
 export function getNote(id: string): Promise<LocalNote | undefined> {
   return db.notes.get(id)
+}
+
+/**
+ * 记一次「打开笔记」：递增 open_count、刷新 last_open_time。
+ * 纯本地行为——不动 update_time、不入 outbox、不同步服务端，
+ * 因此「点开笔记」不会改变列表排序，也不会把别人的列表冲乱。
+ * 旧笔记若没有这两个字段（升级前创建），按 0 兜底再 +1。
+ */
+export interface OpenNoteResult {
+  open_count: number
+  last_open_time: number
+}
+
+export async function openNote(id: string): Promise<OpenNoteResult | undefined> {
+  return db.transaction('rw', db.notes, async () => {
+    const note = await db.notes.get(id)
+    if (!note) return undefined
+    const result = {
+      open_count: (note.open_count ?? 0) + 1,
+      last_open_time: Date.now(),
+    }
+    await db.notes.update(id, result)
+    return result
+  })
 }
 
 export async function listNotes(filter: ListFilter): Promise<LocalNote[]> {
