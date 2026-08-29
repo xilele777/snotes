@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { countWords, derive, extractSummary, extractThumbnail, extractTitle } from './derive'
+import { countWords, derive, extractSearchExcerpt, extractSummary, extractThumbnail, extractTitle } from './derive'
 
 describe('countWords', () => {
   it('空正文返回 0', () => {
@@ -143,6 +143,22 @@ describe('extractSummary', () => {
 
   it('空内容返回空串', () => {
     expect(extractSummary('')).toBe('')
+  })
+})
+
+describe('extractSearchExcerpt', () => {
+  it('定位正文深处的命中词，并去掉 Markdown 标记', () => {
+    const md = `标题\n${'前文'.repeat(50)}\n- **目标关键词** 在这里\n${'后文'.repeat(50)}`
+    const excerpt = extractSearchExcerpt(md, '关键词')
+    expect(excerpt).toContain('目标关键词 在这里')
+    expect(excerpt).not.toContain('**')
+    expect(excerpt).toMatch(/^\.\.\./)
+    expect(excerpt).toMatch(/\.\.\.$/)
+  })
+
+  it('不匹配正文或搜索词为空时返回 null', () => {
+    expect(extractSearchExcerpt('标题\n正文', '不存在')).toBeNull()
+    expect(extractSearchExcerpt('标题\n正文', '  ')).toBeNull()
   })
 })
 

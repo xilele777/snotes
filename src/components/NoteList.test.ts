@@ -251,6 +251,22 @@ describe('NoteList', () => {
     expect(ui.query).toBe('')
   })
 
+  it('搜索命中正文深处时显示命中片段并高亮', async () => {
+    const store = useNotesStore()
+    const note = await store.create()
+    await store.saveBody(note.id, `会议纪要\n${'普通内容 '.repeat(30)}预算评审结论${' 后续内容'.repeat(30)}`)
+
+    const ui = useUiStore()
+    ui.query = '预算评审'
+
+    const wrapper = mount(NoteList)
+    await wrapper.vm.$nextTick()
+
+    const summary = wrapper.find('.note-summary')
+    expect(summary.text()).toContain('预算评审结论')
+    expect(summary.find('.hit').text()).toBe('预算评审')
+  })
+
   // 行高一致的结构前提：摘要块必须常驻，缺了它日期行会整体上移
   it('只有标题的笔记摘要为空，但摘要块与日期行照样在', async () => {
     const store = useNotesStore()

@@ -62,6 +62,24 @@ export function extractSummary(md: string): string {
   return textLines(md).slice(1).join(' ').slice(0, SUMMARY_MAX)
 }
 
+/**
+ * 搜索命中正文深处时，截取命中词周围的可见文本。标题由列表单独展示，
+ * 因此这里从第二个文本行开始，避免结果摘要重复标题。
+ */
+export function extractSearchExcerpt(md: string, query: string, limit = SUMMARY_MAX): string | null {
+  const q = query.trim().toLowerCase()
+  if (!q) return null
+
+  const content = textLines(md).slice(1).join(' ')
+  const index = content.toLowerCase().indexOf(q)
+  if (index === -1) return null
+
+  const start = Math.max(0, index - Math.floor((limit - q.length) / 2))
+  const end = Math.min(content.length, start + limit)
+  const excerpt = content.slice(start, end).trim()
+  return `${start > 0 ? '...' : ''}${excerpt}${end < content.length ? '...' : ''}`
+}
+
 export function extractThumbnail(md: string): string | null {
   for (const match of md.matchAll(IMAGE_RE)) {
     const url = match[1]

@@ -1,8 +1,10 @@
 <script setup lang="ts">
+import { computed } from 'vue'
+import { extractSearchExcerpt } from '../../shared/derive'
 import type { LocalNote } from '../../shared/types'
 import { highlight } from './SearchBar'
 
-withDefaults(
+const props = withDefaults(
   defineProps<{
     note: LocalNote
     active?: boolean
@@ -12,6 +14,18 @@ withDefaults(
   }>(),
   { active: false, swiped: false, query: '' }
 )
+
+/** 标题未命中而正文命中时，用命中附近的正文替换普通摘要。 */
+const displaySummary = computed(() => {
+  const query = props.query.trim()
+  if (!query) return props.note.summary
+
+  const normalized = query.toLowerCase()
+  if (props.note.title.toLowerCase().includes(normalized) || props.note.summary.toLowerCase().includes(normalized)) {
+    return props.note.summary
+  }
+  return extractSearchExcerpt(props.note.body, query) ?? props.note.summary
+})
 
 /** 日期格式化：今天显示 HH:mm，否则 MM-DD，跨年带年份 */
 function fmtDate(ts: number): string {
@@ -49,7 +63,7 @@ function fmtDate(ts: number): string {
         </template>
         <template v-else>无标题</template>
       </div>
-      <div class="note-summary">{{ note.summary }}</div>
+      <div class="note-summary"><span v-for="(seg, i) in highlight(displaySummary, query)" :key="i" :class="{ hit: seg.hit }">{{ seg.text }}</span></div>
     </div>
 
     <!-- 底部日期行：日期 + 常驻标记图标（置顶/星标，原站 note_list_item_date） -->
