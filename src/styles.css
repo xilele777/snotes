@@ -958,7 +958,7 @@ body { color: var(--text-primary); background: var(--bg-app); font-size: 16px; l
 .dialog-btn.ok:disabled { background: var(--bg-press); color: var(--text-disabled); cursor: not-allowed; }
 
 /* === 搜索高亮（UI 规格 §10） === */
-.note-title .hit { background: var(--primary-yellow); border-radius: 2px; }
+.note-title .hit, .note-summary .hit { background: var(--primary-yellow); border-radius: 2px; }
 
 /* === 回收站（UI 规格 §4.4） === */
 .clean-all {
