@@ -1141,7 +1141,7 @@ html {
 .wordcount-hint { margin: 0 0 16px; font-size: 12px; color: var(--text-tertiary); line-height: 1.5; }
 
 /* === 统计页（StatsView） === */
-.stats-view .metrics-body { padding: 24px 32px; }
+.stats-view .metrics-body { width: 100%; max-width: none; padding: 24px 32px; }
 .list-skeleton { list-style: none; padding: 0; margin: 0; }
 .list-skeleton-row { padding: 15px 16px; border-bottom: 1px solid var(--border-light); display: flex; flex-direction: column; gap: 9px; }
 .skeleton-line { display: block; height: 11px; border-radius: 3px; background: var(--bg-press); background-image: linear-gradient(90deg, transparent, rgba(255,255,255,.45), transparent); background-size: 220% 100%; animation: skeleton-shimmer 1.2s ease-in-out infinite; }
@@ -1153,6 +1153,7 @@ html {
 .stats-numbers b { color: var(--text-primary); font-size: 16px; }.stats-numbers i { color: var(--text-disabled); font-style: normal; }
 .stats-panel { border: 1px solid var(--border-light); border-radius: 7px; padding: 14px 16px; background: var(--bg-surface); min-width: 0; }
 .stats-panel .chart-title { margin: 0 0 12px; }.chart-title small { font-size: 11px; color: var(--text-tertiary); font-weight: 400; }
+.chart-heading { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }.chart-heading .chart-title { min-width: 0; }.chart-total { flex: none; color: var(--text-tertiary); font-size: 11px; font-variant-numeric: tabular-nums; white-space: nowrap; }.chart-empty { height: 120px; display: flex; align-items: center; justify-content: center; margin: 0; color: var(--text-tertiary); font-size: 12px; }
 .stats-heatmap { grid-column: span 8; margin: 0; }.writing-hours { grid-column: span 4; }.stats-daily { grid-column: span 12; }.length-panel, .group-panel { grid-column: span 3; }.opened-panel { grid-column: span 6; }
 .heatmap-streak { margin-left: auto; }.hour-bars, .daily-bars { height: 120px; display: flex; align-items: end; gap: 3px; }
 .hour-bar-col, .daily-bar-col { height: 100%; flex: 1; min-width: 0; display: flex; flex-direction: column; justify-content: end; align-items: center; position: relative; }
@@ -1163,14 +1164,15 @@ html {
 .stats-section { border: 1px solid var(--border-light); border-radius: 10px; padding: 14px 16px; background: var(--bg-surface); margin-bottom: 20px; }
 .stats-section .chart-title { margin: 0 0 12px; }
 
-/* 更新热力图：53 周 × 7 天，横向滚动避免挤窄 */
+/* 更新热力图：53 周 × 7 天，列宽随可用空间收缩，不产生横向滚动。 */
 .stats-heatmap { border: 1px solid var(--border-light); border-radius: 10px; padding: 14px 16px; background: var(--bg-surface); margin-bottom: 20px; }
-.heatmap-scroll { overflow-x: auto; padding-bottom: 4px; }
-.heatmap-grid { display: flex; gap: 3px; min-width: max-content; }
-.heatmap-col { display: flex; flex-direction: column; gap: 3px; }
+.heatmap-scroll { overflow: hidden; }
+.heatmap-grid { display: grid; grid-template-columns: repeat(53, minmax(0, 12px)); justify-content: space-between; gap: 0; width: 100%; }
+.heatmap-col { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
 .heatmap-cell {
-  width: 12px;
-  height: 12px;
+  width: 100%;
+  height: auto;
+  aspect-ratio: 1;
   border-radius: 2px;
   background: var(--bg-press);
   transition: background 0.15s ease-in-out;
@@ -1180,7 +1182,7 @@ html {
 .heatmap-cell[data-level='3'] { background: #4caf50; }
 .heatmap-cell[data-level='4'] { background: #2e7d32; }
 .heatmap-legend { display: flex; align-items: center; gap: 4px; margin-top: 10px; font-size: 11px; color: var(--text-tertiary); }
-.heatmap-legend .heatmap-cell { width: 12px; height: 12px; }
+.heatmap-legend .heatmap-cell { width: 12px; height: 12px; aspect-ratio: auto; }
 
 /* 近 7 天迷你柱状 */
 .mini-bars { display: flex; gap: 8px; align-items: flex-end; height: 100px; }
@@ -1216,5 +1218,5 @@ html {
   .length-panel, .group-panel { grid-column: span 3; }
 }
 @media (max-width: 720px) {
-  .stats-view .metrics-body { padding: 16px; }.stats-grid { grid-template-columns: 1fr; }.stats-numbers, .stats-panel { grid-column: span 1; }.stats-numbers { gap: 6px; }.heatmap-streak { width: 100%; margin-left: 0; }.hour-bars, .daily-bars { height: 100px; }
+  .stats-view .metrics-body { padding: 16px; }.stats-grid { grid-template-columns: 1fr; }.stats-numbers, .stats-panel { grid-column: span 1; }.stats-numbers { gap: 6px; }.heatmap-streak { width: 100%; margin-left: 0; }.hour-bars, .daily-bars, .chart-empty { height: 100px; }.chart-heading { align-items: start; flex-direction: column; gap: 0; }.heatmap-col { gap: 1px; }
 }
