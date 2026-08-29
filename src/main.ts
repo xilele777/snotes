@@ -10,12 +10,15 @@ import { useGroupsStore } from './stores/groups'
 
 const app = createApp(App)
 app.use(createPinia())
+
+// 与首帧并行读取 IndexedDB；NoteList 仍会在视图数据过期时兜底重读。
+const notes = useNotesStore()
+void notes.load()
 app.mount('#app')
 
 // iOS Safari 会在存储压力下清理 IndexedDB，先申请持久化
 void navigator.storage?.persist?.()
 
-const notes = useNotesStore()
 const groups = useGroupsStore()
 
 let stopEngine: (() => void) | undefined

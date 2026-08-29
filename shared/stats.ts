@@ -34,12 +34,26 @@ export interface NoteStats {
   createdLast7: { date: string; count: number }[]
   /** 近 7 天每天更新数 */
   updatedLast7: { date: string; count: number }[]
+  /** 近 30 天创建数与更新数，供双色堆叠柱使用 */
+  createdLast30: { date: string; count: number }[]
+  updatedLast30: { date: string; count: number }[]
   /** 近 53 周（约一年）更新热力图 */
   heatmap: HeatCell[]
   /** 分组笔记计数，按数量降序 */
   byGroup: { group_id: string; name: string; color: string | null; count: number }[]
-  /** 最常打开的 5 条（打开次数降序） */
-  mostOpened: { id: string; title: string; open_count: number }[]
+  /** 当前连续更新天数与历史最长连续更新天数 */
+  streakCurrent: number
+  streakLongest: number
+  /** 按本地小时聚合的 24 个更新桶 */
+  byHour: number[]
+  /** 正常笔记的字数分布：<100 / 100-499 / 500-1999 / >=2000 */
+  lengthBuckets: { label: string; count: number }[]
+  avgWords: number
+  longest: { id: string; title: string; words: number } | null
+  /** 最常打开的 5 条（跨设备总次数降序） */
+  mostOpened: { id: string; title: string; total_count: number }[]
+  /** 最近打开的 5 条（跨设备最近打开时间降序） */
+  recentOpened: { id: string; title: string; time: number }[]
 }
 
 const DAY_MS = 86_400_000
@@ -83,6 +97,8 @@ export function computeNoteStats(
 ): NoteStats {
   const created7 = dayBuckets(7)
   const updated7 = dayBuckets(7)
+  const created30 = dayBuckets(30)
+  const updated30 = dayBuckets(30)
 
   // 热力图：最近 371 天（53 周 × 7），按周列分组
   const weeks = 53
@@ -107,6 +123,10 @@ export function computeNoteStats(
   let totalWords = 0
   let earliest: number | null = null
   let latest: number | null = null
+  const byHour = Array<number>(24).fill(0)
+  const lengthCounts = [0, 0, 0, 0]
+  let longest: NoteStats['longest'] = null
+  const updatedDays = new Set<string>()
 
   const groupCount = new Map<string, number>()
 
@@ -122,19 +142,28 @@ export function computeNoteStats(
       const wc = countWords(n.body ?? '')
       totalWords += wc.words
       totalChars += wc.chars
+      const bucket = wc.words < 100 ? 0 : wc.words < 500 ? 1 : wc.words < 2000 ? 2 : 3
+      lengthCounts[bucket]++
+      if (!longest || wc.words > longest.words) {
+        longest = { id: n.id, title: n.title || '无标题', words: wc.words }
+      }
     }
 
     if (n.create_time) {
       if (earliest === null || n.create_time < earliest) earliest = n.create_time
       const k = ymd(n.create_time)
       if (created7.has(k)) created7.set(k, (created7.get(k) ?? 0) + 1)
+      if (created30.has(k)) created30.set(k, (created30.get(k) ?? 0) + 1)
     }
     if (n.update_time) {
       if (latest === null || n.update_time > latest) latest = n.update_time
       const k = ymd(n.update_time)
       if (updated7.has(k)) updated7.set(k, (updated7.get(k) ?? 0) + 1)
+      if (updated30.has(k)) updated30.set(k, (updated30.get(k) ?? 0) + 1)
       const cell = heat.get(k)
       if (cell) cell.count += 1
+      updatedDays.add(k)
+      byHour[new Date(n.update_time).getHours()]++
     }
 
     const gid = n.group_id ?? '__none__'
@@ -153,10 +182,38 @@ export function computeNoteStats(
     .sort((a, b) => b.count - a.count)
 
   const mostOpened = notes
-    .filter((n) => n.invalid !== 2 && (n.open_count ?? 0) > 0)
-    .map((n) => ({ id: n.id, title: n.title || '无标题', open_count: n.open_count ?? 0 }))
-    .sort((a, b) => b.open_count - a.open_count)
+    .filter((n) => n.invalid !== 2 && (n.open_count ?? 0) + (n.open_others ?? 0) > 0)
+    .map((n) => ({ id: n.id, title: n.title || '无标题', total_count: (n.open_count ?? 0) + (n.open_others ?? 0) }))
+    .sort((a, b) => b.total_count - a.total_count || a.id.localeCompare(b.id))
     .slice(0, 5)
+
+  const recentOpened = notes
+    .filter((n) => n.invalid !== 2)
+    .map((n) => ({ id: n.id, title: n.title || '无标题', time: Math.max(n.last_open_time ?? 0, n.open_others_time ?? 0) }))
+    .filter((n) => n.time > 0)
+    .sort((a, b) => b.time - a.time || a.id.localeCompare(b.id))
+    .slice(0, 5)
+
+  let streakLongest = 0
+  let streakRun = 0
+  // yyyy-mm-dd 的词典顺序即日期顺序；从最早到今天扫描得到最长连续段。
+  const start = new Date()
+  start.setHours(0, 0, 0, 0)
+  const allDayKeys = [...updatedDays].sort()
+  if (allDayKeys.length) {
+    let cursor = new Date(`${allDayKeys[0]}T00:00:00`).getTime()
+    const end = start.getTime()
+    for (; cursor <= end; cursor += DAY_MS) {
+      if (updatedDays.has(ymd(cursor))) {
+        streakRun++
+        streakLongest = Math.max(streakLongest, streakRun)
+      } else streakRun = 0
+    }
+  }
+  let streakCurrent = 0
+  let currentStart = start.getTime()
+  if (!updatedDays.has(ymd(currentStart))) currentStart -= DAY_MS
+  for (let cursor = currentStart; updatedDays.has(ymd(cursor)); cursor -= DAY_MS) streakCurrent++
 
   return {
     total,
@@ -170,8 +227,22 @@ export function computeNoteStats(
     latest,
     createdLast7: [...created7.entries()].map(([date, count]) => ({ date, count })),
     updatedLast7: [...updated7.entries()].map(([date, count]) => ({ date, count })),
+    createdLast30: [...created30.entries()].map(([date, count]) => ({ date, count })),
+    updatedLast30: [...updated30.entries()].map(([date, count]) => ({ date, count })),
     heatmap: [...heat.values()],
     byGroup,
+    streakCurrent,
+    streakLongest,
+    byHour,
+    lengthBuckets: [
+      { label: '<100', count: lengthCounts[0] },
+      { label: '100-499', count: lengthCounts[1] },
+      { label: '500-1999', count: lengthCounts[2] },
+      { label: '>=2000', count: lengthCounts[3] },
+    ],
+    avgWords: active === 0 ? 0 : totalWords / active,
+    longest,
     mostOpened,
+    recentOpened,
   }
 }

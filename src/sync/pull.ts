@@ -23,8 +23,11 @@ export interface PullResult {
 }
 
 function toLocalNote(meta: NoteMeta): LocalNote {
-  // open_count / last_open_time 是纯本地字段：远端不存，新拉下来的笔记从 0 起算
-  return { ...meta, body: '', body_version: 0, dirty: 'none', open_count: 0, last_open_time: 0 }
+  // 打开统计不属于笔记内容同步，新拉下来的笔记从本设备 / 其它设备统计 0 起算。
+  return {
+    ...meta, body: '', body_version: 0, dirty: 'none', open_count: 0, last_open_time: 0,
+    open_others: 0, open_others_time: 0,
+  }
 }
 
 /** outbox 里还有未失败的正文类任务的笔记——它们的正文不能被远端覆盖 */

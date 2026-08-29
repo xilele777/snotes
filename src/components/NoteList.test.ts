@@ -211,7 +211,7 @@ describe('NoteList', () => {
 
   it('列表为空时显示空态', async () => {
     const wrapper = mount(NoteList)
-    await wrapper.vm.$nextTick()
+    await vi.waitFor(() => expect(wrapper.find('.empty-state').exists()).toBe(true))
 
     expect(wrapper.text()).toContain('还没有笔记')
     expect(wrapper.find('.empty-state .empty-action').text()).toBe('新建笔记')
@@ -222,10 +222,16 @@ describe('NoteList', () => {
     ui.view = 'star'
 
     const wrapper = mount(NoteList)
-    await wrapper.vm.$nextTick()
+    await vi.waitFor(() => expect(wrapper.find('.empty-state').exists()).toBe(true))
 
     expect(wrapper.text()).toContain('没有星标笔记')
     expect(wrapper.find('.empty-state .empty-action').exists()).toBe(false)
+  })
+
+  it('未加载时展示骨架而非空态', () => {
+    const wrapper = mount(NoteList)
+    expect(wrapper.find('.list-skeleton').exists()).toBe(true)
+    expect(wrapper.find('.empty-state').exists()).toBe(false)
   })
 
   it('搜索无结果时空态给的是清除搜索而不是新建', async () => {

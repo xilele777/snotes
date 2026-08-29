@@ -4,6 +4,7 @@ import { groupsRoutes } from './routes/groups'
 import { imagesRoutes } from './routes/images'
 import { metricsRoutes } from './routes/metrics'
 import { notesRoutes } from './routes/notes'
+import { opensRoutes } from './routes/opens'
 import { syncRoutes } from './routes/sync'
 import { trashRoutes } from './routes/trash'
 import type { Env } from './types'
@@ -17,6 +18,7 @@ export function createApp() {
   app.use('/api/*', auth)
 
   app.route('/', notesRoutes)
+  app.route('/', opensRoutes)
   app.route('/', groupsRoutes)
   app.route('/', syncRoutes)
   app.route('/', trashRoutes)

@@ -3,12 +3,12 @@ import { describe, expect, it } from 'vitest'
 import { createApp } from '../../worker/app'
 
 describe('schema', () => {
-  it('创建了全部四张表', async () => {
+  it('创建了全部五张表', async () => {
     const { results } = await env.DB.prepare(
       "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' AND name NOT LIKE 'd1_%' AND name NOT LIKE '\\_cf\\_%' ESCAPE '\\' ORDER BY name"
     ).all<{ name: string }>()
 
-    expect(results.map((r) => r.name)).toEqual(['image', 'note', 'note_body', 'note_group'])
+    expect(results.map((r) => r.name)).toEqual(['image', 'note', 'note_body', 'note_group', 'note_open'])
   })
 
   it('note 表带默认值插入后各字段符合预期', async () => {

@@ -49,6 +49,7 @@ export async function purgeNotes(env: Env, ids: string[]): Promise<void> {
   await env.DB.batch([
     env.DB.prepare(`DELETE FROM image WHERE note_id IN (${placeholders})`).bind(...ids),
     env.DB.prepare(`DELETE FROM note_body WHERE note_id IN (${placeholders})`).bind(...ids),
+    env.DB.prepare(`DELETE FROM note_open WHERE note_id IN (${placeholders})`).bind(...ids),
     // 置墓碑：invalid=2 + 推进 prop_version/update_time，保留 id/version/prop_version
     // 等同步元字段，让 pull 客户端能识别这是「已被删除」的信号。
     env.DB.prepare(
@@ -84,6 +85,7 @@ export async function reapTombstones(env: Env): Promise<string[]> {
   await env.DB.batch([
     env.DB.prepare(`DELETE FROM image WHERE note_id IN (${placeholders})`).bind(...ids),
     env.DB.prepare(`DELETE FROM note_body WHERE note_id IN (${placeholders})`).bind(...ids),
+    env.DB.prepare(`DELETE FROM note_open WHERE note_id IN (${placeholders})`).bind(...ids),
     env.DB.prepare(`DELETE FROM note WHERE id IN (${placeholders})`).bind(...ids),
   ])
   return ids

@@ -165,21 +165,43 @@ export interface BodiesResponse {
   bodies: NoteBody[]
 }
 
+/** POST /api/notes/opens：本设备累计打开数上报与其它设备聚合拉取。 */
+export interface OpensSyncRequest {
+  device_id: string
+  since: number
+  items: { note_id: string; count: number; last_open_time: number }[]
+}
+
+export interface OpenAggregate {
+  note_id: string
+  others_count: number
+  others_last_open_time: number
+}
+
+export interface OpensSyncResponse {
+  opens: OpenAggregate[]
+  server_time: number
+}
+
 /** 本地某条笔记的 dirty 标记（哪些轨道有未推送的改动）。 */
 export type DirtyState = 'none' | 'body' | 'prop' | 'both'
 
 /** 本地笔记（LocalNote = NoteMeta + 正文 + 正文版本 + dirty）。
  *
- *  open_count / last_open_time 是纯本地统计字段，不进 outbox、不同步服务端，
- *  递增它们也不动 update_time——「打开笔记」不应污染列表排序与同步。 */
+ * open_count / last_open_time 是本设备累计值；其它设备的聚合值存为本地派生字段。
+ * 所有这些字段都不进入笔记内容 outbox，也不改变 update_time。 */
 export interface LocalNote extends NoteMeta {
   body: string
   body_version: number
   dirty: DirtyState
-  /** 打开次数（纯本地，点击进入详情时递增；不同步服务端）。旧笔记可能缺失，按 0 兜底。 */
+  /** 本设备打开次数。旧笔记可能缺失，按 0 兜底。 */
   open_count?: number
-  /** 最近一次打开时间戳（纯本地，不同步服务端）。旧笔记可能缺失，按 0 兜底。 */
+  /** 本设备最近一次打开时间戳。 */
   last_open_time?: number
+  /** 服务端聚合的其它设备打开次数。 */
+  open_others?: number
+  /** 服务端聚合的其它设备最近打开时间。 */
+  open_others_time?: number
 }
 
 /* === 监控页（Bug 8）D1/R2/HITP 指标 === */

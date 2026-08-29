@@ -2,7 +2,7 @@
 
 ## 当前版本
 
-- 当前应用版本：`0.1.0`
+- 当前应用版本：`0.4.0`
 - 版本号唯一来源：根目录 `package.json` 的 `version` 字段。
 - `package-lock.json` 的根项目版本必须与 `package.json` 保持一致。
 - Cloudflare Worker 自动生成的 UUID（Deployment/Version ID）用于定位线上部署，不能替代应用版本号。

@@ -2,6 +2,7 @@ import { derive } from '../../shared/derive'
 import { mergeTask } from '../../shared/outbox'
 import type { LocalNote, NoteMeta, OutboxTask } from '../../shared/types'
 import { emitLocalWrite } from '../sync/signal'
+import { scheduleOpensSync } from '../sync/opens'
 import { db } from './schema'
 
 export type ListView = 'all' | 'trash' | 'star' | 'group'
@@ -210,7 +211,7 @@ export interface OpenNoteResult {
 }
 
 export async function openNote(id: string): Promise<OpenNoteResult | undefined> {
-  return db.transaction('rw', db.notes, async () => {
+  const result = await db.transaction('rw', db.notes, db.meta, async () => {
     const note = await db.notes.get(id)
     if (!note) return undefined
     const result = {
@@ -218,8 +219,13 @@ export async function openNote(id: string): Promise<OpenNoteResult | undefined> 
       last_open_time: Date.now(),
     }
     await db.notes.update(id, result)
+    const dirty = new Set((await getMeta<string[]>('opens_dirty')) ?? [])
+    dirty.add(id)
+    await db.meta.put({ key: 'opens_dirty', value: [...dirty] })
     return result
   })
+  if (result) scheduleOpensSync()
+  return result
 }
 
 export async function listNotes(filter: ListFilter): Promise<LocalNote[]> {

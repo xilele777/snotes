@@ -3,6 +3,7 @@ import { saveConflictCopies } from './conflict'
 import { pullOnce } from './pull'
 import { pushOnce } from './push'
 import { onLocalWrite } from './signal'
+import { flushOpensSync, syncOpens } from './opens'
 
 export const POLL_INTERVAL_MS = 30_000
 export const LOCAL_WRITE_DEBOUNCE_MS = 800
@@ -41,6 +42,7 @@ export function syncNow(): Promise<void> {
 export function startSyncEngine(): () => void {
   const onVisible = () => {
     if (document.visibilityState === 'visible') void syncNow()
+    else void flushOpensSync().catch(() => undefined)
   }
 
   const onOnline = () => void syncNow()
@@ -62,10 +64,14 @@ export function startSyncEngine(): () => void {
 
   // 页面不可见时不轮询，避免在后台白白消耗额度
   const timer = setInterval(() => {
-    if (document.visibilityState === 'visible') void syncNow()
+    if (document.visibilityState === 'visible') {
+      void syncNow()
+      void syncOpens().catch(() => undefined)
+    }
   }, POLL_INTERVAL_MS)
 
   void syncNow()
+  void syncOpens().catch(() => undefined)
 
   return () => {
     clearInterval(timer)

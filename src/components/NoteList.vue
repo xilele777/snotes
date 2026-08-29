@@ -1,7 +1,8 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import { isMobile, openDrawer, pushNav } from '../navigation'
 import EmptyState from './EmptyState.vue'
+import ListSkeleton from './ListSkeleton.vue'
 import NoteListItem from './NoteListItem.vue'
 import ConfirmDialog from './ConfirmDialog.vue'
 import { useNotesStore } from '../stores/notes'
@@ -76,7 +77,14 @@ function onEmptyAction() {
   else notes.create()
 }
 
-onMounted(() => notes.load())
+onMounted(() => {
+  if (notes.stale) void notes.load()
+})
+
+watch(
+  () => [ui.view, ui.activeGroupId],
+  () => { if (notes.stale) void notes.load() }
+)
 </script>
 
 <template>
@@ -98,8 +106,10 @@ onMounted(() => notes.load())
       </button>
     </div>
 
+    <ListSkeleton v-if="notes.stale" />
+
     <EmptyState
-      v-if="notes.visible.length === 0"
+      v-else-if="notes.visible.length === 0"
       :title="empty.title"
       :hint="empty.hint"
       :action="empty.action"

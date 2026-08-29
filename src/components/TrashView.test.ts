@@ -34,7 +34,7 @@ describe('TrashView', () => {
     ui.view = 'trash'
 
     const wrapper = mount(TrashView)
-    await wrapper.vm.$nextTick()
+    await vi.waitFor(() => expect(wrapper.find('.empty-state').exists()).toBe(true))
 
     expect(wrapper.find('.clean-all').exists()).toBe(false)
   })
@@ -75,7 +75,7 @@ describe('TrashView', () => {
     ui.view = 'trash'
 
     const wrapper = mount(TrashView)
-    await wrapper.vm.$nextTick()
+    await vi.waitFor(() => expect(wrapper.find('.empty-state').exists()).toBe(true))
 
     expect(wrapper.find('.empty-state').text()).toContain('回收站是空的')
   })

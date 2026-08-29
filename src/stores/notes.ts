@@ -10,6 +10,15 @@ export const useNotesStore = defineStore('notes', () => {
   const ui = useUiStore()
   const notes = ref<LocalNote[]>([])
   const currentId = ref<string | null>(null)
+  const loadedKey = ref<string | null>(null)
+  let loadSeq = 0
+
+  function viewKey(): string {
+    return `${ui.view}:${ui.activeGroupId ?? ''}`
+  }
+
+  /** 当前内存中的列表是否确实属于正在看的视图。 */
+  const stale = computed(() => loadedKey.value !== viewKey())
 
   const current = computed(() => notes.value.find((n) => n.id === currentId.value))
 
@@ -60,8 +69,14 @@ export const useNotesStore = defineStore('notes', () => {
   })
 
   async function load() {
+    const seq = ++loadSeq
+    const key = viewKey()
     // metrics 视图不经这里取数（MetricsView 直接调 apiMetrics），所以 types 收窄到列表视图是安全的
-    notes.value = await repo.listNotes({ view: ui.view as ListView, groupId: ui.activeGroupId })
+    const rows = await repo.listNotes({ view: ui.view as ListView, groupId: ui.activeGroupId })
+    // 视图快速切换时，较早查询的结果不能覆盖较新的查询。
+    if (seq !== loadSeq) return
+    notes.value = rows
+    loadedKey.value = key
 
     // 当前选中项必须始终在当前列表里。切视图、恢复、彻底删除、清空回收站都会让它落空，
     // 留着一个指不到任何笔记的 currentId，详情页就是一块永远空白的板子。
@@ -125,5 +140,5 @@ export const useNotesStore = defineStore('notes', () => {
     await load()
   }
 
-  return { notes, currentId, current, visible, load, create, saveBody, setProps, trash, recover, purge, purgeAll }
+  return { notes, currentId, current, visible, stale, load, create, saveBody, setProps, trash, recover, purge, purgeAll }
 })

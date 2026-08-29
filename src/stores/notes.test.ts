@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { db } from '../db/schema'
 import { useNotesStore } from './notes'
 import { useUiStore } from './ui'
+import * as repo from '../db/repo'
 
 beforeEach(async () => {
   setActivePinia(createPinia())
@@ -128,6 +129,26 @@ describe('notes store', () => {
     await store.load()
 
     expect(store.currentId).toBeNull()
+  })
+
+  it('并发 load 时丢弃较早视图的晚到结果', async () => {
+    const store = useNotesStore()
+    const ui = useUiStore()
+    let resolveFirst!: (rows: Awaited<ReturnType<typeof repo.listNotes>>) => void
+    const first = new Promise<Awaited<ReturnType<typeof repo.listNotes>>>((resolve) => { resolveFirst = resolve })
+    const list = vi.spyOn(repo, 'listNotes')
+      .mockReturnValueOnce(first)
+      .mockResolvedValueOnce([])
+
+    const oldLoad = store.load()
+    ui.view = 'star'
+    await store.load()
+    resolveFirst([{ id: 'old' } as Awaited<ReturnType<typeof repo.listNotes>>[number]])
+    await oldLoad
+
+    expect(store.stale).toBe(false)
+    expect(store.notes).toEqual([])
+    list.mockRestore()
   })
 
   it('currentId 指不到列表里任何笔记时，load 会重选到列表第一条', async () => {

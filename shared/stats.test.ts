@@ -74,7 +74,7 @@ describe('computeNoteStats', () => {
     )
     const s = computeNoteStats(notes, [])
     expect(s.mostOpened).toHaveLength(5)
-    expect(s.mostOpened[0].open_count).toBe(6)
+    expect(s.mostOpened[0].total_count).toBe(6)
     expect(s.mostOpened[0].title).toBe('笔记6')
   })
 
@@ -99,5 +99,26 @@ describe('computeNoteStats', () => {
     const s = computeNoteStats(notes, [])
     expect(s.earliest).toBe(50)
     expect(s.latest).toBe(300)
+  })
+
+  it('统计连续写作、时段、长度分布和跨设备打开排序', () => {
+    const now = new Date()
+    now.setHours(23, 0, 0, 0)
+    const yesterday = now.getTime() - 86_400_000
+    const atMidnight = new Date(now)
+    atMidnight.setHours(0, 0, 0, 0)
+    const notes = [
+      makeNote({ id: 'a', body: '字'.repeat(99), update_time: yesterday, open_count: 1, open_others: 8, last_open_time: 1, open_others_time: 30 }),
+      makeNote({ id: 'b', body: '字'.repeat(100), update_time: atMidnight.getTime(), open_count: 3, open_others: 1, last_open_time: 40 }),
+      makeNote({ id: 'c', body: '字'.repeat(500), update_time: now.getTime() }),
+      makeNote({ id: 'd', body: '字'.repeat(2000), update_time: now.getTime() }),
+    ]
+    const s = computeNoteStats(notes, [])
+    expect(s.streakCurrent).toBe(2)
+    expect(s.byHour[0]).toBe(1)
+    expect(s.byHour[23]).toBe(3)
+    expect(s.lengthBuckets.map((b) => b.count)).toEqual([1, 1, 1, 1])
+    expect(s.mostOpened[0]).toMatchObject({ id: 'a', total_count: 9 })
+    expect(s.recentOpened[0]).toMatchObject({ id: 'b', time: 40 })
   })
 })

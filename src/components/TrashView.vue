@@ -1,12 +1,17 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { onMounted, ref } from 'vue'
 import { openDrawer } from '../navigation'
 import EmptyState from './EmptyState.vue'
+import ListSkeleton from './ListSkeleton.vue'
 import NoteListItem from './NoteListItem.vue'
 import ConfirmDialog from './ConfirmDialog.vue'
 import { useNotesStore } from '../stores/notes'
 
 const notes = useNotesStore()
+
+onMounted(() => {
+  if (notes.stale) void notes.load()
+})
 
 /** 确认弹窗：null 关闭；{ kind: 'single' } 是某条笔记的彻底删除，'clean' 是清空回收站 */
 const confirm = ref<{ kind: 'single'; id: string } | { kind: 'clean' } | null>(null)
@@ -35,7 +40,8 @@ async function runConfirm() {
       </button>
     </div>
 
-    <EmptyState v-if="notes.notes.length === 0" title="回收站是空的" hint="删掉的笔记会先放到这里" />
+    <ListSkeleton v-if="notes.stale" />
+    <EmptyState v-else-if="notes.notes.length === 0" title="回收站是空的" hint="删掉的笔记会先放到这里" />
 
     <ul v-else class="note-list">
       <NoteListItem

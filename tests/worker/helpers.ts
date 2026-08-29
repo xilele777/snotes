@@ -28,6 +28,7 @@ export async function resetDb() {
     env.DB.prepare('DELETE FROM note_body'),
     env.DB.prepare('DELETE FROM note'),
     env.DB.prepare('DELETE FROM note_group'),
+    env.DB.prepare('DELETE FROM note_open'),
   ])
 }
 
