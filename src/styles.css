@@ -505,6 +505,8 @@ body { color: var(--text-primary); background: var(--bg-app); font-size: 16px; l
 }
 .token-title { margin: 0; font-size: 22px; font-weight: 700; color: var(--text-primary); }
 .token-hint { margin: 0; font-size: 14px; color: var(--text-secondary); }
+/* Bug 1：令牌失效（401）后回到登录卡的说明文字，红色提醒过期而非首次使用 */
+.token-error { margin: 0; font-size: 13px; color: #d93025; line-height: 1.4; }
 .token-card input {
   height: 36px;
   border: 1px solid var(--border-input);

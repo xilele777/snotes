@@ -94,6 +94,20 @@ describe('updateBody', () => {
     expect(bodyTasks).toHaveLength(1)
     expect((bodyTasks[0].payload as { content: string }).content).toBe('d')
   })
+
+  it('对已物理删除的笔记 updateBody 不重建本地行、也不入队', async () => {
+    const note = await createNote('a')
+    await purgeNote(note.id)
+    expect(await db.notes.get(note.id)).toBeUndefined()
+
+    // 旧编辑器里仍指向这条被删笔记的输入，不应把行或 outbox 任务复活
+    await updateBody(note.id, 'b')
+
+    const remaining = await db.outbox.toArray()
+    expect(remaining).toHaveLength(1) // 只剩那条 purge 任务
+    expect(remaining[0].kind).toBe('purge')
+    expect(await db.notes.get(note.id)).toBeUndefined()
+  })
 })
 
 describe('updateProps', () => {

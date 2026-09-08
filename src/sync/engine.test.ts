@@ -1,5 +1,6 @@
 import { createPinia, setActivePinia } from 'pinia'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { clearToken, hasToken, setToken } from '../api/token'
 import { db } from '../db/schema'
 import { useUiStore } from '../stores/ui'
 import { POLL_INTERVAL_MS, LOCAL_WRITE_DEBOUNCE_MS, startSyncEngine, syncNow } from './engine'
@@ -32,6 +33,8 @@ beforeEach(async () => {
   await db.open()
   vi.useFakeTimers()
   setVisibility('visible')
+  // syncNow 现在会在令牌缺失时跳过 pull；默认把令牌置上，避免测试间状态串扰
+  setToken('engine-test-token')
 
   pushOnce.mockReset().mockResolvedValue({ sent: 0, failed: 0, failedTotal: 0, conflicts: [] })
   pullOnce.mockReset().mockResolvedValue({ pages: 1, applied: 0, bodies: 0 })
@@ -41,6 +44,7 @@ beforeEach(async () => {
 afterEach(() => {
   stop?.()
   stop = undefined
+  clearToken()
   vi.useRealTimers()
 })
 
@@ -136,6 +140,25 @@ describe('syncNow', () => {
     await syncNow()
 
     expect(ui.lastSyncError).toBeNull()
+  })
+
+  it('push 途中令牌失效（401）不再发注定失败的 pull（Bug 1）', async () => {
+    let pulled = false
+    pullOnce.mockImplementation(() => {
+      pulled = true
+      return Promise.resolve({ pages: 1, applied: 0, bodies: 0 })
+    })
+    pushOnce.mockImplementation(async () => {
+      // 模拟 client 401 处理：同步引擎开着的时候令牌就地失效
+      hasToken.value = false
+      return { sent: 0, failed: 1, failedTotal: 0, conflicts: [] }
+    })
+
+    await syncNow()
+
+    // 令牌都没了，pull 必然也 401；跳过它省掉一次注定失败的请求
+    expect(pulled).toBe(false)
+    expect(pullOnce).not.toHaveBeenCalled()
   })
 })
 

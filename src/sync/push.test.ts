@@ -220,6 +220,54 @@ describe('pushOnce', () => {
     expect(await db.outbox.count()).toBe(1)
   })
 
+  it('401 短路整轮——clearToken 后剩余任务注定 401，break 不空转', async () => {
+    await createNote('a')
+    await createNote('b')
+    apiFetch.mockRejectedValue(new ApiError(401, 'unauthorized'))
+
+    const result = await pushOnce()
+
+    // 只发第一条就被 401 打断；outbox 里两条都原样留着，登录后首轮续推
+    expect(apiFetch).toHaveBeenCalledTimes(1)
+    expect(result.failed).toBe(1)
+    expect(await db.outbox.count()).toBe(2)
+  })
+
+  it('404 not_found（服务端已物理删除）丢弃残留任务，不标 failed', async () => {
+    const note = await createNote('a')
+    await pushOnce()
+    apiFetch.mockClear()
+
+    // 服务端那一行已被彻底删除（如过了墓碑保留期），再 PATCH 必然 404
+    await updateBody(note.id, '又编辑了一版')
+    apiFetch.mockRejectedValue(new ApiError(404, 'not_found'))
+
+    const result = await pushOnce()
+
+    // 任务永远没有成功可能，丢弃让它别卡死「改动未推送」的红点；不算 failed
+    expect(await db.outbox.count()).toBe(0)
+    expect(result.failed).toBe(0)
+    expect(result.failedTotal).toBe(0)
+  })
+
+  it('404 丢弃也尊重 seq——请求在途时被合并就不删，新 payload 下轮再发', async () => {
+    const note = await createNote('a')
+    await pushOnce()
+    apiFetch.mockClear()
+
+    await updateProps(note.id, { star: 1 })
+    apiFetch.mockImplementation(async () => {
+      await updateProps(note.id, { star: 0 }) // 在途再次编辑，enqueue 合并并递增 seq
+      throw new ApiError(404, 'not_found')
+    })
+
+    await pushOnce()
+
+    const rows = await db.outbox.toArray()
+    expect(rows).toHaveLength(1)
+    expect(rows[0].payload).toMatchObject({ star: 0 })
+  })
+
   it('网络错误按可重试处理', async () => {
     await createNote('a')
     apiFetch.mockRejectedValue(new TypeError('Failed to fetch'))

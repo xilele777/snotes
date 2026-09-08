@@ -1,6 +1,13 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { ApiError, apiFetch } from './client'
-import { clearToken, getToken, hasToken, setToken } from './token'
+import {
+  authNotice,
+  clearToken,
+  getToken,
+  hasToken,
+  markTokenInvalid,
+  setToken,
+} from './token'
 
 beforeEach(() => {
   localStorage.clear()
@@ -68,6 +75,23 @@ describe('token', () => {
   })
 })
 
+describe('authNotice', () => {
+  it('默认为空——首次使用不应有任何过期提示', () => {
+    expect(authNotice.value).toBeNull()
+  })
+
+  it('markTokenInvalid 写入过期提示', () => {
+    markTokenInvalid()
+    expect(authNotice.value).toContain('失效')
+  })
+
+  it('setToken 清空旧提示，避免残留误导', () => {
+    markTokenInvalid()
+    setToken('abc')
+    expect(authNotice.value).toBeNull()
+  })
+})
+
 describe('apiFetch', () => {
   it('自动附带 Bearer 头', async () => {
     setToken('tok')
@@ -96,13 +120,14 @@ describe('apiFetch', () => {
     expect(await apiFetch<{ version: number }>('/api/x')).toEqual({ version: 3 })
   })
 
-  it('401 时清空本地令牌并抛出 ApiError', async () => {
+  it('401 时清空本地令牌、置过期提示并抛出 ApiError', async () => {
     setToken('bad')
     mockFetch(401, { error: 'unauthorized' })
 
     await expect(apiFetch('/api/x')).rejects.toBeInstanceOf(ApiError)
     expect(getToken()).toBeNull()
     expect(hasToken.value).toBe(false)
+    expect(authNotice.value).toContain('失效')
   })
 
   it('非 2xx 抛出带状态码的 ApiError', async () => {
@@ -119,5 +144,36 @@ describe('apiFetch', () => {
     await apiFetch('/api/health')
 
     expect(String(fn.mock.calls[0][0])).not.toContain('secret-token')
+  })
+
+  it('请求挂起超过 15s 以 abort 失败，不永久占住 inFlight（Bug 4）', async () => {
+    vi.useFakeTimers()
+    try {
+      setToken('tok')
+      // 模拟「网络挂起」：fetch 永不 resolve，但会响应 abort 信号
+      const fn = vi.fn(
+        (_input: RequestInfo | URL, init?: RequestInit) =>
+          new Promise<Response>((_resolve, reject) => {
+            init?.signal?.addEventListener('abort', () => {
+              reject(new DOMException('Aborted', 'AbortError'))
+            })
+          })
+      )
+      vi.stubGlobal('fetch', fn)
+
+      const promise = apiFetch('/api/x')
+      let settled = false
+      promise.catch(() => {
+        settled = true
+      })
+      await vi.advanceTimersByTimeAsync(1) // 留一拍微任务，确认超时前确实还挂着
+      expect(fn).toHaveBeenCalledTimes(1)
+      expect(settled).toBe(false)
+
+      await vi.advanceTimersByTimeAsync(15_000)
+      await expect(promise).rejects.toThrow()
+    } finally {
+      vi.useRealTimers()
+    }
   })
 })

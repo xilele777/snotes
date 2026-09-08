@@ -1,4 +1,5 @@
 import { useUiStore } from '../stores/ui'
+import { hasToken } from '../api/token'
 import { saveConflictCopies } from './conflict'
 import { pullOnce } from './pull'
 import { pushOnce } from './push'
@@ -25,6 +26,10 @@ export function syncNow(): Promise<void> {
       if (result.conflicts.length > 0) {
         await saveConflictCopies(result.conflicts)
       }
+
+      // Bug 1：push 途中若收到 401，client 已 clearToken + markTokenInvalid，
+      // hasToken 此刻为 false，界面也在切回 TokenGate——别再发注定失败的 pull。
+      if (!hasToken.value) return
 
       await pullOnce()
       ui.lastSyncError = null

@@ -9,8 +9,18 @@ import {
   extractWorkersUsage,
   gql,
 } from '../../worker/metrics/graphql'
+import { collectCache, versionKey } from '../../worker/metrics/collect'
 
 const OK = { Authorization: 'Bearer test-token' }
+
+/** 测试环境默认没配 CF 凭证，路由会先 503；注入后才能走到 collectMetrics。 */
+const metricsEnv = {
+  ...env,
+  CF_ACCOUNT_ID: 'acct',
+  CF_API_TOKEN: 'token',
+  D1_DATABASE_ID: 'd1',
+  R2_BUCKET_NAME: 'bucket',
+}
 
 describe('POST /api/metrics/types', () => {
   it('未配置 CF_ACCOUNT_ID / CF_API_TOKEN 时返回 503 与 not_configured', async () => {
@@ -20,6 +30,78 @@ describe('POST /api/metrics/types', () => {
 
     expect(res.status).toBe(503)
     expect(await res.json()).toMatchObject({ error: 'not_configured' })
+  })
+
+  it('短时间内的多次请求命中缓存，不重复打 CF Analytics', async () => {
+    collectCache.clear()
+    let calls = 0
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => {
+        calls++
+        const ok = (data: unknown) =>
+          new Response(JSON.stringify({ data }), { status: 200, headers: { 'content-type': 'application/json' } })
+        return ok({ viewer: { accounts: [{}] } })
+      })
+    )
+
+    const app = createApp()
+    const first = await app.request('/api/metrics/types', { method: 'POST', headers: OK }, metricsEnv)
+    const second = await app.request('/api/metrics/types', { method: 'POST', headers: OK }, metricsEnv)
+    const third = await app.request('/api/metrics/types', { method: 'POST', headers: OK }, metricsEnv)
+
+    expect(first.status).toBe(200)
+    expect(second.status).toBe(200)
+    expect(third.status).toBe(200)
+    // TTL 内三次请求只落一次 collectFresh——而每次 collectFresh 并发打 4 个 CF 查询
+    expect(calls).toBe(4)
+    collectCache.clear()
+    vi.unstubAllGlobals()
+  })
+})
+
+describe('metrics 缓存键', () => {
+  afterEach(() => {
+    collectCache.clear()
+    vi.unstubAllGlobals()
+  })
+
+  it('versionKey 由账号、数据库、桶名拼成，彼此区分', () => {
+    expect(versionKey('a', 'd1', 'b')).toBe('metrics:a:d1:b')
+    expect(versionKey('a', 'd1', 'b2')).not.toBe(versionKey('a', 'd1', 'b'))
+  })
+
+  it('TTL 过期后再次请求重新打 CF', async () => {
+    collectCache.clear()
+    let calls = 0
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => {
+        calls++
+        const ok = (data: unknown) =>
+          new Response(JSON.stringify({ data }), { status: 200, headers: { 'content-type': 'application/json' } })
+        return ok({ viewer: { accounts: [{}] } })
+      })
+    )
+    // collectMetrics 内部多次读 Date.now（取月、算过期时间、判命中），
+    // 用可变时钟控制「是否已超过 TTL」，比数着 mockReturnValueOnce 的调用次序稳。
+    const clock = { now: 1_800_000_000_000 }
+    const nowSpy = vi.spyOn(Date, 'now').mockImplementation(() => clock.now)
+
+    try {
+      const app = createApp()
+      await app.request('/api/metrics/types', { method: 'POST', headers: OK }, metricsEnv)
+      await app.request('/api/metrics/types', { method: 'POST', headers: OK }, metricsEnv)
+      expect(calls).toBe(4) // 首次 collectFresh 并发 4 个 CF 查询；第二次命中缓存
+
+      clock.now += 60_001 // 超过 60s TTL
+      await app.request('/api/metrics/types', { method: 'POST', headers: OK }, metricsEnv)
+      expect(calls).toBe(8) // 缓存过期后再打一次完整的 4 查询
+    } finally {
+      nowSpy.mockRestore()
+      collectCache.clear()
+      vi.unstubAllGlobals()
+    }
   })
 })
 
@@ -177,7 +259,10 @@ describe('gql', () => {
 })
 
 describe('collectMetrics', () => {
-  afterEach(() => vi.unstubAllGlobals())
+  afterEach(() => {
+    collectCache.clear()
+    vi.unstubAllGlobals()
+  })
 
   it('一次聚合月度用量：趋势、存储与额度使用同一份数据', async () => {
     const days = [new Date().toISOString().slice(0, 10)]

@@ -33,8 +33,42 @@ const FREE_LIMITS = {
 /**
  * 一次拉取自然月至今的用量，前端趋势取最后 7 天。
  * 这比“趋势一次、额度再一次”少一半 Analytics 查询，也让额度和趋势使用同一份数据。
+ *
+ * Bug 9：监控页每次进入都会命中本函数，背后是 4 个 CF GraphQL Analytics 查询。
+ * 这里对整份结果做 TTL 缓存——监控页并不需要实时精确到秒的用量，60 秒内的重复
+ * 请求复用上次结果即可，既省 Analytics 额度，也让快速来回切视图时页面不闪加载态。
  */
 export async function collectMetrics(ctx: MetricsContext): Promise<MetricsData> {
+  const key = versionKey(ctx.accountId, ctx.d1DatabaseId, ctx.r2BucketName)
+  const cached = collectCache.get(key)
+  if (cached) {
+    if (cached.expiresAt > Date.now()) return cached.data
+    collectCache.delete(key)
+  }
+
+  const data = await collectFresh(ctx)
+
+  collectCache.set(key, { data, expiresAt: Date.now() + METRICS_CACHE_MS })
+  return data
+}
+
+/** Bug 9：缓存过期时间。单测里按过期断言时会覆盖 Date.now，故独立成常量便于定位。 */
+export const METRICS_CACHE_MS = 60_000
+
+/** 依赖键：同一账号+数据库+桶才共享缓存，任一参数变化都会错过命中。 */
+export function versionKey(accountId: string, d1DatabaseId?: string, r2BucketName?: string): string {
+  return `metrics:${accountId}:${d1DatabaseId ?? ''}:${r2BucketName ?? ''}`
+}
+
+interface CacheEntry {
+  data: MetricsData
+  expiresAt: number
+}
+
+/** 测试里需要清理与断言，导出为普通 Map 即可，不需抽象成类。 */
+export const collectCache = new Map<string, CacheEntry>()
+
+async function collectFresh(ctx: MetricsContext): Promise<MetricsData> {
   const monthDays = monthToDateDays()
   const trendDays = monthDays.slice(-7)
   const creds: CfCredentials = { accountId: ctx.accountId, apiToken: ctx.apiToken }

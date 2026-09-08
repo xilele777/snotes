@@ -135,9 +135,24 @@ export async function pushOnce(): Promise<PushResult> {
     } catch (error) {
       const status = error instanceof ApiError ? error.status : 0
 
-      // 401 不消耗任务：令牌修复后应能续传
+      // 401 不消耗任务：令牌修复后应能续传。
+      // 同时必须 break：clearToken 已经把令牌清了，剩下每条任务再发也是注定 401。
+      // 不 break 的话，outbox 里几百条任务就是几百个空转请求，白烧流量、还拖慢界面
+      // 切回 TokenGate。break 后这些任务原样留在库里，重新登录后的首轮继续推。
       if (status === 401) {
         result.failed++
+        break
+      }
+
+      // 404 not_found = 服务端已经物理删掉这条笔记/分组的行（墓碑过了保留期、
+      // 或从未建成）。任务永远没有成功可能，标记 failed 只会让「改动未推送」的
+      // 红点永远消不掉；按 worker/db.ts 的既有约定直接丢弃任务，不卡死。
+      // 只删这一行，不动本地笔记副本——同一轮 pull 的墓碑路径会负责清本地。
+      if (status === 404) {
+        if (task.id !== undefined) {
+          const current = await db.outbox.get(task.id)
+          if (current && current.seq === task.seq) await db.outbox.delete(task.id)
+        }
         continue
       }
 

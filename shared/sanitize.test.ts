@@ -62,6 +62,18 @@ describe('escapeRawHtml', () => {
     // 确认旧载体 <br /> 仍会被这道防线转义——我们换的是载体，不是开防线口子
     expect(escapeRawHtml('第一段\n\n<br />\n\n第二段')).toBe('第一段\n\n&lt;br />\n\n第二段')
   })
+
+  it('正文自带私有区哨兵字符时也能正确还原——哨兵按行避开输入（Bug 6）', () => {
+    // 用户粘贴的内容恰好含旧固定哨兵 U+E000 及「哨兵+数字+哨兵」形态：
+    // 还原若按字面匹配就会误命中，把普通文字误当成代码跨度回填。
+    const md = '前 `code` 中1 后 <b>x</b>'
+    expect(escapeRawHtml(md)).toBe('前 `code` 中1 后 &lt;b>x&lt;/b>')
+  })
+
+  it('连续多段行内代码仍逐一正确还原', () => {
+    expect(escapeRawHtml('`a<b>`、`c<d>`')).toBe('`a<b>`、`c<d>`')
+    expect(escapeRawHtml('`a<b>` 与 <script> 再 `c<d>`')).toBe('`a<b>` 与 &lt;script> 再 `c<d>`')
+  })
 })
 
 describe('migrateLegacyBr', () => {
