@@ -646,8 +646,48 @@ body { color: var(--text-primary); background: var(--bg-app); font-size: 16px; l
   padding: 0 12px;
   border-top: 1px solid var(--border-light);
 }
-.sync-idle { position: relative; color: var(--text-tertiary); display: flex; }
+.sync-idle {
+  position: relative;
+  width: 32px;
+  height: 32px;
+  flex: none;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: none;
+  color: var(--text-secondary);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+.sync-idle:hover:enabled { background: var(--bg-press); color: var(--text-primary); }
+.sync-idle:disabled { cursor: wait; }
 .sync-idle.has-failed { color: var(--danger); }
+.sync-idle.is-syncing { color: var(--accent); }
+.sync-spinner { animation: sidebar-sync-spin 1s linear infinite; }
+@keyframes sidebar-sync-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) {
+  .sync-spinner { animation: none; }
+}
+.version-button {
+  margin-left: auto;
+  min-width: 0;
+  padding: 5px 8px;
+  border: 0;
+  border-radius: 6px;
+  background: none;
+  color: var(--text-secondary);
+  font: inherit;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  cursor: pointer;
+}
+.version-button:hover { background: var(--bg-press); color: var(--text-primary); }
+.sync-idle:focus-visible, .version-button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .failed-badge {
   position: absolute;
   top: -6px;

@@ -1,7 +1,9 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
+import { version as appVersion } from '../../package.json'
 import type { ListView } from '../db/repo'
 import { pushNav } from '../navigation'
+import { syncNow } from '../sync/engine'
 import GroupDialog from './GroupDialog.vue'
 import { useGroupsStore } from '../stores/groups'
 import { useNotesStore } from '../stores/notes'
@@ -10,6 +12,42 @@ import { useUiStore } from '../stores/ui'
 const groups = useGroupsStore()
 const notes = useNotesStore()
 const ui = useUiStore()
+
+const versionOpen = ref(false)
+const versionButton = ref<HTMLButtonElement | null>(null)
+const versionCloseButton = ref<HTMLButtonElement | null>(null)
+const versionLabel = `v${appVersion}`
+
+const syncTitle = computed(() => {
+  if (ui.syncing) return '正在同步…'
+  if (ui.lastSyncError) return `同步失败：${ui.lastSyncError}，点击重试`
+  if (ui.failedCount > 0) return `${ui.failedCount} 条改动未推送，点击同步`
+  return '立即同步'
+})
+
+function onVersionKeydown(event: KeyboardEvent) {
+  if (event.key === 'Escape') {
+    event.stopPropagation()
+    event.preventDefault()
+    versionOpen.value = false
+  } else if (event.key === 'Tab') {
+    event.preventDefault()
+    versionCloseButton.value?.focus()
+  }
+}
+
+watch(versionOpen, async (open) => {
+  if (open) {
+    window.addEventListener('keydown', onVersionKeydown, true)
+    await nextTick()
+    if (versionOpen.value) versionCloseButton.value?.focus()
+  } else {
+    window.removeEventListener('keydown', onVersionKeydown, true)
+    versionButton.value?.focus()
+  }
+})
+
+onUnmounted(() => window.removeEventListener('keydown', onVersionKeydown, true))
 
 /** null = 新建，字符串 = 正在重命名的 group_id；两种模式复用同一个弹窗 */
 const editingId = ref<string | null>(null)
@@ -112,19 +150,55 @@ async function submitDialog(name: string) {
     </ul>
 
     <div class="user-area">
-      <!-- 同步状态指示，Task 20 接线后由 ui.syncing/failedCount 驱动 -->
-      <span
+      <button
+        type="button"
         class="sync-idle"
-        :class="{ 'has-failed': ui.failedCount > 0 }"
-        :title="ui.failedCount > 0 ? `${ui.failedCount} 条改动未推送` : ''"
+        :class="{ 'has-failed': ui.failedCount > 0 || ui.lastSyncError, 'is-syncing': ui.syncing }"
+        :title="syncTitle"
+        :aria-label="syncTitle"
+        :aria-busy="ui.syncing"
+        :disabled="ui.syncing"
+        @click="syncNow()"
       >
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <svg v-if="ui.syncing" class="sync-spinner" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+          <circle cx="12" cy="12" r="9" opacity="0.25" />
+          <path d="M12 3a9 9 0 019 9" stroke-linecap="round" />
+        </svg>
+        <svg v-else width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
           <path d="M17.5 19a4.5 4.5 0 100-9 6 6 0 00-11.7 1.5A4 4 0 006 19h11.5z" />
         </svg>
-        <span v-if="ui.failedCount > 0" class="failed-badge">{{ ui.failedCount }}</span>
-      </span>
+        <span v-if="ui.failedCount > 0" class="failed-badge" aria-hidden="true">{{ ui.failedCount }}</span>
+      </button>
 
+      <button
+        ref="versionButton"
+        type="button"
+        class="version-button"
+        :title="`当前网页版本：${versionLabel}`"
+        :aria-label="`查看版本信息，当前版本 ${versionLabel}`"
+        aria-haspopup="dialog"
+        :aria-expanded="versionOpen"
+        @click="versionOpen = true"
+      >
+        {{ versionLabel }}
+      </button>
     </div>
+
+    <Teleport to="body">
+      <div v-if="versionOpen" class="dialog-mask" @click.self="versionOpen = false">
+        <div class="dialog info-dialog" role="dialog" aria-modal="true" aria-label="版本信息">
+          <h3 class="dialog-title">版本信息</h3>
+          <ul class="info-list">
+            <li><span class="info-label">应用名称</span><span class="info-value">snotes</span></li>
+            <li><span class="info-label">网页版本</span><span class="info-value">{{ versionLabel }}</span></li>
+          </ul>
+          <p class="confirm-message">此版本号对应当前加载的网页。</p>
+          <div class="dialog-footer">
+            <button ref="versionCloseButton" type="button" class="dialog-btn ok" @click="versionOpen = false">关闭</button>
+          </div>
+        </div>
+      </div>
+    </Teleport>
 
     <GroupDialog
       :open="dialogOpen"

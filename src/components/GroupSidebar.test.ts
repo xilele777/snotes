@@ -1,11 +1,15 @@
-import { mount } from '@vue/test-utils'
+import { flushPromises, mount } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
 import { nextTick } from 'vue'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { version as appVersion } from '../../package.json'
 import { db } from '../db/schema'
 import { useGroupsStore } from '../stores/groups'
 import { useUiStore } from '../stores/ui'
 import GroupSidebar from './GroupSidebar.vue'
+
+const syncNow = vi.hoisted(() => vi.fn())
+vi.mock('../sync/engine', () => ({ syncNow }))
 
 beforeEach(async () => {
   setActivePinia(createPinia())
@@ -13,6 +17,7 @@ beforeEach(async () => {
   await db.open()
   // 弹窗 Teleport 到 body，上一条用例的残留会污染 querySelector
   document.body.innerHTML = ''
+  syncNow.mockReset().mockResolvedValue(undefined)
 })
 
 /** 弹窗被 Teleport 到 body，取不到 wrapper 里，只能走 document */
@@ -132,6 +137,117 @@ describe('GroupSidebar', () => {
     const note = await db.notes.get('n1')
     expect(note).toBeDefined()
     expect(note!.group_id).toBeNull()
+  })
+})
+
+describe('GroupSidebar 底部版本与同步入口', () => {
+  it('版本按钮读取 package.json，点击打开版本信息并支持关闭', async () => {
+    const wrapper = mount(GroupSidebar, { attachTo: document.body })
+    const button = wrapper.get('.user-area .version-button')
+
+    expect(button.element.tagName).toBe('BUTTON')
+    expect(button.text()).toBe(`v${appVersion}`)
+    await button.trigger('click')
+    await nextTick()
+
+    const versionDialog = document.querySelector<HTMLElement>('[aria-label="版本信息"]')!
+    expect(versionDialog.textContent).toContain(`v${appVersion}`)
+    expect(versionDialog.textContent).toContain('当前加载的网页')
+    const closeButton = versionDialog.querySelector<HTMLButtonElement>('button')!
+    expect(document.activeElement).toBe(closeButton)
+
+    closeButton.click()
+    await nextTick()
+
+    expect(document.querySelector('[aria-label="版本信息"]')).toBeNull()
+    expect(document.activeElement).toBe(button.element)
+    wrapper.unmount()
+  })
+
+  it('版本弹窗限制 Tab 焦点，Esc 关闭并阻止外层快捷键', async () => {
+    const wrapper = mount(GroupSidebar, { attachTo: document.body })
+    await wrapper.get('.version-button').trigger('click')
+    await nextTick()
+    const closeButton = document.querySelector<HTMLButtonElement>('[aria-label="版本信息"] button')!
+    const tab = new KeyboardEvent('keydown', { key: 'Tab', shiftKey: true, cancelable: true })
+    window.dispatchEvent(tab)
+    expect(tab.defaultPrevented).toBe(true)
+    expect(document.activeElement).toBe(closeButton)
+
+    const escape = new KeyboardEvent('keydown', { key: 'Escape', cancelable: true })
+    window.dispatchEvent(escape)
+    await nextTick()
+
+    expect(escape.defaultPrevented).toBe(true)
+    expect(document.querySelector('[aria-label="版本信息"]')).toBeNull()
+    wrapper.unmount()
+  })
+
+  it('点击版本弹窗遮罩可以关闭', async () => {
+    const wrapper = mount(GroupSidebar, { attachTo: document.body })
+    await wrapper.get('.version-button').trigger('click')
+    document.querySelector<HTMLElement>('.dialog-mask')!.click()
+    await nextTick()
+
+    expect(document.querySelector('[aria-label="版本信息"]')).toBeNull()
+    wrapper.unmount()
+  })
+
+  it('云朵是可访问的按钮，点击触发手动同步', async () => {
+    const wrapper = mount(GroupSidebar)
+    const button = wrapper.get('.sync-idle')
+
+    expect(button.element.tagName).toBe('BUTTON')
+    expect(button.attributes('aria-label')).toBe('立即同步')
+    await button.trigger('click')
+
+    expect(syncNow).toHaveBeenCalledOnce()
+    wrapper.unmount()
+  })
+
+  it('同步期间显示加载状态并禁止重复点击，完成后恢复', async () => {
+    const ui = useUiStore()
+    let finishSync!: () => void
+    syncNow.mockImplementationOnce(async () => {
+      ui.syncing = true
+      await new Promise<void>((resolve) => { finishSync = resolve })
+      ui.syncing = false
+    })
+    const wrapper = mount(GroupSidebar)
+    const button = wrapper.get<HTMLButtonElement>('.sync-idle')
+    await button.trigger('click')
+
+    expect(button.element.disabled).toBe(true)
+    expect(button.attributes('aria-busy')).toBe('true')
+    expect(button.attributes('title')).toBe('正在同步…')
+    expect(button.find('.sync-spinner').exists()).toBe(true)
+    await button.trigger('click')
+    expect(syncNow).toHaveBeenCalledOnce()
+
+    finishSync()
+    await flushPromises()
+
+    expect(button.element.disabled).toBe(false)
+    expect(button.attributes('aria-label')).toBe('立即同步')
+    expect(button.find('.sync-spinner').exists()).toBe(false)
+    wrapper.unmount()
+  })
+
+  it('同步失败与未推送数量可见，仍允许点击再次同步', async () => {
+    const ui = useUiStore()
+    ui.failedCount = 2
+    const wrapper = mount(GroupSidebar)
+    const button = wrapper.get('.sync-idle')
+    expect(button.attributes('title')).toContain('2 条改动未推送')
+    expect(button.get('.failed-badge').text()).toBe('2')
+
+    ui.lastSyncError = '网络连接失败'
+    await nextTick()
+    expect(button.classes()).toContain('has-failed')
+    expect(button.attributes('title')).toContain('网络连接失败')
+    await button.trigger('click')
+    expect(syncNow).toHaveBeenCalledOnce()
+    wrapper.unmount()
   })
 })
 
