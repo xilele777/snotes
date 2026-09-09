@@ -2,6 +2,8 @@ import { beforeEach, describe, expect, it } from 'vitest'
 import type { OutboxTask } from '../../shared/types'
 import { db } from './schema'
 import {
+  CONFLICT_SUFFIX,
+  createConflictCopy,
   createNote,
   enqueue,
   getMeta,
@@ -329,5 +331,136 @@ describe('purge', () => {
     await purgeTrash()
 
     expect(await db.outbox.count()).toBe(0)
+  })
+})
+
+describe('createNote 指定分组', () => {
+  it('可直接建在某个分组里，create 任务带上 group_id', async () => {
+    const note = await createNote('内容', { group_id: 'g1' })
+
+    expect(note.group_id).toBe('g1')
+    expect((await getNote(note.id))!.group_id).toBe('g1')
+    const task = await db.outbox.where('kind').equals('create').first()
+    expect(task!.payload).toMatchObject({ group_id: 'g1' })
+  })
+
+  it('不指定分组时仍为未分组', async () => {
+    const note = await createNote('内容')
+    expect(note.group_id).toBeNull()
+  })
+})
+
+describe('updateBody 基线校验', () => {
+  it('库里正文已被别处改写时，先把它另存为冲突副本再覆盖', async () => {
+    const note = await createNote('原文')
+    await updateProps(note.id, { group_id: 'g1' })
+    // 模拟 pull 在编辑期间把远端正文落了库：编辑器手里的基线仍是「原文」
+    await db.notes.update(note.id, { body: '另一台设备写的', body_version: 2, version: 2 })
+
+    await updateBody(note.id, '原文加上本机继续敲的字', '原文')
+
+    const all = await db.notes.toArray()
+    const original = all.find((n) => n.id === note.id)!
+    const copy = all.find((n) => n.id !== note.id)!
+    // 后写者胜：本机内容留在原笔记；被覆盖的远端正文不能凭空消失
+    expect(original.body).toBe('原文加上本机继续敲的字')
+    expect(copy.body).toContain('另一台设备写的')
+    expect(copy.title).toContain(CONFLICT_SUFFIX)
+    // 副本就地放在原笔记的分组里
+    expect(copy.group_id).toBe('g1')
+  })
+
+  it('基线与库中正文一致时不产生副本', async () => {
+    const note = await createNote('原文')
+
+    await updateBody(note.id, '原文改一改', '原文')
+
+    expect(await db.notes.count()).toBe(1)
+  })
+
+  it('自己上一次保存的回显不算冲突', async () => {
+    const note = await createNote('原文')
+    await updateBody(note.id, '第一段', '原文')
+
+    await updateBody(note.id, '第一段和第二段', '第一段')
+
+    expect(await db.notes.count()).toBe(1)
+  })
+
+  it('不传基线时保持旧行为，不做校验', async () => {
+    const note = await createNote('原文')
+    await db.notes.update(note.id, { body: '别处改的' })
+
+    await updateBody(note.id, '直接覆盖')
+
+    expect(await db.notes.count()).toBe(1)
+    expect((await getNote(note.id))!.body).toBe('直接覆盖')
+  })
+
+  it('要写入的内容与库中正文相同时，即便基线不同也不产生副本', async () => {
+    const note = await createNote('原文')
+    await db.notes.update(note.id, { body: '同一份' })
+
+    await updateBody(note.id, '同一份', '原文')
+
+    expect(await db.notes.count()).toBe(1)
+  })
+})
+
+describe('createConflictCopy', () => {
+  it('标题加冲突后缀、正文原样保留、继承原笔记分组并入队', async () => {
+    const note = await createNote('内容', { group_id: 'g1' })
+    await db.outbox.clear()
+
+    const copy = await createConflictCopy((await getNote(note.id))!, '# 会议纪要\n我的版本')
+
+    expect(copy.title).toBe(`会议纪要${CONFLICT_SUFFIX}`)
+    expect(copy.body).toContain('# 会议纪要\n我的版本')
+    expect(copy.group_id).toBe('g1')
+    const task = await db.outbox.where('[note_id+kind]').equals([copy.id, 'create']).first()
+    expect(task!.payload).toMatchObject({ group_id: 'g1' })
+  })
+
+  it('超长标题下后缀不会被截断吞掉', async () => {
+    const note = await createNote('内容')
+
+    const copy = await createConflictCopy(note, `# ${'标'.repeat(80)}`)
+
+    expect(copy.title.endsWith(CONFLICT_SUFFIX)).toBe(true)
+    expect(copy.title.length).toBeLessThanOrEqual(64)
+  })
+
+  it('没有可用标题时落到「无标题」', async () => {
+    const note = await createNote('内容')
+
+    const copy = await createConflictCopy(note, '![](data:image/png;base64,xxx)')
+
+    expect(copy.title).toBe(`无标题${CONFLICT_SUFFIX}`)
+  })
+})
+
+describe('trash / recover 互相抵消', () => {
+  it('离线「删除 → 恢复 → 删除」后 outbox 只剩最后一次删除，且排在最后', async () => {
+    const note = await createNote('a')
+    await trashNote(note.id)
+    await recoverNote(note.id)
+    await trashNote(note.id)
+
+    const tasks = (await db.outbox.where('note_id').equals(note.id).toArray()).sort(
+      (x, y) => x.id! - y.id!
+    )
+    // 合并进旧位置的话，服务端会按「删除 → 恢复」执行，最终两端状态相反
+    expect(tasks.map((t) => t.kind)).toEqual(['create', 'trash'])
+    expect((await getNote(note.id))!.invalid).toBe(1)
+  })
+
+  it('「删除 → 恢复」后只剩恢复任务', async () => {
+    const note = await createNote('a')
+    await trashNote(note.id)
+    await recoverNote(note.id)
+
+    const kinds = (await db.outbox.where('note_id').equals(note.id).toArray()).map((t) => t.kind)
+    expect(kinds).not.toContain('trash')
+    expect(kinds).toContain('recover')
   })
 })

@@ -344,3 +344,23 @@ describe('NoteDetail 回收站只读态', () => {
     wrapper.unmount()
   })
 })
+
+describe('NoteDetail 把编辑器的基线交给 store', () => {
+  it('update:modelValue 与 flush 都把基线一并传给 saveBody', async () => {
+    const notes = useNotesStore()
+    const note = await notes.create()
+    notes.currentId = note.id
+    const save = vi.spyOn(notes, 'saveBody').mockResolvedValue()
+
+    const wrapper = mount(NoteDetail, { attachTo: document.body })
+    await wrapper.vm.$nextTick()
+    const editor = wrapper.findComponent(MilkdownEditor)
+    editor.vm.$emit('update:modelValue', '新正文', '旧正文')
+    editor.vm.$emit('flush', note.id, '切走前的正文', '新正文')
+
+    // 少了基线，数据层就无法发现库里正文已被远端改写
+    expect(save).toHaveBeenCalledWith(note.id, '新正文', '旧正文')
+    expect(save).toHaveBeenCalledWith(note.id, '切走前的正文', '新正文')
+    wrapper.unmount()
+  })
+})

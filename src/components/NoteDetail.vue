@@ -32,14 +32,14 @@ function onDocClick(e: MouseEvent) {
 onMounted(() => document.addEventListener('click', onDocClick))
 onUnmounted(() => document.removeEventListener('click', onDocClick))
 
-function onBody(md: string) {
+function onBody(md: string, base: string) {
   if (props.readonly) return
-  if (notes.current) notes.saveBody(notes.current.id, md)
+  if (notes.current) notes.saveBody(notes.current.id, md, base)
 }
 
-function onFlush(id: string, md: string) {
+function onFlush(id: string, md: string, base: string) {
   if (props.readonly) return
-  notes.saveBody(id, md)
+  notes.saveBody(id, md, base)
 }
 
 /** 触发编辑器里的撤销/重做（history 插件）；只读态顶栏不渲染这两个钮，为空安全 */

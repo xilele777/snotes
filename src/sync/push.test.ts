@@ -291,51 +291,6 @@ describe('pushOnce', () => {
     expect(result.failed).toBe(1)
   })
 
-  it('服务端返回 conflicted 时上报冲突信息', async () => {
-    const note = await createNote('本地内容')
-    await pushOnce()
-    apiFetch.mockClear()
-
-    await updateBody(note.id, '本地新内容')
-    apiFetch.mockResolvedValue({ version: 9, prop_version: 1, update_time: 1, conflicted: true })
-
-    const result = await pushOnce()
-
-    expect(result.conflicts).toEqual([{ note_id: note.id, local_body: '本地新内容' }])
-  })
-
-  it('请求在途期间再次编辑时，只保存本次请求实际覆盖的版本', async () => {
-    const note = await createNote('a')
-    await pushOnce()
-    await updateBody(note.id, '本次发出的版本')
-
-    apiFetch.mockImplementation(async () => {
-      // 模拟网络请求尚未返回时，用户又完成一次剪切/粘贴。
-      await updateBody(note.id, '请求在途期间的新版本')
-      return { version: 9, prop_version: 1, update_time: 1, conflicted: true }
-    })
-
-    const result = await pushOnce()
-
-    expect(result.conflicts).toEqual([{ note_id: note.id, local_body: '本次发出的版本' }])
-    const pending = await db.outbox.where('[note_id+kind]').equals([note.id, 'body']).first()
-    expect((pending!.payload as { content: string }).content).toBe('请求在途期间的新版本')
-  })
-
-  it('属性任务的 conflicted 不生成冲突副本', async () => {
-    const note = await createNote('a')
-    await pushOnce()
-    apiFetch.mockClear()
-
-    await updateProps(note.id, { star: 1 })
-    apiFetch.mockResolvedValue({ version: 1, prop_version: 9, update_time: 1, conflicted: true })
-
-    const result = await pushOnce()
-
-    // 冲突副本是为了保住正文文字。星标被 LWW 覆盖不值得多出一条笔记
-    expect(result.conflicts).toEqual([])
-  })
-
   it('trash 与 recover 任务走各自端点', async () => {
     const note = await createNote('a')
     await pushOnce()
@@ -400,5 +355,127 @@ describe('pushOnce', () => {
 
     expect(result).toEqual({ sent: 0, failed: 0, failedTotal: 0, conflicts: [] })
     expect(apiFetch).not.toHaveBeenCalled()
+  })
+})
+
+describe('pushOnce 冲突副本取被覆盖的服务端正文', () => {
+  it('服务端返回 conflicted 时，上报的是随响应带回的被覆盖正文', async () => {
+    const note = await createNote('本地内容')
+    await pushOnce()
+    apiFetch.mockClear()
+
+    await updateBody(note.id, '本地新内容')
+    apiFetch.mockResolvedValue({
+      version: 9,
+      prop_version: 1,
+      update_time: 1,
+      conflicted: true,
+      previous_content: '另一台设备的内容',
+    })
+
+    const result = await pushOnce()
+
+    // 后写者胜：本地内容已经是服务端上的正文，再存一份只会得到两条一样的笔记，
+    // 真正会丢的是被覆盖的那一版
+    expect(result.conflicts).toEqual([{ note_id: note.id, body: '另一台设备的内容' }])
+  })
+
+  it('conflicted 但没带 previous_content（如只有属性冲突）时不生成副本', async () => {
+    const note = await createNote('a')
+    await pushOnce()
+    apiFetch.mockClear()
+
+    await updateProps(note.id, { star: 1 })
+    apiFetch.mockResolvedValue({ version: 1, prop_version: 9, update_time: 1, conflicted: true })
+
+    const result = await pushOnce()
+
+    // 冲突副本是为了保住正文文字。星标被 LWW 覆盖不值得多出一条笔记
+    expect(result.conflicts).toEqual([])
+  })
+
+  it('请求在途期间再次编辑时，副本仍取被覆盖的服务端正文，新编辑留在 outbox', async () => {
+    const note = await createNote('a')
+    await pushOnce()
+    await updateBody(note.id, '本次发出的版本')
+
+    apiFetch.mockImplementation(async () => {
+      // 模拟网络请求尚未返回时，用户又完成一次剪切/粘贴。
+      await updateBody(note.id, '请求在途期间的新版本')
+      return { version: 9, prop_version: 1, update_time: 1, conflicted: true, previous_content: '远端正文' }
+    })
+
+    const result = await pushOnce()
+
+    expect(result.conflicts).toEqual([{ note_id: note.id, body: '远端正文' }])
+    const pending = await db.outbox.where('[note_id+kind]').equals([note.id, 'body']).first()
+    expect((pending!.payload as { content: string }).content).toBe('请求在途期间的新版本')
+  })
+})
+
+describe('pushOnce 在 create 未成功时挂起同一笔记的后续任务', () => {
+  it('create 暂时失败时 body 任务本轮不发，create 成功后再补发', async () => {
+    const note = await createNote('初始')
+    await updateBody(note.id, '后续编辑')
+
+    // 创建请求 503。若正文任务照常发出，服务端因笔记不存在回 404，
+    // 404 路径会把它当作「已物理删除」丢弃，create 重试成功后这次编辑就再也推不上去
+    apiFetch.mockImplementation(async (path: string) => {
+      if (path === '/api/notes') throw new ApiError(503, 'unavailable')
+      throw new ApiError(404, 'not_found')
+    })
+    await pushOnce()
+
+    const kinds = (await db.outbox.where('note_id').equals(note.id).toArray()).map((t) => t.kind).sort()
+    expect(kinds).toEqual(['body', 'create'])
+    expect(apiFetch).toHaveBeenCalledTimes(1)
+
+    await db.outbox.toCollection().modify({ next_at: 0 })
+    apiFetch.mockResolvedValue({ version: 1, prop_version: 1, update_time: 1, conflicted: false })
+    await pushOnce()
+
+    expect(await db.outbox.count()).toBe(0)
+    expect(apiFetch.mock.calls.map((c) => c[0])).toEqual(['/api/notes', '/api/notes', `/api/notes/${note.id}`])
+  })
+
+  it('create 仍在退避期时，后续任务同样等待', async () => {
+    const note = await createNote('初始')
+    await updateBody(note.id, '后续编辑')
+    await db.outbox.where('kind').equals('create').modify({ retry: 1, next_at: Date.now() + 60_000 })
+
+    const result = await pushOnce()
+
+    expect(apiFetch).not.toHaveBeenCalled()
+    expect(result.sent).toBe(0)
+    expect(await db.outbox.where('note_id').equals(note.id).count()).toBe(2)
+  })
+
+  it('create 已被标记失败时，后续任务不发也不被丢弃', async () => {
+    const note = await createNote('初始')
+    await updateBody(note.id, '后续编辑')
+    await db.outbox.where('kind').equals('create').modify({ failed: 1 })
+
+    await pushOnce()
+
+    expect(apiFetch).not.toHaveBeenCalled()
+    expect(await db.outbox.where('note_id').equals(note.id).count()).toBe(2)
+  })
+
+  it('其他笔记的任务不受影响', async () => {
+    const a = await createNote('a')
+    await updateBody(a.id, 'a2')
+    const b = await createNote('b')
+
+    apiFetch.mockImplementation(async (path: string, init: RequestInit) => {
+      const body = JSON.parse(init.body as string) as { id?: string }
+      if (path === '/api/notes' && body.id === a.id) throw new ApiError(503, 'unavailable')
+      return { version: 1, prop_version: 1, update_time: 1, conflicted: false }
+    })
+
+    const result = await pushOnce()
+
+    expect(result.sent).toBe(1)
+    expect(await db.outbox.where('note_id').equals(b.id).count()).toBe(0)
+    expect(await db.outbox.where('note_id').equals(a.id).count()).toBe(2)
   })
 })

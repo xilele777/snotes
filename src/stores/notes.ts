@@ -3,7 +3,7 @@ import { computed, ref, watch } from 'vue'
 import type { LocalNote } from '../../shared/types'
 import * as repo from '../db/repo'
 import type { ListView, NoteProps } from '../db/repo'
-import { isMobile } from '../navigation'
+import { isMobile, pushNav } from '../navigation'
 import { useUiStore } from './ui'
 
 export const useNotesStore = defineStore('notes', () => {
@@ -92,15 +92,36 @@ export const useNotesStore = defineStore('notes', () => {
     }
   }
 
+  /** 新建的笔记该落在哪个分组：分组视图里就地建在该分组，其它视图留空 */
+  function createGroupId(): string | null {
+    if (ui.view === 'group' && typeof ui.activeGroupId === 'string') return ui.activeGroupId
+    return null
+  }
+
   async function create() {
-    const note = await repo.createNote('')
+    const groupId = createGroupId()
+    const note = await repo.createNote('', groupId ? { group_id: groupId } : {})
+    // 新建在 star / trash 下不会出现在当前筛选里：列表会空白、详情区也指不到它，
+    // 先切回全部笔记（与侧栏切视图一致，算一层界面变化）。仅当新笔记在 star/trash 里
+    // 天生不可见才切——group 里新建就落在当前分组，不用切。
+    const viewSwitches = ui.view === 'star' || ui.view === 'trash'
+    if (viewSwitches) {
+      // 视图切换前把当前态入栈，返回键退回新建前的筛选视图而不是直接退出应用
+      pushNav()
+      ui.view = 'all'
+    } else if (isMobile()) {
+      // 移动端列表与编辑器互斥，新建后必然切进详情（currentId 一落，编辑器占整屏），
+      // 入栈让系统返回键先回到目录页而不是退出应用
+      pushNav()
+    }
     await load()
     currentId.value = note.id
     return note
   }
 
-  async function saveBody(id: string, content: string) {
-    await repo.updateBody(id, content)
+  /** content 改自 base（编辑器认为库里此刻的正文）；库中被别处改写过时由 repo 另存冲突副本 */
+  async function saveBody(id: string, content: string, base?: string) {
+    await repo.updateBody(id, content, base)
     await load()
   }
 

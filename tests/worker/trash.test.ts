@@ -165,3 +165,28 @@ describe('软删除墓碑跨端同步（Bug 2）', () => {
 
 
 
+
+describe('墓碑不能再被 trash / recover 改写', () => {
+  it('彻底删除后的墓碑不能被恢复', async () => {
+    const req = await seedNote()
+    await api(`/api/notes/${req.id}/purge`, { method: 'POST' })
+
+    const res = await api(`/api/notes/${req.id}/recover`, { method: 'POST' })
+
+    // 正文早已回收，「恢复」只会造出一条没有正文的正常笔记
+    expect(res.status).toBe(404)
+    const note = await env.DB.prepare('SELECT invalid FROM note WHERE id = ?').bind(req.id).first<{ invalid: number }>()
+    expect(note!.invalid).toBe(2)
+  })
+
+  it('墓碑也不能再移入回收站', async () => {
+    const req = await seedNote()
+    await api(`/api/notes/${req.id}/purge`, { method: 'POST' })
+
+    const res = await api(`/api/notes/${req.id}/trash`, { method: 'POST' })
+
+    expect(res.status).toBe(404)
+    const note = await env.DB.prepare('SELECT invalid FROM note WHERE id = ?').bind(req.id).first<{ invalid: number }>()
+    expect(note!.invalid).toBe(2)
+  })
+})

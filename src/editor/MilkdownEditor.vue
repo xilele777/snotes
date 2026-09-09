@@ -15,9 +15,10 @@ import { clipboardImageFiles, uploadImage } from './image-upload'
 
 const props = defineProps<{ noteId: string; modelValue: string; editable?: boolean }>()
 const emit = defineEmits<{
-  'update:modelValue': [string]
-  /** 提前交卷，第一个参数是内容所属的 noteId */
-  flush: [string, string]
+  /** [新正文, 它改自哪一版正文] */
+  'update:modelValue': [string, string]
+  /** 提前交卷：[内容所属的 noteId, 新正文, 它改自哪一版正文] */
+  flush: [string, string, string]
 }>()
 
 const DEBOUNCE_MS = 800
@@ -26,6 +27,20 @@ let timer: ReturnType<typeof setTimeout> | undefined
 let syncingExternally = false
 let latest = props.modelValue
 let pendingId: string | null = null
+
+/**
+ * 编辑器认为数据库此刻存着的正文：初始 modelValue、外部替换进来的值、或自己最近一次交出去的值。
+ * 随内容一起上报，数据层拿它和库里的正文比对——不一致就说明用户敲字期间 pull 把另一台设备的
+ * 正文落了库，直接覆盖会把那段文字吞掉，而且服务端察觉不到（见 repo.updateBody）。
+ */
+let base = props.modelValue
+
+/** 交出一份内容：返回它改自哪一版，随后这份内容自己成为新的基线 */
+function handOff(markdown: string): string {
+  const previous = base
+  base = markdown
+  return previous
+}
 
 /**
  * 空段落的占位字符。Milkdown 默认把空段落序列化成 `<br />`（一个 html 节点）
@@ -100,7 +115,7 @@ function take(): { id: string; markdown: string } | null {
  */
 function flush() {
   const pending = take()
-  if (pending) emit('flush', pending.id, pending.markdown)
+  if (pending) emit('flush', pending.id, pending.markdown, handOff(pending.markdown))
 }
 
 function onMarkdownChange(markdown: string) {
@@ -122,7 +137,7 @@ function onMarkdownChange(markdown: string) {
   clearTimer()
   timer = setTimeout(() => {
     const pending = take()
-    if (pending) emit('update:modelValue', pending.markdown)
+    if (pending) emit('update:modelValue', pending.markdown, handOff(pending.markdown))
   }, DEBOUNCE_MS)
 }
 
@@ -315,18 +330,23 @@ const inner = ref<ComponentPublicInstance<{
 }> | null>(null)
 
 watch(
-  () => props.noteId,
-  () => {
-    // 先把上一条的待存内容交出去，再换内容。顺序反了就是丢字。
-    flush()
+  () => [props.noteId, props.modelValue] as const,
+  ([noteId, markdown], [previousId]) => {
+    if (noteId !== previousId) flush()
+    else if (markdown === latest || pendingId !== null) return
 
     const editor = inner.value
     if (!editor) return
 
     syncingExternally = true
-    editor.replaceContent(escapeRawHtml(migrateLegacyBr(props.modelValue)))
-    syncingExternally = false
-    latest = props.modelValue
+    try {
+      editor.replaceContent(escapeRawHtml(migrateLegacyBr(markdown)))
+      latest = markdown
+      // 外部替换进来的正文就是库里此刻的正文，之后的输入都改自它
+      base = markdown
+    } finally {
+      syncingExternally = false
+    }
   }
 )
 

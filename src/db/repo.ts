@@ -1,4 +1,4 @@
-import { derive } from '../../shared/derive'
+import { TITLE_MAX, derive, extractTitle } from '../../shared/derive'
 import { mergeTask } from '../../shared/outbox'
 import type { LocalNote, NoteMeta, OutboxTask } from '../../shared/types'
 import { emitLocalWrite } from '../sync/signal'
@@ -13,6 +13,11 @@ export interface ListFilter {
 }
 
 export type NoteProps = Partial<Pick<NoteMeta, 'group_id' | 'star' | 'top' | 'skin_color'>>
+
+/** 新建笔记时可预先指定的属性；目前只有分组（分组视图里新建，笔记就该落在这个分组） */
+export type CreateOptions = Partial<Pick<NoteMeta, 'group_id'>>
+
+export const CONFLICT_SUFFIX = '（冲突副本）'
 
 /** 事务内部用：调用方负责把它包进 db.transaction */
 async function enqueueIn(task: OutboxTask): Promise<void> {
@@ -42,13 +47,13 @@ const newTask = (over: Pick<OutboxTask, 'note_id' | 'kind' | 'payload'>): Outbox
   ...over,
 })
 
-export async function createNote(content: string): Promise<LocalNote> {
+function buildNote(content: string, options: CreateOptions): LocalNote {
   const now = Date.now()
   const { title, summary, thumbnail } = derive(content)
 
-  const note: LocalNote = {
+  return {
     id: crypto.randomUUID(),
-    group_id: null,
+    group_id: options.group_id ?? null,
     title,
     summary,
     thumbnail,
@@ -68,28 +73,78 @@ export async function createNote(content: string): Promise<LocalNote> {
     open_count: 0,
     last_open_time: 0,
   }
+}
 
-  await db.transaction('rw', db.notes, db.outbox, async () => {
-    await db.notes.add(note)
-    await enqueueIn(
-      newTask({
-        note_id: note.id,
-        kind: 'create',
-        payload: { id: note.id, create_time: note.create_time, content, title, summary, thumbnail },
-      })
-    )
-  })
+/** 事务内部用：写入笔记行并入队 create 任务，调用方负责把它包进 db.transaction */
+async function insertNoteIn(note: LocalNote): Promise<void> {
+  await db.notes.add(note)
+  await enqueueIn(
+    newTask({
+      note_id: note.id,
+      kind: 'create',
+      payload: {
+        id: note.id,
+        create_time: note.create_time,
+        content: note.body,
+        title: note.title,
+        summary: note.summary,
+        thumbnail: note.thumbnail,
+        group_id: note.group_id,
+      },
+    })
+  )
+}
+
+export async function createNote(content: string, options: CreateOptions = {}): Promise<LocalNote> {
+  const note = buildNote(content, options)
+
+  await db.transaction('rw', db.notes, db.outbox, () => insertNoteIn(note))
 
   emitLocalWrite()
   return note
 }
 
-export async function updateBody(id: string, content: string): Promise<void> {
+/**
+ * 冲突副本的正文：标题行加后缀，被覆盖的正文原样保留。
+ * 先按 TITLE_MAX 减去后缀长度截断原标题，否则 derive 再截一次会把后缀吃掉，
+ * 副本看起来就和普通笔记没有区别了。
+ */
+function conflictContent(body: string): string {
+  const base = (extractTitle(body) || '无标题').slice(0, TITLE_MAX - CONFLICT_SUFFIX.length)
+  return `# ${base}${CONFLICT_SUFFIX}\n\n${body}`
+}
+
+/**
+ * 把 body 另存为 original 的冲突副本（规格 §8.5：宁可多一条笔记，不可丢一段文字）。
+ * 直接建在原笔记的分组里，用户能就地找到；分组随 create 任务一起推上去，
+ * 其他设备上副本也不会掉出分组。
+ */
+export async function createConflictCopy(
+  original: Pick<LocalNote, 'group_id'>,
+  body: string
+): Promise<LocalNote> {
+  return createNote(conflictContent(body), { group_id: original.group_id })
+}
+
+/**
+ * 保存编辑器交出来的正文。
+ *
+ * base 是编辑器认为库里此刻存着的正文（它这份内容就是从 base 改出来的）。若库里的正文
+ * 已经不是 base——典型场景是 pull 在用户敲字期间把另一台设备的正文落了库——直接覆盖
+ * 就会把那段文字吞掉，而且服务端察觉不到：pull 已把 version 推进到远端版本，随后的
+ * PATCH 基线看起来是最新的。按 §8.5 后写者胜，但被覆盖的一版先另存为冲突副本。
+ * 不传 base 时不做校验（副本生成、测试等直接写库的调用方）。
+ */
+export async function updateBody(id: string, content: string, base?: string): Promise<void> {
   const { title, summary, thumbnail } = derive(content)
 
   await db.transaction('rw', db.notes, db.outbox, async () => {
     const note = await db.notes.get(id)
     if (!note) return
+
+    if (base !== undefined && note.body !== base && note.body !== content) {
+      await insertNoteIn(buildNote(conflictContent(note.body), { group_id: note.group_id }))
+    }
 
     await db.notes.update(id, {
       body: content,
@@ -152,6 +207,13 @@ async function setInvalid(id: string, invalid: 0 | 1, kind: 'trash' | 'recover')
       update_time: Date.now(),
       dirty: bumpDirty(note.dirty, 'prop'),
     })
+
+    // trash 与 recover 互为逆操作，最后一次决定意图。离线「删除 → 恢复 → 删除」时，
+    // 第二次 trash 若只是合并进第一次的旧位置，服务端会按「删除 → 恢复」执行，
+    // 最终本地在回收站、远端却正常显示。先删掉对方的任务，再入队这一次，
+    // 新行拿到更大的 id，自然排在最后。
+    const opposite = kind === 'trash' ? 'recover' : 'trash'
+    await db.outbox.where('[note_id+kind]').equals([id, opposite]).delete()
 
     await enqueueIn(newTask({ note_id: id, kind, payload: {} }))
   })

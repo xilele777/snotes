@@ -123,6 +123,8 @@ export interface PatchNoteResponse {
   prop_version: number
   update_time: number
   conflicted: boolean
+  /** 正文冲突时才有：被这次写入覆盖掉的旧正文，客户端把它另存为冲突副本，不让别端的文字凭空消失 */
+  previous_content?: string
 }
 
 /** POST /api/groups 请求体（规格 §7.3）。 */

@@ -1,9 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { NoteMeta, PullResponse } from '../../shared/types'
 import { ApiError } from '../api/client'
-import { getMeta } from '../db/repo'
+import { getMeta, updateBody } from '../db/repo'
 import { db } from '../db/schema'
 import { SYNC_CURSOR_KEY, pullOnce } from './pull'
+import { onRemoteApplied } from './signal'
 
 const apiFetch = vi.hoisted(() => vi.fn())
 vi.mock('../api/client', async (importOriginal) => ({
@@ -68,7 +69,8 @@ describe('pullOnce', () => {
 
     expect(result.applied).toBe(1)
     const local = await db.notes.get('r1')
-    expect(local).toMatchObject({ title: '远端标题', body: '远端正文', dirty: 'none' })
+    // 标题摘要随正文重新派生，夹具里 meta 的「远端标题」不再决定本地标题
+    expect(local).toMatchObject({ title: '远端正文', body: '远端正文', dirty: 'none' })
   })
 
   it('成功后把游标推进到首页的 server_time', async () => {
@@ -314,5 +316,76 @@ describe('pullOnce', () => {
     await pullOnce()
 
     expect((await db.notes.get('r1'))!.body).toBe('刚敲的字')
+  })
+})
+
+describe('pullOnce 落库前重新检查本地状态', () => {
+  it('拉正文期间用户又保存了一次，远端正文不覆盖新编辑', async () => {
+    await db.notes.add({ ...meta(), body: '旧正文', body_version: 1, dirty: 'none' })
+    apiFetch.mockImplementation(async (path: string) => {
+      if (path === '/api/sync/bodies') {
+        // 正文批次在途时用户保存了新内容：outbox 里多了一条 body 任务
+        await updateBody('r1', '下载期间敲的字')
+        return { bodies: [{ note_id: 'r1', content: '远端正文', version: 2 }] }
+      }
+      return page({ notes: [meta({ version: 2 })] })
+    })
+
+    await pullOnce()
+
+    const local = (await db.notes.get('r1'))!
+    // 本地看到的必须和将要上传的是同一份，否则用户以为已保存的字会被推上去的旧内容替掉
+    expect(local.body).toBe('下载期间敲的字')
+    expect(local.body_version).toBe(1)
+  })
+
+  it('远端正文落库时同步刷新标题与摘要', async () => {
+    await db.notes.add({
+      ...meta({ title: '旧标题', summary: '旧摘要' }),
+      body: '旧正文',
+      body_version: 1,
+      dirty: 'none',
+    })
+    apiFetch.mockImplementation((path: string) => {
+      if (path === '/api/sync/bodies') {
+        return Promise.resolve({ bodies: [{ note_id: 'r1', content: '# 新标题\n新的第二行', version: 2 }] })
+      }
+      return Promise.resolve(page({ notes: [meta({ version: 2, title: '新标题', summary: '新的第二行' })] }))
+    })
+
+    await pullOnce()
+
+    // 列表展示的是派生字段；只换正文不换标题，列表会一直显示旧标题旧摘要
+    expect(await db.notes.get('r1')).toMatchObject({
+      title: '新标题',
+      summary: '新的第二行',
+      body: '# 新标题\n新的第二行',
+    })
+  })
+
+  it('只有分组变化时也通知界面刷新', async () => {
+    const listener = vi.fn()
+    const off = onRemoteApplied(listener)
+    mockPull(
+      page({
+        groups: [{ group_id: 'g1', name: '工作', ord: 0, color: null, invalid: 0, update_time: 1 }],
+      })
+    )
+
+    await pullOnce()
+
+    expect(listener).toHaveBeenCalled()
+    off()
+  })
+
+  it('什么都没拉到时不通知界面', async () => {
+    const listener = vi.fn()
+    const off = onRemoteApplied(listener)
+    mockPull(page())
+
+    await pullOnce()
+
+    expect(listener).not.toHaveBeenCalled()
+    off()
   })
 })

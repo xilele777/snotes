@@ -5,7 +5,8 @@ import { db } from '../db/schema'
 
 export interface ConflictInfo {
   note_id: string
-  local_body: string
+  /** 被本次推送覆盖掉的服务端正文（服务端随 conflicted 响应带回），要另存为冲突副本 */
+  body: string
 }
 
 export interface PushResult {
@@ -21,6 +22,7 @@ interface ServerAck {
   prop_version?: number
   update_time?: number
   conflicted?: boolean
+  previous_content?: string
 }
 
 function post(path: string, payload: unknown) {
@@ -106,21 +108,28 @@ export async function pushOnce(): Promise<PushResult> {
 
   const tasks = await db.outbox.orderBy('id').toArray()
 
+  // create 尚未成功（本轮被退避跳过、请求失败或已标记 failed）的笔记 / 分组，
+  // 它名下排在后面的 body/prop/trash… 任务这一轮一律挂起：服务端还没有这一行，
+  // 发出去只会 404，而 404 路径会把任务当作「服务端已物理删除」丢弃——
+  // 等 create 重试成功后，这些编辑就再也推不上去了。
+  const blocked = new Set<string>()
+
   for (const task of tasks) {
-    if (task.failed === 1) continue
-    if (task.next_at > now) continue
+    if (blocked.has(task.note_id)) continue
+
+    if (task.failed === 1 || task.next_at > now) {
+      if (task.kind === 'create') blocked.add(task.note_id)
+      continue
+    }
 
     try {
       const ack = await send(task)
 
-      // 只有正文类任务才生成冲突副本——那才是会丢失文字的场景。
-      // 保存本次实际发送的正文，而不是当前 note.body；请求在途期间用户
-      // 可能已经又编辑了一次，当前值并不是发生冲突的那一版。
-      if (ack.conflicted && (task.kind === 'body' || task.kind === 'create')) {
-        const taskPayload = (task.payload ?? {}) as Record<string, unknown>
-        if (typeof taskPayload.content === 'string') {
-          result.conflicts.push({ note_id: task.note_id, local_body: taskPayload.content })
-        }
+      // 后写者胜：本地这版已经成了服务端正文，再存它一份只会得到两条一样的笔记。
+      // 真正会丢的是被覆盖的那一版——服务端随 conflicted 把它带回来，副本存它。
+      // 只有正文冲突才带 previous_content；属性被覆盖不值得多出一条笔记。
+      if (ack.conflicted && typeof ack.previous_content === 'string') {
+        result.conflicts.push({ note_id: task.note_id, body: ack.previous_content })
       }
 
       await applyAck(task, ack)
@@ -133,6 +142,8 @@ export async function pushOnce(): Promise<PushResult> {
       }
       result.sent++
     } catch (error) {
+      if (task.kind === 'create') blocked.add(task.note_id)
+
       const status = error instanceof ApiError ? error.status : 0
 
       // 401 不消耗任务：令牌修复后应能续传。

@@ -237,3 +237,85 @@ describe('notes store 打开跟踪', () => {
     expect(after).toBe(before)
   })
 })
+
+describe('notes store 在筛选视图里新建', () => {
+  it('分组视图里新建的笔记落在该分组，列表与详情都能看到它', async () => {
+    const store = useNotesStore()
+    const ui = useUiStore()
+    ui.view = 'group'
+    ui.activeGroupId = 'g1'
+
+    const note = await store.create()
+
+    // 新笔记若仍是未分组，就不在当前筛选里：列表空白、详情区也指不到它
+    expect(note.group_id).toBe('g1')
+    expect(ui.view).toBe('group')
+    expect(store.notes.map((n) => n.id)).toContain(note.id)
+    expect(store.current?.id).toBe(note.id)
+  })
+
+  it('星标视图里新建会切回全部笔记，新笔记不会凭空消失', async () => {
+    const store = useNotesStore()
+    const ui = useUiStore()
+    ui.view = 'star'
+
+    const note = await store.create()
+
+    expect(ui.view).toBe('all')
+    expect(store.notes.map((n) => n.id)).toContain(note.id)
+    expect(store.current?.id).toBe(note.id)
+  })
+
+  it('回收站视图里新建同样切回全部笔记', async () => {
+    const store = useNotesStore()
+    const ui = useUiStore()
+    ui.view = 'trash'
+
+    const note = await store.create()
+
+    expect(ui.view).toBe('all')
+    expect(store.current?.id).toBe(note.id)
+  })
+})
+
+describe('notes store 新建时的导航栈', () => {
+  const mobileMatchMedia = (query: string) =>
+    ({ matches: query.includes('720'), media: query, onchange: null,
+      addEventListener: () => undefined, removeEventListener: () => undefined,
+      addListener: () => undefined, removeListener: () => undefined,
+      dispatchEvent: () => false }) as unknown as MediaQueryList
+
+  it('移动端新建先压一层导航，返回键回到目录页而不是退出应用', async () => {
+    vi.stubGlobal('matchMedia', mobileMatchMedia)
+    const push = vi.spyOn(window.history, 'pushState')
+    const store = useNotesStore()
+
+    await store.create()
+
+    expect(push).toHaveBeenCalledTimes(1)
+    push.mockRestore()
+    vi.unstubAllGlobals()
+  })
+
+  it('桌面端在全部笔记视图里新建不入栈', async () => {
+    const push = vi.spyOn(window.history, 'pushState')
+    const store = useNotesStore()
+
+    await store.create()
+
+    expect(push).not.toHaveBeenCalled()
+    push.mockRestore()
+  })
+
+  it('新建导致视图切换时入栈，和侧栏切视图一致', async () => {
+    const push = vi.spyOn(window.history, 'pushState')
+    const store = useNotesStore()
+    const ui = useUiStore()
+    ui.view = 'star'
+
+    await store.create()
+
+    expect(push).toHaveBeenCalledTimes(1)
+    push.mockRestore()
+  })
+})

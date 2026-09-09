@@ -70,12 +70,12 @@ describe('syncNow', () => {
       sent: 1,
       failed: 0,
       failedTotal: 0,
-      conflicts: [{ note_id: 'n1', local_body: '本地' }],
+      conflicts: [{ note_id: 'n1', body: '本地' }],
     })
 
     await syncNow()
 
-    expect(saveConflictCopies).toHaveBeenCalledWith([{ note_id: 'n1', local_body: '本地' }])
+    expect(saveConflictCopies).toHaveBeenCalledWith([{ note_id: 'n1', body: '本地' }])
   })
 
   it('把失败任务数写进 ui.failedCount', async () => {

@@ -1,3 +1,4 @@
+import { derive } from '../../shared/derive'
 import { planPull } from '../../shared/sync-reduce'
 import type {
   BodiesResponse,
@@ -20,6 +21,8 @@ export interface PullResult {
   pages: number
   applied: number
   bodies: number
+  /** 本轮写入本地的分组数 */
+  groups: number
 }
 
 function toLocalNote(meta: NoteMeta): LocalNote {
@@ -30,12 +33,18 @@ function toLocalNote(meta: NoteMeta): LocalNote {
   }
 }
 
+const isBodyTask = (kind: string) => kind === 'body' || kind === 'create'
+
 /** outbox 里还有未失败的正文类任务的笔记——它们的正文不能被远端覆盖 */
 async function pendingBodyIds(): Promise<Set<string>> {
   const tasks = await db.outbox.where('failed').equals(0).toArray()
-  return new Set(
-    tasks.filter((t) => t.kind === 'body' || t.kind === 'create').map((t) => t.note_id)
-  )
+  return new Set(tasks.filter((t) => isBodyTask(t.kind)).map((t) => t.note_id))
+}
+
+/** 单条笔记此刻是否仍有未失败的正文类任务；必须在落库的同一事务里查 */
+async function hasPendingBody(noteId: string): Promise<boolean> {
+  const tasks = await db.outbox.where('note_id').equals(noteId).toArray()
+  return tasks.some((t) => t.failed === 0 && isBodyTask(t.kind))
 }
 
 async function localStates(): Promise<Map<string, LocalNoteState>> {
@@ -59,6 +68,35 @@ async function applyGroups(groups: Group[]) {
   await db.groups.bulkPut(groups)
 }
 
+/**
+ * 把一条远端正文落库。返回是否真的写了。
+ * 检查与写入放在同一个事务里：planPull 那会儿没有待推送正文，不代表现在也没有——
+ * 拉正文这段时间用户可能又保存了一次。此时若照常落库，本地看到的就变成远端旧正文，
+ * 而 outbox 里那条任务随后照常推上去，本地正文和将要上传的内容就不是同一份了。
+ */
+function applyBody(body: BodiesResponse['bodies'][number]): Promise<boolean> {
+  return db.transaction('rw', db.notes, db.outbox, async () => {
+    const local = await db.notes.get(body.note_id)
+    if (!local) return false
+
+    // 版本低于本地说明本地这份正文已经是更新版本了，覆盖下去会丢字。
+    // 用 < 而非 <=：body.version 与 body_version 相等时仍允许写入——
+    // 此时本地正文来自一条已失败的 push 任务（failed=1），它再也不会把本地内容
+    // 推上去，本地与远端就再也不会自然收敛，必须靠这里强制对齐到远端。
+    if (body.version < local.body_version) return false
+    if (await hasPendingBody(body.note_id)) return false
+
+    await db.notes.update(body.note_id, {
+      body: body.content,
+      body_version: body.version,
+      version: body.version,
+      // 列表展示的是派生字段，正文换了标题摘要也得跟着换，否则列表一直是旧标题旧摘要
+      ...derive(body.content),
+    })
+    return true
+  })
+}
+
 export async function pullOnce(): Promise<PullResult> {
   const since = (await getMeta<number>(SYNC_CURSOR_KEY)) ?? 0
 
@@ -66,6 +104,7 @@ export async function pullOnce(): Promise<PullResult> {
   let serverTime: number | null = null
   let pages = 0
   let applied = 0
+  let groups = 0
 
   const pendingBodies: string[] = []
 
@@ -80,6 +119,7 @@ export async function pullOnce(): Promise<PullResult> {
     if (serverTime === null) serverTime = response.server_time
 
     await applyGroups(response.groups)
+    groups += response.groups.length
 
     const plan = planPull(response.notes, await localStates())
 
@@ -128,21 +168,7 @@ export async function pullOnce(): Promise<PullResult> {
     })
 
     for (const body of response.bodies) {
-      const local = await db.notes.get(body.note_id)
-      if (!local) continue
-
-      // 版本低于本地说明本地这份正文已经是更新版本了，覆盖下去会丢字。
-      // 用 < 而非 <=：body.version 与 body_version 相等时仍允许写入——
-      // 此时本地正文来自一条已失败的 push 任务（failed=1），它再也不会把本地内容
-      // 推上去，本地与远端就再也不会自然收敛，必须靠这里强制对齐到远端。
-      if (body.version < local.body_version) continue
-
-      await db.notes.update(body.note_id, {
-        body: body.content,
-        body_version: body.version,
-        version: body.version,
-      })
-      bodies++
+      if (await applyBody(body)) bodies++
     }
   }
 
@@ -152,8 +178,8 @@ export async function pullOnce(): Promise<PullResult> {
   }
 
   // 通知界面重新读库。没有这一声，远端拉下来的改动要等下一次用户操作才显示。
-  if (applied > 0 || bodies > 0) emitRemoteApplied()
+  // 分组也算：另一台设备新建或重命名分组时，侧栏同样要刷新。
+  if (applied > 0 || bodies > 0 || groups > 0) emitRemoteApplied()
 
-  return { pages, applied, bodies }
+  return { pages, applied, bodies, groups }
 }
-
