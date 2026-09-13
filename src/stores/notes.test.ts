@@ -13,6 +13,24 @@ beforeEach(async () => {
 })
 
 describe('notes store', () => {
+  it.each(['star', 'trash', 'stats', 'metrics'] as const)('从 %s 新建时回到全部笔记并清除筛选', async (view) => {
+    const store = useNotesStore()
+    const ui = useUiStore()
+    ui.view = view
+    ui.activeGroupId = 'previous-group'
+    ui.query = '不会匹配空笔记'
+    ui.drawerOpen = true
+
+    const note = await store.create()
+
+    expect(ui.view).toBe('all')
+    expect(ui.activeGroupId).toBeNull()
+    expect(ui.query).toBe('')
+    expect(ui.drawerOpen).toBe(false)
+    expect(store.visible.map(item => item.id)).toContain(note.id)
+    expect(store.currentId).toBe(note.id)
+  })
+
   it('create 后列表立即包含新笔记并选中它', async () => {
     const store = useNotesStore()
     const note = await store.create()

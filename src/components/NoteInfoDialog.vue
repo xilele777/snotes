@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { computed, onUnmounted, watch } from 'vue'
+import { computed, ref } from 'vue'
+import { useDialogFocus } from './useDialogFocus'
 import type { LocalNote } from '../../shared/types'
 
 const props = defineProps<{ open: boolean; note: LocalNote | undefined }>()
@@ -24,21 +25,8 @@ function fmtRelative(ts: number | undefined | null): string {
   return fmtFull(ts)
 }
 
-function onKeydown(e: KeyboardEvent) {
-  if (e.key !== 'Escape') return
-  e.stopPropagation()
-  e.preventDefault()
-  emit('close')
-}
-
-watch(
-  () => props.open,
-  (open) => {
-    if (open) window.addEventListener('keydown', onKeydown, true)
-    else window.removeEventListener('keydown', onKeydown, true)
-  }
-)
-onUnmounted(() => window.removeEventListener('keydown', onKeydown, true))
+const panel = ref<HTMLElement | null>(null)
+useDialogFocus(() => props.open, panel, () => emit('close'))
 
 const rows = computed(() => {
   const n = props.note
@@ -56,7 +44,7 @@ const rows = computed(() => {
 <template>
   <Teleport to="body">
     <div v-if="open" class="dialog-mask" @click.self="emit('close')">
-      <div class="dialog info-dialog" role="dialog" aria-modal="true" aria-label="文档信息">
+      <div ref="panel" class="dialog info-dialog" role="dialog" aria-modal="true" aria-label="文档信息">
         <h3 class="dialog-title">文档信息</h3>
         <ul class="info-list">
           <li v-for="r in rows" :key="r.label">

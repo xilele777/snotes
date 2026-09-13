@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import '../insights.css'
 import { computed, onMounted, ref } from 'vue'
 import { computeNoteStats, type NoteStats } from '../../shared/stats'
 import { db } from '../db/schema'

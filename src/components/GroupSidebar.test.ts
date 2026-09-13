@@ -341,7 +341,7 @@ describe('GroupSidebar 新建分组弹窗', () => {
     await wrapper.vm.$nextTick()
     await wrapper.find('.group-add').trigger('click')
     await typeName('生活')
-    dialogInput()!.dispatchEvent(new KeyboardEvent('keyup', { key: 'Enter', bubbles: true }))
+    dialogInput()!.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }))
 
     await vi.waitFor(() => {
       expect(groups.groups.map((g) => g.name)).toContain('生活')

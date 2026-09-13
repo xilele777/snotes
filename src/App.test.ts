@@ -1,4 +1,4 @@
-import { mount } from '@vue/test-utils'
+import { flushPromises, mount } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { db } from './db/schema'
@@ -80,6 +80,55 @@ describe('App 侧栏抽屉', () => {
 })
 
 describe('App 新建入口', () => {
+  it('Ctrl+K 退出专注模式并直接聚焦列表搜索', async () => {
+    const notes = useNotesStore()
+    await notes.create()
+    const ui = useUiStore()
+    const wrapper = mount(App, { attachTo: document.body })
+    await flushPromises()
+    ui.focusMode = true
+
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'k', ctrlKey: true, cancelable: true }))
+    await flushPromises()
+
+    expect(ui.focusMode).toBe(false)
+    expect(ui.drawerOpen).toBe(false)
+    expect(document.activeElement).toBe(wrapper.get('.note-search input').element)
+    wrapper.unmount()
+  })
+
+  it('Esc 退出专注模式时保留当前笔记', async () => {
+    const notes = useNotesStore()
+    const note = await notes.create()
+    const ui = useUiStore()
+    const wrapper = mount(App, { attachTo: document.body })
+    await flushPromises()
+    ui.focusMode = true
+    await wrapper.vm.$nextTick()
+
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', cancelable: true }))
+    await wrapper.vm.$nextTick()
+
+    expect(ui.focusMode).toBe(false)
+    expect(notes.currentId).toBe(note.id)
+    wrapper.unmount()
+  })
+
+  it('输入法组合输入与弹窗内的快捷键不会新建笔记', async () => {
+    const notes = useNotesStore()
+    const create = vi.spyOn(notes, 'create')
+    const wrapper = mount(App, { attachTo: document.body })
+    await flushPromises()
+
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'n', ctrlKey: true, isComposing: true }))
+    expect(create).not.toHaveBeenCalled()
+
+    await wrapper.get('.group-add').trigger('click')
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'n', ctrlKey: true }))
+    expect(create).not.toHaveBeenCalled()
+    wrapper.unmount()
+  })
+
   it('不再有右下角浮动新建按钮，入口只在列表顶栏', async () => {
     const wrapper = mount(App, { attachTo: document.body })
     await wrapper.vm.$nextTick()
@@ -133,6 +182,7 @@ describe('App 数据监控视图', () => {
 
     ui.view = 'metrics'
     await wrapper.vm.$nextTick()
+    await flushPromises()
 
     expect(wrapper.findComponent(MetricsView).exists()).toBe(true)
     expect(wrapper.findComponent(NoteDetail).exists()).toBe(false)

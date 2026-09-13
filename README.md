@@ -237,7 +237,7 @@ npm run test:e2e    # Playwright 端到端
 npm run typecheck   # 类型检查
 ```
 
-E2E 会自己执行 `npm run build` 并拉起 `wrangler dev`，打的是生产形态（同源静态资源 + API），不需要手动先起服务。
+E2E 会自己构建、应用迁移并在 `8790` 端口拉起 `wrangler dev`，打的是生产形态（同源静态资源 + API），不需要手动先起服务。测试使用 `tests/e2e/wrangler.jsonc` 中的固定测试令牌，数据独立保存在 `tmp/e2e-state`。
 
 > **在代理环境下**：跑 E2E 前先 `unset HTTP_PROXY HTTPS_PROXY`。workerd 会因代理环境变量崩溃，表现为测试长时间挂起。
 

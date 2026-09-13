@@ -9,8 +9,9 @@ const props = withDefaults(
     note: LocalNote
     active?: boolean
     swiped?: boolean
-    /** 搜索词，用于标题命中高亮；回收站不传 */
+    /** 搜索词，用于标题与摘要的命中高亮。 */
     query?: string
+    groupName?: string
   }>(),
   { active: false, swiped: false, query: '' }
 )
@@ -51,51 +52,54 @@ function fmtDate(ts: number): string {
     :class="{ 'is-top': note.top === 1, 'is-active': active, swiped }"
     :style="note.skin_color ? { '--skin': note.skin_color } : undefined"
   >
-    <!-- 缩略图 float:right（原站 note_list_item_thumb） -->
-    <img v-if="note.thumbnail" class="thumb" :src="`/api/images/${note.thumbnail}`" alt="" />
+    <button type="button" class="note-select" :aria-current="active ? 'true' : undefined" :aria-label="`打开笔记：${note.title || '无标题'}`">
+      <!-- 缩略图 float:right（原站 note_list_item_thumb） -->
+      <img v-if="note.thumbnail" class="thumb" :src="`/api/images/${note.thumbnail}`" alt="" loading="lazy" decoding="async" width="48" height="48" />
 
-    <div class="note-text">
-      <div class="note-title">
-        <template v-if="note.title">
-          <span v-for="(seg, i) in highlight(note.title, query)" :key="i" :class="{ hit: seg.hit }">{{
-            seg.text
-          }}</span>
-        </template>
-        <template v-else>无标题</template>
+      <div class="note-text">
+        <div class="note-title">
+          <template v-if="note.title">
+            <span v-for="(seg, i) in highlight(note.title, query)" :key="i" :class="{ hit: seg.hit }">{{
+              seg.text
+            }}</span>
+          </template>
+          <template v-else>无标题</template>
+        </div>
+        <div class="note-summary"><span v-for="(seg, i) in highlight(displaySummary, query)" :key="i" :class="{ hit: seg.hit }">{{ seg.text }}</span><span v-if="!note.body.trim()" class="summary-placeholder">写下你的第一行想法…</span></div>
       </div>
-      <div class="note-summary"><span v-for="(seg, i) in highlight(displaySummary, query)" :key="i" :class="{ hit: seg.hit }">{{ seg.text }}</span></div>
-    </div>
 
-    <!-- 底部日期行：日期 + 常驻标记图标（置顶/星标，原站 note_list_item_date） -->
-    <div class="note-meta">
-      <span class="note-date">{{ fmtDate(note.update_time) }}</span>
-      <svg
-        v-if="note.top === 1"
-        class="note-pin"
-        width="14"
-        height="14"
-        viewBox="0 0 24 24"
-        fill="currentColor"
-        aria-label="置顶"
-      >
-        <path
-          d="M16 9V4h1c.55 0 1-.45 1-1s-.45-1-1-1H7c-.55 0-1 .45-1 1s.45 1 1 1h1v5c0 1.66-1.34 3-3 3v2h5.97v7l1 1 1-1v-7H19v-2c-1.66 0-3-1.34-3-3z"
-        />
-      </svg>
-      <svg
-        v-if="note.star === 1"
-        class="note-star"
-        width="14"
-        height="14"
-        viewBox="0 0 24 24"
-        fill="currentColor"
-        aria-label="星标"
-      >
-        <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01z" />
-      </svg>
-    </div>
+      <!-- 底部日期行：日期 + 常驻标记图标（置顶/星标，原站 note_list_item_date） -->
+      <div class="note-meta">
+        <time class="note-date" :datetime="new Date(note.update_time).toISOString()" :title="new Date(note.update_time).toLocaleString('zh-CN')">{{ fmtDate(note.update_time) }}</time>
+        <svg
+          v-if="note.top === 1"
+          class="note-pin"
+          width="14"
+          height="14"
+          viewBox="0 0 24 24"
+          fill="currentColor"
+          aria-label="置顶"
+        >
+          <path
+            d="M16 9V4h1c.55 0 1-.45 1-1s-.45-1-1-1H7c-.55 0-1 .45-1 1s.45 1 1 1h1v5c0 1.66-1.34 3-3 3v2h5.97v7l1 1 1-1v-7H19v-2c-1.66 0-3-1.34-3-3z"
+          />
+        </svg>
+        <svg
+          v-if="note.star === 1"
+          class="note-star"
+          width="14"
+          height="14"
+          viewBox="0 0 24 24"
+          fill="currentColor"
+          aria-label="星标"
+        >
+          <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01z" />
+        </svg>
+        <span v-if="groupName" class="note-group-label">{{ groupName }}</span>
+      </div>
 
-    <div class="note-divider"></div>
+      <div class="note-divider"></div>
+    </button>
 
     <!-- 行内动作：列表是左滑删除，回收站是恢复/彻底删除 -->
     <slot name="actions" />

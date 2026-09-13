@@ -1,0 +1,20 @@
+{
+  "$schema": "../../node_modules/wrangler/config-schema.json",
+  "name": "snotes-e2e",
+  "main": "../../worker/index.ts",
+  "compatibility_date": "2026-08-22",
+  "assets": {
+    "directory": "../../dist",
+    "not_found_handling": "single-page-application",
+    "run_worker_first": ["/api/*"]
+  },
+  "d1_databases": [{
+    "binding": "DB",
+    "database_name": "snotes-e2e",
+    "database_id": "00000000-0000-0000-0000-000000000000",
+    "migrations_dir": "../../migrations"
+  }],
+  "r2_buckets": [{ "binding": "R2", "bucket_name": "snotes-e2e-images" }],
+  // Public test fixture, used only by the local Playwright server.
+  "vars": { "ACCESS_TOKEN": "dev-token" }
+}

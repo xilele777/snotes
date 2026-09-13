@@ -12,6 +12,7 @@ import { defineComponent, h, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import type { ComponentPublicInstance } from 'vue'
 import { escapeRawHtml, migrateLegacyBr } from '../../shared/sanitize'
 import { clipboardImageFiles, uploadImage } from './image-upload'
+import { taskCheckboxes } from './task-checkboxes'
 
 const props = defineProps<{ noteId: string; modelValue: string; editable?: boolean }>()
 const emit = defineEmits<{
@@ -268,12 +269,16 @@ const MilkdownInner = defineComponent({
           ctx.set(rootCtx, root)
           ctx.set(defaultValueCtx, escapeRawHtml(migrateLegacyBr(props.modelValue)))
           ctx.get(listenerCtx).markdownUpdated((_ctx, markdown) => onMarkdownChange(markdown))
+          ctx.get(listenerCtx).mounted((editorCtx) => {
+            if (!props.modelValue.trim() && props.editable !== false) editorCtx.get(editorViewCtx).focus()
+          })
         })
         // commonmark 在前、gfm 在后：表格删除线任务清单属于 GFM 扩展，
         // 层叠顺序反了会导致 GFM 的 schema 扩展覆盖不到 commonmark 的节点
         .use(commonmark)
         .use(paragraphSchema)
         .use(gfm)
+        .use(taskCheckboxes)
         .use(listener)
         .use(clipboard)
         // Milestone 8：撤销/重做（自带 Mod-z / Mod-y / Shift-Mod-z 快捷键）
@@ -281,6 +286,7 @@ const MilkdownInner = defineComponent({
         .config((ctx) => {
           ctx.update(editorViewOptionsCtx, (prev) => ({
             ...prev,
+            attributes: { role: 'textbox', 'aria-label': '笔记正文', 'aria-multiline': 'true', spellcheck: 'false' },
             // 回收站详情走 ProseMirror 原生只读，不是 pointer-events:none 那种假只读——
             // 假只读挡得住鼠标，挡不住键盘聚焦和输入法，照样能把内容改了。
             editable: () => props.editable !== false,
@@ -344,6 +350,9 @@ watch(
       latest = markdown
       // 外部替换进来的正文就是库里此刻的正文，之后的输入都改自它
       base = markdown
+      if (noteId !== previousId && !markdown.trim() && props.editable !== false) {
+        editor.getEditor()?.action(ctx => ctx.get(editorViewCtx).focus())
+      }
     } finally {
       syncingExternally = false
     }

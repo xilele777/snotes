@@ -1,31 +1,19 @@
 <script setup lang="ts">
-import { onUnmounted, watch } from 'vue'
+import { ref } from 'vue'
+import { useDialogFocus } from './useDialogFocus'
 import type { NoteWordCount } from '../../shared/derive'
 
 const props = defineProps<{ open: boolean; count: NoteWordCount }>()
 const emit = defineEmits<{ close: [] }>()
 
-function onKeydown(e: KeyboardEvent) {
-  if (e.key !== 'Escape') return
-  e.stopPropagation()
-  e.preventDefault()
-  emit('close')
-}
-
-watch(
-  () => props.open,
-  (open) => {
-    if (open) window.addEventListener('keydown', onKeydown, true)
-    else window.removeEventListener('keydown', onKeydown, true)
-  }
-)
-onUnmounted(() => window.removeEventListener('keydown', onKeydown, true))
+const panel = ref<HTMLElement | null>(null)
+useDialogFocus(() => props.open, panel, () => emit('close'))
 </script>
 
 <template>
   <Teleport to="body">
     <div v-if="open" class="dialog-mask" @click.self="emit('close')">
-      <div class="dialog wordcount-dialog" role="dialog" aria-modal="true" aria-label="字数统计">
+      <div ref="panel" class="dialog wordcount-dialog" role="dialog" aria-modal="true" aria-label="字数统计">
         <h3 class="dialog-title">字数统计</h3>
         <ul class="wordcount-list">
           <li class="wordcount-item primary">

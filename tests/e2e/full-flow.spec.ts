@@ -140,7 +140,7 @@ test('删除后进回收站，能看详情，可恢复', async ({ page }) => {
 
   // 删除按钮在桌面端默认是滑出视口的；hover 笔记条目后露出，再点。
   await page.locator('.note-item').first().hover()
-  await page.locator('.note-item').first().getByRole('button', { name: '删除' }).click()
+  await page.locator('.note-item').first().getByRole('button', { name: '删除', exact: true }).click()
   // 删除统一定点到一个确认弹窗（Bug 4），确认后才真正删除
   await expect(page.locator('.confirm-dialog')).toBeVisible()
   await page.locator('[data-op="confirm"]').click()
@@ -255,6 +255,7 @@ test('窄屏下侧栏收进抽屉，点 ☰ 能拿回全部入口', async ({ pag
 
   await expect(page.locator('.sidebar-pane')).not.toHaveClass(/is-open/)
   await expect(page.locator('.drawer-mask')).toHaveCount(0)
+  await expect(page.locator('.list-pane .note-search input')).toBeVisible()
 
   await page.locator('.drawer-btn').click()
 
@@ -263,7 +264,6 @@ test('窄屏下侧栏收进抽屉，点 ☰ 能拿回全部入口', async ({ pag
   await expect(page.locator('.sidebar-pane')).toContainText('全部笔记')
   await expect(page.locator('.sidebar-pane')).toContainText('星标')
   await expect(page.locator('.sidebar-pane')).toContainText('回收站')
-  await expect(page.locator('.sidebar-search input')).toBeVisible()
 
   // 选完视图自动收起
   await page.locator('[data-view="star"]').click()
@@ -314,4 +314,110 @@ test('同步：两个上下文之间数据可互通', async ({ browser }) => {
 
   await a.close()
   await b.close()
+})
+
+test('新建直接输入，专注模式与快捷搜索保留正文', async ({ page }) => {
+  await createNote(page)
+  const editor = page.getByRole('textbox', { name: '笔记正文' })
+  await expect(editor).toBeFocused()
+  await page.keyboard.type('把重要的想法记下来')
+  await expect(page.locator('.note-title').first()).toContainText('重要的想法')
+
+  await page.getByRole('button', { name: '专注模式', exact: true }).click()
+  await expect(page.locator('.list-pane')).toBeHidden()
+  await expect(editor).toContainText('把重要的想法记下来')
+  await page.keyboard.press('Escape')
+  await expect(page.locator('.list-pane')).toBeVisible()
+
+  await page.keyboard.press('Control+k')
+  const search = page.getByRole('searchbox', { name: '搜索笔记' })
+  await expect(search).toBeFocused()
+  await search.fill('重要的想法')
+  await expect(page.locator('.note-item')).toHaveCount(1)
+  await createNote(page)
+  await expect(search).toHaveValue('')
+  await expect(page.locator('.note-item')).toHaveCount(2)
+  await expect(editor).toBeFocused()
+})
+
+test('清单可勾选、撤销并保存，回收站中保持只读', async ({ page }) => {
+  await createNote(page)
+  const editor = page.getByRole('textbox', { name: '笔记正文' })
+  await expect(editor).toBeFocused()
+  await page.keyboard.type('- [ ] 买牛奶')
+  const checkbox = page.locator('.task-checkbox')
+  await expect(checkbox).toHaveCount(1)
+  await expect(checkbox).not.toBeChecked()
+  await expect.poll(() => savedBody(page)).toContain('[ ] 买牛奶')
+
+  await checkbox.check()
+  await expect(checkbox).toBeChecked()
+  await page.locator('[data-op="undo"]').click()
+  await expect(checkbox).not.toBeChecked()
+  await page.locator('[data-op="redo"]').click()
+  await expect(checkbox).toBeChecked()
+  await expect.poll(() => savedBody(page)).toContain('[x] 买牛奶')
+
+  await page.reload()
+  await expect(checkbox).toBeChecked()
+  await page.locator('[data-op="trash"]').click()
+  await page.locator('[data-op="confirm"]').click()
+  await page.locator('.group-sidebar [data-view="trash"]').click()
+  await expect(checkbox).toBeChecked()
+  await expect(checkbox).toBeDisabled()
+})
+
+test.describe('手机操作', () => {
+  test.use({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true })
+
+  test('启动显示目录，搜索随手可用，320px 下编辑工具栏完整可见', async ({ page }) => {
+    await createNote(page)
+    const editor = page.getByRole('textbox', { name: '笔记正文' })
+    await expect(editor).toBeFocused()
+    await page.keyboard.type('手机上随手记')
+    await expect.poll(() => savedBody(page)).toContain('手机上随手记')
+    await page.reload()
+
+    await expect(page.locator('.list-pane')).toBeVisible()
+    await expect(page.locator('.editor-pane')).toBeHidden()
+    await expect(page.getByRole('searchbox')).toBeVisible()
+    await page.locator('.drawer-btn').click()
+    await expect(page.locator('.sidebar-pane')).toHaveClass(/is-open/)
+    await page.locator('.group-sidebar [data-view="all"]').click()
+    await expect(page.locator('.drawer-mask')).toHaveCount(0)
+
+    await page.locator('.note-select').first().click()
+    await expect(editor).toBeVisible()
+    await page.setViewportSize({ width: 320, height: 700 })
+    const toolbar = await page.locator('.op-bar').boundingBox()
+    expect(toolbar!.x).toBeGreaterThanOrEqual(0)
+    expect(toolbar!.x + toolbar!.width).toBeLessThanOrEqual(320)
+    await expect(page.locator('[data-op="trash"]')).toBeVisible()
+    await page.keyboard.press('Control+k')
+    await expect(page.getByRole('searchbox')).toBeFocused()
+    await expect(page.locator('.list-pane')).toBeVisible()
+  })
+
+  test('纵向滚动不触发删除，左滑只展开操作而不打开正文', async ({ page }) => {
+    await createNote(page)
+    await expect(page.getByRole('textbox', { name: '笔记正文' })).toBeFocused()
+    await page.keyboard.type('测试触摸手势')
+    await expect.poll(() => savedBody(page)).toContain('测试触摸手势')
+    await page.reload()
+    const row = page.locator('.note-item').first()
+    await row.dispatchEvent('pointerdown', { pointerType: 'touch', clientX: 220, clientY: 200 })
+    await row.dispatchEvent('pointerup', { pointerType: 'touch', clientX: 160, clientY: 350 })
+    await expect(row).not.toHaveClass(/swiped/)
+
+    await row.dispatchEvent('pointerdown', { pointerType: 'touch', clientX: 250, clientY: 200 })
+    await row.dispatchEvent('pointerup', { pointerType: 'touch', clientX: 150, clientY: 205 })
+    await row.dispatchEvent('click')
+    await expect(row).toHaveClass(/swiped/)
+    await expect(page.locator('.list-pane')).toBeVisible()
+    await row.getByRole('button', { name: '删除', exact: true }).click()
+    await expect(page.locator('.confirm-dialog')).toBeVisible()
+    await page.keyboard.press('Escape')
+    await expect(page.locator('.confirm-dialog')).toHaveCount(0)
+    await expect(row).toBeVisible()
+  })
 })

@@ -1,42 +1,22 @@
 <script setup lang="ts">
-import { nextTick, onUnmounted, ref, watch } from 'vue'
+import { ref, watch } from 'vue'
+import { useDialogFocus } from './useDialogFocus'
 
 const props = defineProps<{ open: boolean; title: string; initial?: string }>()
 const emit = defineEmits<{ submit: [string]; close: [] }>()
 
 const value = ref('')
-const input = ref<HTMLInputElement | null>(null)
-
-/**
- * Esc 关闭。挂在 window 的捕获阶段并 stopPropagation：
- * App 也在 window 上听 keydown（Esc 用来清搜索词），不拦住的话一次 Esc 会同时
- * 关弹窗和清掉搜索框，用户只按了一下却发生两件事。
- */
-function onKeydown(e: KeyboardEvent) {
-  if (e.key !== 'Escape') return
-  e.stopPropagation()
-  e.preventDefault()
-  emit('close')
-}
+const panel = ref<HTMLElement | null>(null)
 
 watch(
   () => props.open,
-  async (open) => {
-    if (open) {
-      value.value = props.initial ?? ''
-      window.addEventListener('keydown', onKeydown, true)
-      await nextTick()
-      input.value?.focus()
-      input.value?.select()
-    } else {
-      window.removeEventListener('keydown', onKeydown, true)
-    }
-  }
+  (open) => { if (open) value.value = props.initial ?? '' },
+  { immediate: true },
 )
+useDialogFocus(() => props.open, panel, () => emit('close'))
 
-onUnmounted(() => window.removeEventListener('keydown', onKeydown, true))
-
-function submit() {
+function submit(event?: Event) {
+  if (event instanceof KeyboardEvent && (event.isComposing || event.keyCode === 229)) return
   const name = value.value.trim()
   if (!name) return
   emit('submit', name)
@@ -51,16 +31,16 @@ function submit() {
   -->
   <Teleport to="body">
     <div v-if="open" class="dialog-mask" @click.self="$emit('close')">
-      <div class="dialog" role="dialog" aria-modal="true" :aria-label="title">
+      <div ref="panel" class="dialog" role="dialog" aria-modal="true" :aria-label="title">
         <p class="dialog-title">{{ title }}</p>
 
         <input
-          ref="input"
           v-model="value"
           class="dialog-input"
           type="text"
+          aria-label="分组名称"
           placeholder="分组名称"
-          @keyup.enter="submit"
+          @keydown.enter="submit"
         />
 
         <div class="dialog-footer">

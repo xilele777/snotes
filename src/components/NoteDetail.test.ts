@@ -1,4 +1,4 @@
-import { mount } from '@vue/test-utils'
+import { flushPromises, mount } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { db } from '../db/schema'
@@ -304,6 +304,7 @@ describe('NoteDetail 回收站只读态', () => {
 
   it('正文可见但编辑器为只读', async () => {
     const { wrapper } = await mountTrashed()
+    await flushPromises()
 
     const editor = wrapper.findComponent(MilkdownEditor)
     expect(editor.exists()).toBe(true)
@@ -354,6 +355,7 @@ describe('NoteDetail 把编辑器的基线交给 store', () => {
 
     const wrapper = mount(NoteDetail, { attachTo: document.body })
     await wrapper.vm.$nextTick()
+    await flushPromises()
     const editor = wrapper.findComponent(MilkdownEditor)
     editor.vm.$emit('update:modelValue', '新正文', '旧正文')
     editor.vm.$emit('flush', note.id, '切走前的正文', '新正文')

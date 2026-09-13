@@ -1,20 +1,58 @@
 <script setup lang="ts">
-import { onMounted, onUnmounted, watch } from 'vue'
+import { defineAsyncComponent, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import { hasToken } from './api/token'
 import GroupSidebar from './components/GroupSidebar.vue'
-import MetricsView from './components/MetricsView.vue'
 import NoteDetail from './components/NoteDetail.vue'
 import NoteList from './components/NoteList.vue'
-import StatsView from './components/StatsView.vue'
 import TokenGate from './components/TokenGate.vue'
 import TrashView from './components/TrashView.vue'
 import { resolveShortcut } from './components/shortcut'
-import { backToList, initNavigation, openDrawer } from './navigation'
+import { backToList, initNavigation, isMobile, pushNav } from './navigation'
 import { useNotesStore } from './stores/notes'
 import { useUiStore } from './stores/ui'
 
 const notes = useNotesStore()
 const ui = useUiStore()
+const MetricsView = defineAsyncComponent(() => import('./components/MetricsView.vue'))
+const StatsView = defineAsyncComponent(() => import('./components/StatsView.vue'))
+const drawerLayout = window.matchMedia('(max-width: 1020px)')
+const compact = ref(drawerLayout.matches)
+function updateLayout() { compact.value = drawerLayout.matches }
+let drawerTrigger: HTMLElement | null = null
+
+watch(() => ui.drawerOpen, async (open) => {
+  if (!compact.value) return
+  if (open) {
+    drawerTrigger = document.activeElement as HTMLElement
+    await nextTick()
+    document.querySelector<HTMLButtonElement>('.sidebar-close')?.focus()
+  } else {
+    await nextTick()
+    if (drawerTrigger?.isConnected && drawerTrigger.getClientRects().length) drawerTrigger.focus()
+  }
+})
+
+watch(() => [notes.currentId, ui.view], () => {
+  if (!notes.currentId || ui.view === 'stats' || ui.view === 'metrics' || ui.view === 'trash') ui.focusMode = false
+})
+
+async function focusSearch() {
+  ui.focusMode = false
+  ui.drawerOpen = false
+  if (ui.view === 'metrics' || ui.view === 'stats') {
+    pushNav()
+    ui.view = 'all'
+    ui.activeGroupId = null
+    await notes.load()
+  }
+  if (isMobile() && ui.mobilePane === 'editor') {
+    pushNav()
+    notes.currentId = null
+    ui.mobilePane = 'list'
+  }
+  await nextTick()
+  document.querySelector<HTMLInputElement>('.note-search input')?.focus()
+}
 
 // 移动端 <720px 列表↔编辑器互斥（UI 规格 §2.3）。状态在 ui store 里，
 // 导航快照（Bug 2）要靠它保存/恢复。
@@ -27,44 +65,60 @@ watch(
 
 // 全局快捷键（UI 规格 §6.2）
 function onKeydown(e: KeyboardEvent) {
+  if (!hasToken.value || e.defaultPrevented || e.isComposing || document.querySelector('[aria-modal="true"]')) return
+  if (e.key === 'Escape' && (ui.drawerOpen || ui.focusMode)) {
+    e.preventDefault()
+    e.stopPropagation()
+    if (ui.drawerOpen) ui.drawerOpen = false
+    else ui.focusMode = false
+    return
+  }
+  if (e.key === 'Tab' && compact.value && ui.drawerOpen) {
+    const buttons = Array.from(document.querySelectorAll<HTMLButtonElement>('.sidebar-pane button')).filter(button => !button.disabled && button.getClientRects().length)
+    const first = buttons[0]
+    const last = buttons.at(-1)
+    if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last?.focus() }
+    else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first?.focus() }
+    return
+  }
   const action = resolveShortcut(e, { hasQuery: ui.query.trim().length > 0 })
   if (!action) return
+  e.preventDefault()
+  e.stopPropagation()
 
   if (action.type === 'create') {
-    e.preventDefault()
     notes.create()
   } else if (action.type === 'focusSearch') {
-    e.preventDefault()
-    // 抽屉态下搜索框藏在侧栏里，得先把侧栏推出来才聚焦得到
-    openDrawer()
-    requestAnimationFrame(() => {
-      document.querySelector<HTMLInputElement>('.sidebar-search input')?.focus()
-    })
+    void focusSearch()
   } else if (action.type === 'clearQuery') {
-    e.preventDefault()
     ui.query = ''
   }
 }
 
 onMounted(() => {
-  window.addEventListener('keydown', onKeydown)
+  // 先处理界面快捷键，避免编辑器的 Escape / Mod-K 抢走专注与搜索操作。
+  window.addEventListener('keydown', onKeydown, true)
+  drawerLayout.addEventListener?.('change', updateLayout)
   // Bug 2：启动时 replaceState 根快照，根界面按返回不退出应用
   initNavigation()
 })
-onUnmounted(() => window.removeEventListener('keydown', onKeydown))
+onUnmounted(() => {
+  window.removeEventListener('keydown', onKeydown, true)
+  drawerLayout.removeEventListener?.('change', updateLayout)
+})
 </script>
 
 <template>
   <TokenGate v-if="!hasToken" />
 
-  <div v-else class="layout" :data-mobile-pane="ui.mobilePane" :data-view="ui.view">
-    <!-- ≤1020px 侧栏变抽屉：不给入口的话搜索、星标、回收站、分组会整体失联 -->
-    <aside class="sidebar-pane" :class="{ 'is-open': ui.drawerOpen }">
+  <div v-else class="layout" :class="{ 'is-focused': ui.focusMode }" :data-mobile-pane="ui.mobilePane" :data-view="ui.view">
+    <!-- 窄屏将分组导航收进抽屉，搜索仍留在笔记列表上方。 -->
+    <aside class="sidebar-pane" :class="{ 'is-open': ui.drawerOpen }" :inert="compact && !ui.drawerOpen">
       <GroupSidebar />
     </aside>
     <div v-if="ui.drawerOpen" class="drawer-mask" @click="ui.drawerOpen = false"></div>
 
-    <section class="list-pane">
+    <section class="list-pane" aria-label="便签目录" :inert="compact && ui.drawerOpen">
       <MetricsView v-if="ui.view === 'metrics'" />
       <StatsView v-else-if="ui.view === 'stats'" />
       <TrashView v-else-if="ui.view === 'trash'" />
@@ -80,6 +134,7 @@ onUnmounted(() => window.removeEventListener('keydown', onKeydown))
       v-if="ui.view !== 'metrics' && ui.view !== 'stats'"
       :key="ui.view === 'trash' ? 'trash' : 'main'"
       :readonly="ui.view === 'trash'"
+      :inert="compact && ui.drawerOpen"
       @back="backToList"
     />
   </div>

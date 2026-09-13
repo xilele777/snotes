@@ -20,6 +20,8 @@ export const useUiStore = defineStore('ui', () => {
   const drawerOpen = ref(false)
   /** 移动端列表↔编辑器互斥（UI 规格 §2.3）；放进 store 才能被导航快照保存/恢复 */
   const mobilePane = ref<MobilePane>('list')
+  /** 只影响布局，不销毁编辑器，避免切换专注模式打断输入。 */
+  const focusMode = ref(false)
 
-  return { view, activeGroupId, query, syncing, lastSyncError, failedCount, drawerOpen, mobilePane }
+  return { view, activeGroupId, query, syncing, lastSyncError, failedCount, drawerOpen, mobilePane, focusMode }
 })

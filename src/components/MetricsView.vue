@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import '../insights.css'
 import { computed, onMounted, ref } from 'vue'
 import type { MetricsData, MetricsTrendPoint, QuotaItem, QuotaStatus } from '../../shared/types'
 import { apiMetrics } from '../api/client'

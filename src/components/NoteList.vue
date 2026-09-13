@@ -5,6 +5,8 @@ import EmptyState from './EmptyState.vue'
 import ListSkeleton from './ListSkeleton.vue'
 import NoteListItem from './NoteListItem.vue'
 import ConfirmDialog from './ConfirmDialog.vue'
+import AppIcon from './AppIcon.vue'
+import NoteSearch from './NoteSearch.vue'
 import { useNotesStore } from '../stores/notes'
 import { useUiStore } from '../stores/ui'
 import { useGroupsStore } from '../stores/groups'
@@ -12,20 +14,32 @@ import { useGroupsStore } from '../stores/groups'
 const notes = useNotesStore()
 const groups = useGroupsStore()
 const ui = useUiStore()
+const groupNames = computed(() => new Map(groups.groups.map(g => [g.group_id, g.name])))
 
 // 左滑删除：pointer 事件记录起点，松手时按位移决定是否展开删除按钮。
 const swipeStartX = ref<number | null>(null)
+let swipeStartY = 0
+let suppressClick = false
 const swipedId = ref<string | null>(null)
 const SWIPE_THRESHOLD = 40
 
 function onPointerDown(e: PointerEvent) {
+  if (e.pointerType === 'mouse') return
   swipeStartX.value = e.clientX
+  swipeStartY = e.clientY
+  suppressClick = false
 }
 function onPointerUp(e: PointerEvent, noteId: string) {
   if (swipeStartX.value === null) return
   const delta = e.clientX - swipeStartX.value
+  if (Math.abs(e.clientY - swipeStartY) > Math.abs(delta)) {
+    suppressClick = Math.abs(e.clientY - swipeStartY) > SWIPE_THRESHOLD
+    swipeStartX.value = null
+    return
+  }
   if (delta < -SWIPE_THRESHOLD) swipedId.value = noteId
   else if (delta > SWIPE_THRESHOLD) swipedId.value = null
+  suppressClick = Math.abs(delta) > SWIPE_THRESHOLD
   swipeStartX.value = null
 }
 
@@ -41,8 +55,30 @@ function runTrash() {
 
 /** 移动端进详情算一层界面切换，先入栈再换 currentId；桌面端两个面板同屏，不需入栈 */
 function selectNote(id: string) {
+  if (suppressClick) { suppressClick = false; return }
+  if (swipedId.value) { swipedId.value = null; return }
   if (isMobile() && ui.mobilePane === 'list') pushNav()
   notes.currentId = id
+  if (isMobile()) ui.mobilePane = 'editor'
+}
+
+function focusFirst() {
+  const first = notes.visible[0]
+  if (!first) return
+  selectNote(first.id)
+  if (!isMobile()) document.querySelector<HTMLButtonElement>('.note-select')?.focus()
+}
+
+function onListKeydown(event: KeyboardEvent) {
+  if (event.key !== 'ArrowDown' && event.key !== 'ArrowUp') return
+  const target = event.target as HTMLElement
+  if (!target.matches('.note-select')) return
+  const buttons = Array.from(target.closest('.note-list')!.querySelectorAll<HTMLButtonElement>('.note-select'))
+  const index = buttons.indexOf(target as HTMLButtonElement)
+  const next = buttons[index + (event.key === 'ArrowDown' ? 1 : -1)]
+  event.preventDefault()
+  next?.focus()
+  next?.click()
 }
 
 // 列表 header 视图标题：全部笔记 / 星标 / 分组名
@@ -98,12 +134,20 @@ watch(
       </button>
 
       <span class="header-title">{{ viewTitle }}</span>
+      <span v-if="!notes.stale" class="header-count">{{ notes.visible.length }}</span>
 
       <button class="header-create" title="新建笔记" aria-label="新建笔记" @click="notes.create()">
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
           <path d="M12 5v14M5 12h14" />
         </svg>
+        <span>新建</span>
       </button>
+    </div>
+
+    <NoteSearch @first="focusFirst" />
+    <div class="list-caption" aria-live="polite">
+      <template v-if="ui.query.trim()"><span>找到 {{ notes.visible.length }} 条笔记</span><button @click="ui.query = ''">清除筛选</button></template>
+      <template v-else><AppIcon name="sort" :size="14" /><span>置顶优先 · 最近编辑</span></template>
     </div>
 
     <ListSkeleton v-if="notes.stale" />
@@ -116,7 +160,7 @@ watch(
       @action="onEmptyAction"
     />
 
-    <ul v-else class="note-list">
+    <ul v-else class="note-list" aria-label="笔记列表" @keydown="onListKeydown">
       <NoteListItem
         v-for="note in notes.visible"
         :key="note.id"
@@ -124,12 +168,14 @@ watch(
         :active="note.id === notes.currentId"
         :swiped="swipedId === note.id"
         :query="ui.query"
+        :group-name="note.group_id ? groupNames.get(note.group_id) : undefined"
         @click="selectNote(note.id)"
         @pointerdown="onPointerDown"
         @pointerup="(e: PointerEvent) => onPointerUp(e, note.id)"
+        @pointercancel="swipeStartX = null"
       >
         <template #actions>
-          <!-- 左滑露出 80px 红色删除条；桌面端 hover 变成一个 28px 小圆垃圾桶 -->
+          <!-- 触屏左滑展开删除；桌面端在悬停或键盘聚焦时显示。 -->
           <button class="delete" title="删除" aria-label="删除" @click.stop="confirmTrashId = note.id">
             <svg class="delete-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
               <path d="M4 7h16M9 7V5h6v2M7 7l1 13h8l1-13" />

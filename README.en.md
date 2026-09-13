@@ -237,7 +237,7 @@ npm run test:e2e    # Playwright end-to-end
 npm run typecheck   # type checking
 ```
 
-The E2E suite runs `npm run build` and starts `wrangler dev` on its own, testing the production shape (same-origin static assets + API). No need to start anything first.
+The E2E suite builds the app, applies migrations, and starts `wrangler dev` on port `8790`, testing the production shape (same-origin static assets + API). It uses the fixture token in `tests/e2e/wrangler.jsonc` and stores its isolated test data in `tmp/e2e-state`. No need to start anything first.
 
 > **Behind a proxy**: run `unset HTTP_PROXY HTTPS_PROXY` before the E2E suite. workerd crashes on proxy environment variables, which shows up as tests hanging indefinitely.
 

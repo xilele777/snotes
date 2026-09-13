@@ -1,13 +1,22 @@
 <script setup lang="ts">
 import { onMounted, ref } from 'vue'
-import { openDrawer } from '../navigation'
+import { isMobile, openDrawer, pushNav } from '../navigation'
 import EmptyState from './EmptyState.vue'
 import ListSkeleton from './ListSkeleton.vue'
 import NoteListItem from './NoteListItem.vue'
 import ConfirmDialog from './ConfirmDialog.vue'
 import { useNotesStore } from '../stores/notes'
+import { useUiStore } from '../stores/ui'
+import NoteSearch from './NoteSearch.vue'
 
 const notes = useNotesStore()
+const ui = useUiStore()
+
+function selectNote(id: string) {
+  if (isMobile() && ui.mobilePane === 'list') pushNav()
+  notes.currentId = id
+  if (isMobile()) ui.mobilePane = 'editor'
+}
 
 onMounted(() => {
   if (notes.stale) void notes.load()
@@ -34,23 +43,29 @@ async function runConfirm() {
       </button>
 
       <span class="header-title">回收站</span>
+      <span v-if="!notes.stale" class="header-count">{{ notes.visible.length }}</span>
 
       <button v-if="notes.notes.length > 0" class="clean-all" @click="confirm = { kind: 'clean' }">
         清空
       </button>
     </div>
 
+    <NoteSearch @first="notes.visible[0] && selectNote(notes.visible[0].id)" />
+    <div class="list-caption"><span>删除的笔记，可以在这里找回</span></div>
+
     <ListSkeleton v-if="notes.stale" />
     <EmptyState v-else-if="notes.notes.length === 0" title="回收站是空的" hint="删掉的笔记会先放到这里" />
+    <EmptyState v-else-if="notes.visible.length === 0" title="没有匹配的笔记" hint="换个关键词试试" action="清除搜索" @action="ui.query = ''" />
 
     <ul v-else class="note-list">
       <NoteListItem
-        v-for="note in notes.notes"
+        v-for="note in notes.visible"
         :key="note.id"
         :note="note"
         class="trash-item"
         :active="note.id === notes.currentId"
-        @click="notes.currentId = note.id"
+        :query="ui.query"
+        @click="selectNote(note.id)"
       >
         <template #actions>
           <div class="trash-acts" @click.stop>

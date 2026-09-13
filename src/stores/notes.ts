@@ -101,19 +101,20 @@ export const useNotesStore = defineStore('notes', () => {
   async function create() {
     const groupId = createGroupId()
     const note = await repo.createNote('', groupId ? { group_id: groupId } : {})
-    // 新建在 star / trash 下不会出现在当前筛选里：列表会空白、详情区也指不到它，
-    // 先切回全部笔记（与侧栏切视图一致，算一层界面变化）。仅当新笔记在 star/trash 里
-    // 天生不可见才切——group 里新建就落在当前分组，不用切。
-    const viewSwitches = ui.view === 'star' || ui.view === 'trash'
+    // 分组内就地新建；星标、回收站和统计视图的新笔记统一显示在全部笔记里。
+    const viewSwitches = ui.view !== 'all' && ui.view !== 'group'
     if (viewSwitches) {
       // 视图切换前把当前态入栈，返回键退回新建前的筛选视图而不是直接退出应用
       pushNav()
       ui.view = 'all'
+      ui.activeGroupId = null
     } else if (isMobile()) {
       // 移动端列表与编辑器互斥，新建后必然切进详情（currentId 一落，编辑器占整屏），
       // 入栈让系统返回键先回到目录页而不是退出应用
       pushNav()
     }
+    ui.query = ''
+    ui.drawerOpen = false
     await load()
     currentId.value = note.id
     return note

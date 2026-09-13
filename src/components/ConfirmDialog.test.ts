@@ -1,8 +1,33 @@
-import { mount } from '@vue/test-utils'
+import { flushPromises, mount } from '@vue/test-utils'
 import { describe, expect, it } from 'vitest'
 import ConfirmDialog from './ConfirmDialog.vue'
 
 describe('ConfirmDialog', () => {
+  it('聚焦取消按钮、限制 Tab 焦点，Esc 关闭后恢复原焦点', async () => {
+    const trigger = document.createElement('button')
+    document.body.append(trigger)
+    trigger.focus()
+    const wrapper = mount(ConfirmDialog, {
+      props: { open: false, title: '删除？' },
+      attachTo: document.body,
+    })
+    await wrapper.setProps({ open: true })
+    await flushPromises()
+    expect(document.activeElement).toBe(wrapper.get('[data-op="cancel"]').element)
+
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Tab', shiftKey: true, cancelable: true }))
+    expect(document.activeElement).toBe(wrapper.get('[data-op="confirm"]').element)
+
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', cancelable: true }))
+    expect(wrapper.emitted('cancel')).toHaveLength(1)
+    expect(wrapper.emitted('confirm')).toBeUndefined()
+    await wrapper.setProps({ open: false })
+    await flushPromises()
+    expect(document.activeElement).toBe(trigger)
+    wrapper.unmount()
+    trigger.remove()
+  })
+
   it('open=false 时不渲染任何东西', () => {
     const wrapper = mount(ConfirmDialog, { props: { open: false, title: '删除？' } })
 
