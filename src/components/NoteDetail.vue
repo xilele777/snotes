@@ -27,7 +27,7 @@ const editorBody = ref<HTMLElement | null>(null)
 const currentGroup = computed(() => groups.groups.find(group => group.group_id === notes.current?.group_id)?.name ?? '未分组')
 
 /** 6 色皮肤板（UI 规格 §3.5）。null 为清除。 */
-const SKIN_COLORS = [null, '#fed634', '#ffac00', '#e97663', '#5e7a88', '#3692f5'] as const
+const SKIN_COLORS = [null, '#d8b46a', '#cd956a', '#cb8585', '#86a394', '#8398ba'] as const
 
 /** 颜色、分组和格式提示一次只展开一个。 */
 const openPop = ref<'color' | 'group' | 'help' | null>(null)
@@ -110,7 +110,7 @@ const wordCount = computed(() => countWords(notes.current?.body ?? ''))
 
 <template>
   <main class="editor-pane">
-    <div class="editor-top-bar">
+    <div v-if="notes.current" class="editor-top-bar">
       <!-- 移动端返回按钮，仅 <720px 显示 -->
       <button class="back-btn" title="返回列表" aria-label="返回列表" @click="$emit('back')">
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -267,23 +267,19 @@ const wordCount = computed(() => countWords(notes.current?.body ?? ''))
           aria-label="删除"
           @click="confirmAction = 'trash'"
         >
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
-            <path d="M4 7h16M9 7V5h6v2M7 7l1 13h8l1-13" />
-          </svg>
+          <AppIcon name="trash" />
         </button>
       </div>
     </div>
 
     <div ref="editorBody" class="editor-body">
-      <div v-if="!notes.current" class="editor-welcome">
-        <div class="welcome-paper" aria-hidden="true"><AppIcon name="note" :size="44" /></div>
-        <h1>{{ readonly ? '让想法，暂时歇一歇' : '随手记下，此刻的想法' }}</h1>
-        <p>{{ readonly ? '选择一条笔记查看，或将它恢复到列表。' : '选择一条笔记，或新建一条，开始记录。' }}</p>
-        <button v-if="!readonly" class="welcome-create" @click="notes.create()"><AppIcon name="plus" :size="17" />新建笔记</button>
-        <span v-if="!readonly" class="welcome-tip">灵感、清单、小事，都可以放在这里。</span>
+      <div v-if="!notes.current && !readonly" class="editor-welcome">
+        <AppIcon name="note" :size="40" class="empty-art" />
+        <h1>选择一条笔记</h1>
+        <button class="welcome-create" @click="notes.create()"><AppIcon name="plus" :size="17" />新建笔记</button>
       </div>
       <MilkdownEditor
-        v-else
+        v-else-if="notes.current"
         ref="editorRef"
         :note-id="notes.current.id"
         :model-value="notes.current.body"

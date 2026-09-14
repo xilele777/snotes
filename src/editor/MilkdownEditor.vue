@@ -13,6 +13,7 @@ import type { ComponentPublicInstance } from 'vue'
 import { escapeRawHtml, migrateLegacyBr } from '../../shared/sanitize'
 import { clipboardImageFiles, uploadImage } from './image-upload'
 import { taskCheckboxes } from './task-checkboxes'
+import { configureListSerialization, orderedList } from './ordered-list'
 
 const props = defineProps<{ noteId: string; modelValue: string; editable?: boolean }>()
 const emit = defineEmits<{
@@ -265,6 +266,7 @@ const MilkdownInner = defineComponent({
   setup(_, { expose }) {
     const { get } = useEditor((root) =>
       Editor.make()
+        .config(configureListSerialization)
         .config((ctx) => {
           ctx.set(rootCtx, root)
           ctx.set(defaultValueCtx, escapeRawHtml(migrateLegacyBr(props.modelValue)))
@@ -276,6 +278,7 @@ const MilkdownInner = defineComponent({
         // commonmark 在前、gfm 在后：表格删除线任务清单属于 GFM 扩展，
         // 层叠顺序反了会导致 GFM 的 schema 扩展覆盖不到 commonmark 的节点
         .use(commonmark)
+        .use(orderedList)
         .use(paragraphSchema)
         .use(gfm)
         .use(taskCheckboxes)

@@ -99,13 +99,13 @@ describe('NoteDetail 顶栏操作条', () => {
     await op(wrapper, 'color').trigger('click')
     expect(wrapper.find('.op-popover.colors').exists()).toBe(true)
 
-    // 第二个色板是 yellow #fed634，第一个是「清除颜色」
+    // 第一个是「清除颜色」，第二个是暖黄色。
     await wrapper.findAll('.more-swatch')[1].trigger('click')
 
     await vi.waitFor(() => {
-      expect(notes.notes.find((n) => n.id === note.id)?.skin_color).toBe('#fed634')
+      expect(notes.notes.find((n) => n.id === note.id)?.skin_color).toBe('#d8b46a')
     })
-    expect((await db.notes.get(note.id))!.skin_color).toBe('#fed634')
+    expect((await db.notes.get(note.id))!.skin_color).toBe('#d8b46a')
     expect(wrapper.find('.op-popover.colors').exists()).toBe(false)
     wrapper.unmount()
   })

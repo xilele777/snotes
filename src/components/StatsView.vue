@@ -5,6 +5,8 @@ import { computeNoteStats, type NoteStats } from '../../shared/stats'
 import { db } from '../db/schema'
 import { useNotesStore } from '../stores/notes'
 import { useUiStore } from '../stores/ui'
+import { openDrawer } from '../navigation'
+import AppIcon from './AppIcon.vue'
 
 const status = ref<'loading' | 'ready'>('loading')
 const stats = ref<NoteStats | null>(null)
@@ -54,15 +56,14 @@ function openNote(id: string) { ui.view = 'all'; notes.currentId = id }
 </script>
 
 <template>
-  <div class="metrics-view stats-view">
-    <div class="metrics-topbar">
-      <div class="metrics-title"><span class="header-title">统计</span><span v-if="status === 'ready'" class="metrics-sub">写作节奏、长度与跨设备打开统计</span></div>
-      <button class="metrics-refresh" title="刷新" aria-label="刷新" @click="load"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-2.64-6.36M21 3v6h-6" /></svg></button>
-    </div>
+  <div class="metrics-view stats-view" aria-label="记录统计">
     <div class="metrics-body">
-      <p v-if="status === 'loading'" class="metrics-hint">加载中...</p>
-      <div v-else-if="stats" class="stats-grid">
-        <section class="stats-numbers"><span><b>{{ stats.total }}</b> 笔记</span><i>·</i><span><b>{{ stats.totalWords.toLocaleString('zh-CN') }}</b> 字</span><i>·</i><span><b>{{ stats.streakCurrent }}</b> 天连续</span><i>·</i><span><b>{{ stats.starred }}</b> 星标</span><i>·</i><span><b>{{ stats.topped }}</b> 置顶</span><i>·</i><span>始于 <b>{{ fmtFull(stats.earliest) }}</b></span></section>
+      <div class="stats-overview">
+        <button class="drawer-btn" title="打开侧栏" aria-label="打开侧栏" @click="openDrawer()"><AppIcon name="menu" /></button>
+        <p v-if="status === 'loading'" class="metrics-hint">加载中...</p>
+        <section v-else-if="stats" class="stats-numbers"><span><b>{{ stats.total }}</b> 笔记</span><i>·</i><span><b>{{ stats.totalWords.toLocaleString('zh-CN') }}</b> 字</span><i>·</i><span><b>{{ stats.streakCurrent }}</b> 天连续</span><i>·</i><span><b>{{ stats.starred }}</b> 星标</span><i>·</i><span><b>{{ stats.topped }}</b> 置顶</span><i>·</i><span>始于 <b>{{ fmtFull(stats.earliest) }}</b></span></section>
+      </div>
+      <div v-if="status === 'ready' && stats" class="stats-grid">
         <section class="stats-panel stats-heatmap"><h4 class="chart-title">更新热力图 <small>近 53 周</small></h4><div class="heatmap-scroll"><div class="heatmap-grid"><div v-for="col in heatWeeks" :key="col.weekStart" class="heatmap-col"><div v-for="cell in col.days" :key="cell.date" class="heatmap-cell" :data-level="heatLevel(cell.count)" :title="heatTip(cell)"></div></div></div></div><div class="heatmap-legend"><span>少</span><span v-for="level in 5" :key="level" class="heatmap-cell" :data-level="level - 1"></span><span>多</span><span class="heatmap-streak">最长连续 {{ stats.streakLongest }} 天</span></div></section>
         <section class="stats-panel writing-hours"><div class="chart-heading"><h4 class="chart-title">写作时段</h4><span class="chart-total">{{ totalHourUpdates }} 次更新</span></div><div v-if="hasHourlyUpdates" class="hour-bars"><div v-for="(count, hour) in stats.byHour" :key="hour" class="hour-bar-col" :title="`${hour}:00，${count} 次更新`"><span class="hour-bar" :style="{ height: `${(count / maxHour) * 100}%` }"></span><small v-if="hour % 4 === 0">{{ hour }}</small></div></div><p v-else class="chart-empty">还没有可统计的更新时间</p><p class="chart-foot">按本地更新时间统计</p></section>
         <section class="stats-panel stats-daily"><div class="chart-heading"><h4 class="chart-title">近 30 天创建与更新</h4><span class="chart-total">{{ totalCreatedLast30 }} 创建 · {{ totalUpdatedLast30 }} 更新</span></div><div v-if="hasDailyActivity" class="daily-bars"><div v-for="(created, index) in stats.createdLast30" :key="created.date" class="daily-bar-col" :title="`${created.date}: 创建 ${created.count}，更新 ${stats.updatedLast30[index].count}`"><span class="daily-bar created" :style="{ height: `${(created.count / maxDaily) * 100}%` }"></span><span class="daily-bar updated" :style="{ height: `${(stats.updatedLast30[index].count / maxDaily) * 100}%` }"></span><small v-if="index % 5 === 0">{{ dayLabel(created.date) }}</small></div></div><p v-else class="chart-empty">近 30 天没有创建或更新</p><p class="chart-foot"><span class="legend-created"></span>创建 <span class="legend-updated"></span>更新</p></section>

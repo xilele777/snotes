@@ -8,6 +8,7 @@ import ConfirmDialog from './ConfirmDialog.vue'
 import { useNotesStore } from '../stores/notes'
 import { useUiStore } from '../stores/ui'
 import NoteSearch from './NoteSearch.vue'
+import AppIcon from './AppIcon.vue'
 
 const notes = useNotesStore()
 const ui = useUiStore()
@@ -37,9 +38,7 @@ async function runConfirm() {
   <div class="list-view">
     <div class="list-header">
       <button class="drawer-btn" title="打开侧栏" aria-label="打开侧栏" @click="openDrawer()">
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
-          <path d="M4 7h16M4 12h16M4 17h16" />
-        </svg>
+        <AppIcon name="menu" />
       </button>
 
       <span class="header-title">回收站</span>
@@ -50,12 +49,11 @@ async function runConfirm() {
       </button>
     </div>
 
-    <NoteSearch @first="notes.visible[0] && selectNote(notes.visible[0].id)" />
-    <div class="list-caption"><span>删除的笔记，可以在这里找回</span></div>
+    <NoteSearch v-if="notes.notes.length > 0 || ui.query.trim()" @first="notes.visible[0] && selectNote(notes.visible[0].id)" />
 
     <ListSkeleton v-if="notes.stale" />
-    <EmptyState v-else-if="notes.notes.length === 0" title="回收站是空的" hint="删掉的笔记会先放到这里" />
-    <EmptyState v-else-if="notes.visible.length === 0" title="没有匹配的笔记" hint="换个关键词试试" action="清除搜索" @action="ui.query = ''" />
+    <EmptyState v-else-if="notes.notes.length === 0" icon="trash" title="暂无已删除笔记" />
+    <EmptyState v-else-if="notes.visible.length === 0" icon="search" title="没有匹配的笔记" action="清除搜索" @action="ui.query = ''" />
 
     <ul v-else class="note-list">
       <NoteListItem

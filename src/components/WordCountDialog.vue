@@ -29,7 +29,6 @@ useDialogFocus(() => props.open, panel, () => emit('close'))
             <span class="wordcount-label">可见字符</span>
           </li>
         </ul>
-        <p class="wordcount-hint">中文按字、英文按词计数，不含 Markdown 语法符号。</p>
         <div class="dialog-footer">
           <button class="dialog-btn ok" @click="emit('close')">关闭</button>
         </div>

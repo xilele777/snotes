@@ -367,6 +367,44 @@ test('清单可勾选、撤销并保存，回收站中保持只读', async ({ pa
   await expect(checkbox).toBeDisabled()
 })
 
+test('粘贴编号文本后从 1 开始，刷新后保留编号', async ({ page }) => {
+  await createNote(page)
+  const editor = page.getByRole('textbox', { name: '笔记正文' })
+  await expect(editor).toBeFocused()
+  await editor.evaluate(element => {
+    const clipboardData = new DataTransfer()
+    clipboardData.setData('text/plain', '1. 第一项\n2. 第二项\n   1. 嵌套项')
+    element.dispatchEvent(new ClipboardEvent('paste', { clipboardData, bubbles: true, cancelable: true }))
+  })
+
+  const starts = () => editor.locator('ol').evaluateAll(lists => lists.map(list => (list as HTMLOListElement).start))
+  await expect.poll(starts).toEqual([1, 1])
+  await expect.poll(() => savedBody(page)).toMatch(/^1\.\s+第一项/)
+  await page.reload()
+  await expect.poll(starts).toEqual([1, 1])
+  await expect(editor).toContainText('嵌套项')
+})
+
+test('富文本列表的空起点默认是 1，嵌套与显式起点保存后不变', async ({ page }) => {
+  await createNote(page)
+  const editor = page.getByRole('textbox', { name: '笔记正文' })
+  await expect(editor).toBeFocused()
+  await editor.evaluate(element => {
+    const clipboardData = new DataTransfer()
+    clipboardData.setData('text/plain', '1. 第一项\n   4. 嵌套四\n   5. 嵌套五\n2. 第二项\n从零开始的示例\n0. 零号\n1. 一号')
+    clipboardData.setData('text/html', '<ol start=""><li><p><strong>第一项</strong></p><ol start="4"><li>嵌套四</li><li>嵌套五</li></ol></li><li>第二项</li></ol><p>从零开始的示例</p><ol start="0"><li>零号</li><li>一号</li></ol>')
+    element.dispatchEvent(new ClipboardEvent('paste', { clipboardData, bubbles: true, cancelable: true }))
+  })
+
+  const starts = () => editor.locator('ol').evaluateAll(lists => lists.map(list => (list as HTMLOListElement).start))
+  await expect.poll(starts).toEqual([1, 4, 0])
+  await expect(editor.locator('strong')).toHaveText('第一项')
+  await expect.poll(() => savedBody(page)).toMatch(/^1\.\s+\*\*第一项\*\*/)
+  await page.reload()
+  await expect.poll(starts).toEqual([1, 4, 0])
+  await expect(editor.locator('strong')).toHaveText('第一项')
+})
+
 test.describe('手机操作', () => {
   test.use({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true })
 

@@ -128,26 +128,21 @@ watch(
     <!-- 列表区 header：≤1020px 出抽屉按钮，右侧常驻新建（原站 listHeader 56px） -->
     <div class="list-header">
       <button class="drawer-btn" title="打开侧栏" aria-label="打开侧栏" @click="openDrawer()">
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
-          <path d="M4 7h16M4 12h16M4 17h16" />
-        </svg>
+        <AppIcon name="menu" />
       </button>
 
       <span class="header-title">{{ viewTitle }}</span>
       <span v-if="!notes.stale" class="header-count">{{ notes.visible.length }}</span>
 
       <button class="header-create" title="新建笔记" aria-label="新建笔记" @click="notes.create()">
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
-          <path d="M12 5v14M5 12h14" />
-        </svg>
+        <AppIcon name="plus" :size="15" />
         <span>新建</span>
       </button>
     </div>
 
     <NoteSearch @first="focusFirst" />
-    <div class="list-caption" aria-live="polite">
-      <template v-if="ui.query.trim()"><span>找到 {{ notes.visible.length }} 条笔记</span><button @click="ui.query = ''">清除筛选</button></template>
-      <template v-else><AppIcon name="sort" :size="14" /><span>置顶优先 · 最近编辑</span></template>
+    <div v-if="ui.query.trim()" class="list-caption" aria-live="polite">
+      <span>找到 {{ notes.visible.length }} 条笔记</span><button @click="ui.query = ''">清除筛选</button>
     </div>
 
     <ListSkeleton v-if="notes.stale" />
@@ -177,9 +172,7 @@ watch(
         <template #actions>
           <!-- 触屏左滑展开删除；桌面端在悬停或键盘聚焦时显示。 -->
           <button class="delete" title="删除" aria-label="删除" @click.stop="confirmTrashId = note.id">
-            <svg class="delete-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
-              <path d="M4 7h16M9 7V5h6v2M7 7l1 13h8l1-13" />
-            </svg>
+            <AppIcon name="trash" :size="16" class="delete-icon" />
             <span class="delete-label">删除</span>
           </button>
         </template>

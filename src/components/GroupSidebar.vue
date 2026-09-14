@@ -127,7 +127,7 @@ async function submitDialog(name: string) {
   <nav class="group-sidebar" aria-label="便签导航">
     <div class="sidebar-brand">
       <span class="brand-mark"><AppIcon name="note" :size="23" /></span>
-      <div><span class="brand-name">snotes<span class="brand-period">.</span></span><span class="brand-caption">给想法一个落脚处</span></div>
+      <span class="brand-name">snotes</span>
       <button class="sidebar-close icon-button" aria-label="关闭侧栏" title="关闭侧栏" @click="ui.drawerOpen = false"><AppIcon name="close" /></button>
     </div>
 
@@ -149,7 +149,6 @@ async function submitDialog(name: string) {
       </button>
     </div>
 
-    <p v-if="groups.groups.length === 0" class="groups-empty"><button @click="openCreate">建个分组，整理日常</button></p>
     <ul class="groups">
       <li
         v-for="group in groups.groups"
@@ -223,7 +222,6 @@ async function submitDialog(name: string) {
             <li><span class="info-label">应用名称</span><span class="info-value">snotes</span></li>
             <li><span class="info-label">网页版本</span><span class="info-value">{{ versionLabel }}</span></li>
           </ul>
-          <p class="confirm-message">此版本号对应当前加载的网页。</p>
           <div class="dialog-footer">
             <button ref="versionCloseButton" type="button" class="dialog-btn ok" @click="versionOpen = false">关闭</button>
           </div>

@@ -152,7 +152,6 @@ describe('GroupSidebar 底部版本与同步入口', () => {
 
     const versionDialog = document.querySelector<HTMLElement>('[aria-label="版本信息"]')!
     expect(versionDialog.textContent).toContain(`v${appVersion}`)
-    expect(versionDialog.textContent).toContain('当前加载的网页')
     const closeButton = versionDialog.querySelector<HTMLButtonElement>('button')!
     expect(document.activeElement).toBe(closeButton)
 

@@ -15,7 +15,7 @@ function submit() {
   <div class="token-gate">
     <form class="token-card" @submit.prevent="submit">
       <span class="brand-mark"><AppIcon name="note" :size="27" /></span>
-      <h1 class="token-title">snotes<span class="brand-period">.</span></h1>
+      <h1 class="token-title">snotes</h1>
       <p class="token-intro">随手记下，此刻的想法。</p>
       <p v-if="authNotice" class="token-error" role="alert">{{ authNotice }}</p>
       <label for="access-token" class="token-hint">访问令牌</label>

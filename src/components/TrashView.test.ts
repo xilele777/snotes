@@ -77,7 +77,7 @@ describe('TrashView', () => {
     const wrapper = mount(TrashView)
     await vi.waitFor(() => expect(wrapper.find('.empty-state').exists()).toBe(true))
 
-    expect(wrapper.find('.empty-state').text()).toContain('回收站是空的')
+    expect(wrapper.find('.empty-state').text()).toContain('暂无已删除笔记')
   })
 
   it('点彻底删除单条弹确认，确认后物理删除该笔记', async () => {
