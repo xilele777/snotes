@@ -6,6 +6,7 @@ import NoteDetail from './components/NoteDetail.vue'
 import NoteList from './components/NoteList.vue'
 import TokenGate from './components/TokenGate.vue'
 import TrashView from './components/TrashView.vue'
+import StatsDialog from './components/StatsDialog.vue'
 import { resolveShortcut } from './components/shortcut'
 import { backToList, initNavigation, isMobile, pushNav } from './navigation'
 import { useNotesStore } from './stores/notes'
@@ -14,32 +15,33 @@ import { useUiStore } from './stores/ui'
 const notes = useNotesStore()
 const ui = useUiStore()
 const MetricsView = defineAsyncComponent(() => import('./components/MetricsView.vue'))
-const StatsView = defineAsyncComponent(() => import('./components/StatsView.vue'))
 const drawerLayout = window.matchMedia('(max-width: 1020px)')
 const compact = ref(drawerLayout.matches)
 function updateLayout() { compact.value = drawerLayout.matches }
 let drawerTrigger: HTMLElement | null = null
 
 watch(() => ui.drawerOpen, async (open) => {
-  if (!compact.value) return
+  if (!compact.value || ui.statsOpen) return
   if (open) {
     drawerTrigger = document.activeElement as HTMLElement
     await nextTick()
-    document.querySelector<HTMLButtonElement>('.sidebar-close')?.focus()
+    if (!ui.statsOpen) document.querySelector<HTMLButtonElement>('.sidebar-close')?.focus()
   } else {
     await nextTick()
-    if (drawerTrigger?.isConnected && drawerTrigger.getClientRects().length) drawerTrigger.focus()
+    const targets = [drawerTrigger, ...document.querySelectorAll<HTMLElement>('.drawer-btn, .back-btn')]
+    const target = targets.find(element => element?.isConnected && element.getClientRects().length && !element.closest('[inert]'))
+    if (!ui.statsOpen) target?.focus({ preventScroll: true })
   }
 })
 
 watch(() => [notes.currentId, ui.view], () => {
-  if (!notes.currentId || ui.view === 'stats' || ui.view === 'metrics' || ui.view === 'trash') ui.focusMode = false
+  if (!notes.currentId || ui.view === 'metrics' || ui.view === 'trash') ui.focusMode = false
 })
 
 async function focusSearch() {
   ui.focusMode = false
   ui.drawerOpen = false
-  if (ui.view === 'metrics' || ui.view === 'stats') {
+  if (ui.view === 'metrics') {
     pushNav()
     ui.view = 'all'
     ui.activeGroupId = null
@@ -60,12 +62,13 @@ watch(
   () => notes.currentId,
   (id) => {
     ui.mobilePane = id ? 'editor' : 'list'
-  }
+  },
+  { flush: 'sync' },
 )
 
 // 全局快捷键（UI 规格 §6.2）
 function onKeydown(e: KeyboardEvent) {
-  if (!hasToken.value || e.defaultPrevented || e.isComposing || document.querySelector('[aria-modal="true"]')) return
+  if (!hasToken.value || ui.statsOpen || e.defaultPrevented || e.isComposing || document.querySelector('[aria-modal="true"]')) return
   if (e.key === 'Escape' && (ui.drawerOpen || ui.focusMode)) {
     e.preventDefault()
     e.stopPropagation()
@@ -111,7 +114,7 @@ onUnmounted(() => {
 <template>
   <TokenGate v-if="!hasToken" />
 
-  <div v-else class="layout" :class="{ 'is-focused': ui.focusMode }" :data-mobile-pane="ui.mobilePane" :data-view="ui.view">
+  <div v-else class="layout" :class="{ 'is-focused': ui.focusMode }" :data-mobile-pane="ui.mobilePane" :data-view="ui.view" :inert="ui.statsOpen">
     <!-- 窄屏将分组导航收进抽屉，搜索仍留在笔记列表上方。 -->
     <aside class="sidebar-pane" :class="{ 'is-open': ui.drawerOpen }" :inert="compact && !ui.drawerOpen">
       <GroupSidebar />
@@ -120,7 +123,6 @@ onUnmounted(() => {
 
     <section class="list-pane" aria-label="便签目录" :inert="compact && ui.drawerOpen">
       <MetricsView v-if="ui.view === 'metrics'" />
-      <StatsView v-else-if="ui.view === 'stats'" />
       <TrashView v-else-if="ui.view === 'trash'" />
       <NoteList v-else />
     </section>
@@ -128,14 +130,15 @@ onUnmounted(() => {
     <!--
       回收站详情与编辑详情用同一个组件，只是 readonly 不同。
       key 区分两者：ProseMirror 的 editable 在建实例时读一次，不重挂就切不干净。
-      监控页与统计页没有笔记详情，details 区整块隐藏。
+      监控页没有笔记详情；统计弹窗不卸载当前工作区。
     -->
     <NoteDetail
-      v-if="ui.view !== 'metrics' && ui.view !== 'stats'"
+      v-if="ui.view !== 'metrics'"
       :key="ui.view === 'trash' ? 'trash' : 'main'"
       :readonly="ui.view === 'trash'"
       :inert="compact && ui.drawerOpen"
       @back="backToList"
     />
   </div>
+  <StatsDialog v-if="hasToken" :open="ui.statsOpen" />
 </template>

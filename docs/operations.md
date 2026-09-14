@@ -36,7 +36,7 @@ const db = await indexedDB.databases()
 npx wrangler d1 export snotes --remote --output "backup-$(date +%Y%m).sql"
 ```
 
-把导出的 SQL 文件存到任意云盘。图片在 R2 中已有冗余，不单独备份。
+SQL 只包含已经同步到 D1 的数据，浏览器里尚未同步的修改不在其中。完整备份还需单独保存 R2 图片对象；存储冗余不能替代备份。
 
 恢复时：
 
@@ -51,8 +51,9 @@ npx wrangler d1 execute snotes --remote --file backup-YYYYMM.sql
 ```bash
 node -e "console.log(Buffer.from(crypto.getRandomValues(new Uint8Array(32))).toString('base64url'))"
 npx wrangler secret put ACCESS_TOKEN
-npm run deploy
 ```
+
+已有 Worker 时，`wrangler secret put` 会创建并立即部署带新密钥的版本；同时修改了代码时再运行 `npm run deploy`。
 
 所有客户端会在下次请求时收到 401 并自动回到令牌输入页，重新输入新令牌即可。
 本地数据不受影响。
@@ -70,7 +71,7 @@ npx wrangler d1 migrations apply snotes --remote   # 再上生产
 
 ## 额度监控
 
-应用内「用量监控」直接对照 Cloudflare 免费额度：
+用量监控组件和 `/api/metrics` 保留，当前侧栏不显示入口。配置完成后按以下周期对照 Cloudflare 免费额度：
 
 - **每日额度**：D1 行读取、D1 行写入、Workers 请求。页面用本月最高单日判断是否曾经超过每日上限，并单独显示今日用量。
 - **自然月额度**：R2 Class A / Class B 操作。页面按 UTC 自然月累计判断。

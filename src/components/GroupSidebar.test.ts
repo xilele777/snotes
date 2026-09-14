@@ -68,7 +68,7 @@ describe('GroupSidebar', () => {
     expect(ui.activeGroupId).toBe(g.group_id)
   })
 
-  it('点击回收站切到 trash 视图', async () => {
+  it('回收站位于星标下面，切换后保留相同的笔记导航', async () => {
     const ui = useUiStore()
     const wrapper = mount(GroupSidebar)
     await wrapper.vm.$nextTick()
@@ -76,6 +76,11 @@ describe('GroupSidebar', () => {
     await wrapper.find('[data-view="trash"]').trigger('click')
 
     expect(ui.view).toBe('trash')
+    expect(wrapper.find('.sidebar-content').exists()).toBe(true)
+    expect(wrapper.findAll('.views > li').map(item => item.attributes('data-view'))).toEqual(['all', 'star', 'trash'])
+    expect(wrapper.find('.app-rail [data-view="trash"]').exists()).toBe(false)
+    expect(wrapper.get('[data-view="trash"] button').attributes('aria-current')).toBe('page')
+    wrapper.unmount()
   })
 
   it('软删除的分组不出现在列表中', async () => {
@@ -97,17 +102,56 @@ describe('GroupSidebar', () => {
     expect(entry.exists()).toBe(false)
   })
 
-  it('点统计入口切到 stats 视图并收起抽屉', async () => {
+  it('统计打开弹窗并收起抽屉，保留底下的分组视图', async () => {
     const ui = useUiStore()
+    ui.view = 'group'
+    ui.activeGroupId = 'work'
     ui.drawerOpen = true
 
     const wrapper = mount(GroupSidebar)
     await wrapper.vm.$nextTick()
     await wrapper.find('[data-view="stats"]').trigger('click')
 
-    expect(ui.view).toBe('stats')
+    expect(ui.statsOpen).toBe(true)
+    expect(ui.view).toBe('group')
+    expect(ui.activeGroupId).toBe('work')
+    expect(ui.drawerOpen).toBe(false)
+    expect(wrapper.find('.sidebar-content').exists()).toBe(true)
+    expect(wrapper.get('[data-view="stats"]').attributes('aria-expanded')).toBe('true')
+    wrapper.unmount()
+  })
+
+  it.each(['trash', 'metrics'] as const)('从 %s 且没有历史笔记位置时，返回全部笔记', async (view) => {
+    const ui = useUiStore()
+    ui.view = view
+    ui.drawerOpen = true
+
+    const wrapper = mount(GroupSidebar)
+    expect(wrapper.find('.sidebar-content').exists()).toBe(view === 'trash')
+    await wrapper.get('.rail-button[aria-label="笔记"]').trigger('click')
+    await flushPromises()
+
+    expect(ui.view).toBe('all')
     expect(ui.activeGroupId).toBeNull()
     expect(ui.drawerOpen).toBe(false)
+    expect(wrapper.get('.rail-button[aria-label="笔记"]').attributes('aria-pressed')).toBe('true')
+    expect(wrapper.find('.sidebar-content').exists()).toBe(true)
+    wrapper.unmount()
+  })
+
+  it('已经在分组内时点击笔记图标不会重置分组', async () => {
+    const ui = useUiStore()
+    ui.view = 'group'
+    ui.activeGroupId = 'work'
+    ui.drawerOpen = true
+    const wrapper = mount(GroupSidebar)
+
+    await wrapper.get('.rail-button[aria-label="笔记"]').trigger('click')
+
+    expect(ui.view).toBe('group')
+    expect(ui.activeGroupId).toBe('work')
+    expect(ui.drawerOpen).toBe(false)
+    wrapper.unmount()
   })
 
   it('删除分组后组内笔记回到未分组而非被删除', async () => {

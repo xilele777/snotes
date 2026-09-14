@@ -1,7 +1,7 @@
 import { nextTick, onUnmounted, watch, type Ref } from 'vue'
 
 /** Keep keyboard actions in the open dialog and return focus to its trigger. */
-export function useDialogFocus(open: () => boolean, panel: Ref<HTMLElement | null>, close: () => void) {
+export function useDialogFocus(open: () => boolean, panel: Ref<HTMLElement | null>, close: () => void, returnFocus?: () => HTMLElement | null) {
   let previousFocus: HTMLElement | null = null
   const focusable = () => Array.from(panel.value?.querySelectorAll<HTMLElement>(
     'button:not(:disabled), input:not(:disabled), a[href], [tabindex]:not([tabindex="-1"])',
@@ -43,7 +43,10 @@ export function useDialogFocus(open: () => boolean, panel: Ref<HTMLElement | nul
     } else {
       window.removeEventListener('keydown', onKeydown, true)
       await nextTick()
-      if (!open() && previousFocus?.isConnected) previousFocus.focus()
+      if (open() || !previousFocus) return
+      const target = returnFocus?.() ?? previousFocus
+      if (target?.isConnected) target.focus({ preventScroll: true })
+      previousFocus = null
     }
   }, { immediate: true })
 

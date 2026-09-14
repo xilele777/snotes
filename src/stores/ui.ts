@@ -2,11 +2,20 @@ import { defineStore } from 'pinia'
 import { ref } from 'vue'
 import type { ListView } from '../db/repo'
 
-/** 界面视图。metrics 是监控页、stats 是统计页，都不是笔记列表，故与 ListView 分开表达。 */
-export type UiView = ListView | 'metrics' | 'stats'
+/** 统计作为弹窗显示，不参与主界面的视图切换。 */
+export type UiView = ListView | 'metrics'
 
 /** <720px 时列表与编辑器互斥，这里是当前显示哪一格 */
 export type MobilePane = 'list' | 'editor'
+
+export interface WorkspacePosition {
+  view: UiView
+  activeGroupId: string | null
+  currentId: string | null
+  query: string
+  mobilePane: MobilePane
+  scroll: { list: number; editor: number; groups: number }
+}
 
 export const useUiStore = defineStore('ui', () => {
   const view = ref<UiView>('all')
@@ -22,6 +31,10 @@ export const useUiStore = defineStore('ui', () => {
   const mobilePane = ref<MobilePane>('list')
   /** 只影响布局，不销毁编辑器，避免切换专注模式打断输入。 */
   const focusMode = ref(false)
+  const statsOpen = ref(false)
+  /** 离开笔记时仅保存位置，不缓存第二份列表或编辑器。 */
+  const lastNotesPosition = ref<WorkspacePosition | null>(null)
+  const restorePosition = ref<WorkspacePosition | null>(null)
 
-  return { view, activeGroupId, query, syncing, lastSyncError, failedCount, drawerOpen, mobilePane, focusMode }
+  return { view, activeGroupId, query, syncing, lastSyncError, failedCount, drawerOpen, mobilePane, focusMode, statsOpen, lastNotesPosition, restorePosition }
 })

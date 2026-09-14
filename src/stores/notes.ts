@@ -101,7 +101,7 @@ export const useNotesStore = defineStore('notes', () => {
   async function create() {
     const groupId = createGroupId()
     const note = await repo.createNote('', groupId ? { group_id: groupId } : {})
-    // 分组内就地新建；星标、回收站和统计视图的新笔记统一显示在全部笔记里。
+    // 分组内就地新建；星标、回收站和监控视图的新笔记统一显示在全部笔记里。
     const viewSwitches = ui.view !== 'all' && ui.view !== 'group'
     if (viewSwitches) {
       // 视图切换前把当前态入栈，返回键退回新建前的筛选视图而不是直接退出应用

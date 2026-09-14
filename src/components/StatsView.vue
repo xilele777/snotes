@@ -3,16 +3,12 @@ import '../insights.css'
 import { computed, onMounted, ref } from 'vue'
 import { computeNoteStats, type NoteStats } from '../../shared/stats'
 import { db } from '../db/schema'
-import { useNotesStore } from '../stores/notes'
-import { useUiStore } from '../stores/ui'
-import { openDrawer } from '../navigation'
-import AppIcon from './AppIcon.vue'
+
+const emit = defineEmits<{ selectNote: [id: string] }>()
 
 const status = ref<'loading' | 'ready'>('loading')
 const stats = ref<NoteStats | null>(null)
 const openedTab = ref<'most' | 'recent'>('most')
-const notes = useNotesStore()
-const ui = useUiStore()
 
 async function load() {
   status.value = 'loading'
@@ -52,14 +48,13 @@ function fmtFull(ts: number | null): string { if (!ts) return '-'; const d = new
 function fmtTime(ts: number): string { return new Date(ts).toLocaleString('zh-CN', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' }) }
 function dayLabel(date: string): string { return `${Number(date.slice(5, 7))}/${Number(date.slice(8))}` }
 function heatTip(cell: { date: string; count: number }): string { return cell.count ? `${cell.date}: ${cell.count} 次更新` : `${cell.date}: 无更新` }
-function openNote(id: string) { ui.view = 'all'; notes.currentId = id }
+function openNote(id: string) { emit('selectNote', id) }
 </script>
 
 <template>
   <div class="metrics-view stats-view" aria-label="记录统计">
     <div class="metrics-body">
       <div class="stats-overview">
-        <button class="drawer-btn" title="打开侧栏" aria-label="打开侧栏" @click="openDrawer()"><AppIcon name="menu" /></button>
         <p v-if="status === 'loading'" class="metrics-hint">加载中...</p>
         <section v-else-if="stats" class="stats-numbers"><span><b>{{ stats.total }}</b> 笔记</span><i>·</i><span><b>{{ stats.totalWords.toLocaleString('zh-CN') }}</b> 字</span><i>·</i><span><b>{{ stats.streakCurrent }}</b> 天连续</span><i>·</i><span><b>{{ stats.starred }}</b> 星标</span><i>·</i><span><b>{{ stats.topped }}</b> 置顶</span><i>·</i><span>始于 <b>{{ fmtFull(stats.earliest) }}</b></span></section>
       </div>

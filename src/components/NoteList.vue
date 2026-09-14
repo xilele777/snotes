@@ -10,11 +10,14 @@ import NoteSearch from './NoteSearch.vue'
 import { useNotesStore } from '../stores/notes'
 import { useUiStore } from '../stores/ui'
 import { useGroupsStore } from '../stores/groups'
+import { useWorkspaceScroll } from './useWorkspaceScroll'
 
 const notes = useNotesStore()
 const groups = useGroupsStore()
 const ui = useUiStore()
 const groupNames = computed(() => new Map(groups.groups.map(g => [g.group_id, g.name])))
+const list = ref<HTMLElement | null>(null)
+useWorkspaceScroll(list, 'list')
 
 // 左滑删除：pointer 事件记录起点，松手时按位移决定是否展开删除按钮。
 const swipeStartX = ref<number | null>(null)
@@ -125,7 +128,7 @@ watch(
 
 <template>
   <div class="list-view">
-    <!-- 列表区 header：≤1020px 出抽屉按钮，右侧常驻新建（原站 listHeader 56px） -->
+    <!-- 窄屏显示抽屉入口，新建按钮始终可见。 -->
     <div class="list-header">
       <button class="drawer-btn" title="打开侧栏" aria-label="打开侧栏" @click="openDrawer()">
         <AppIcon name="menu" />
@@ -155,7 +158,7 @@ watch(
       @action="onEmptyAction"
     />
 
-    <ul v-else class="note-list" aria-label="笔记列表" @keydown="onListKeydown">
+    <ul v-else ref="list" class="note-list" aria-label="笔记列表" @keydown="onListKeydown">
       <NoteListItem
         v-for="note in notes.visible"
         :key="note.id"

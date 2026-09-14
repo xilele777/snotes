@@ -10,6 +10,7 @@ import WordCountDialog from './WordCountDialog.vue'
 import AppIcon from './AppIcon.vue'
 import EditorLoading from './EditorLoading.vue'
 import { useUiStore } from '../stores/ui'
+import { useWorkspaceScroll } from './useWorkspaceScroll'
 
 const MilkdownEditor = defineAsyncComponent({
   loader: () => import('../editor/MilkdownEditor.vue'),
@@ -24,6 +25,8 @@ const notes = useNotesStore()
 const groups = useGroupsStore()
 const ui = useUiStore()
 const editorBody = ref<HTMLElement | null>(null)
+const editorReady = ref(false)
+watch(() => notes.current, note => { if (!note) editorReady.value = false })
 const currentGroup = computed(() => groups.groups.find(group => group.group_id === notes.current?.group_id)?.name ?? '未分组')
 
 /** 6 色皮肤板（UI 规格 §3.5）。null 为清除。 */
@@ -63,11 +66,11 @@ onUnmounted(() => {
   window.removeEventListener('keydown', onPopoverKeydown, true)
 })
 
-watch(() => notes.currentId, async () => {
+watch(() => notes.currentId, () => {
   openPop.value = null
-  await nextTick()
   if (editorBody.value) editorBody.value.scrollTop = 0
-})
+}, { flush: 'post' })
+useWorkspaceScroll(editorBody, 'editor', () => editorReady.value)
 
 function onBody(md: string, base: string) {
   if (props.readonly) return
@@ -113,14 +116,46 @@ const wordCount = computed(() => countWords(notes.current?.body ?? ''))
     <div v-if="notes.current" class="editor-top-bar">
       <!-- 移动端返回按钮，仅 <720px 显示 -->
       <button class="back-btn" title="返回列表" aria-label="返回列表" @click="$emit('back')">
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <path d="M15 18l-6-6 6-6" />
-        </svg>
+        <AppIcon name="back" :size="20" />
       </button>
 
-      <div v-if="!readonly" class="editor-location" :title="notes.current ? currentGroup : '随手记录'">
-        <AppIcon :name="notes.current ? 'folder' : 'note'" :size="16" />
-        <span>{{ notes.current ? currentGroup : '随手记录' }}</span>
+      <div v-if="!readonly" class="op-wrap editor-group">
+        <button
+          class="editor-location"
+          data-op="group"
+          :class="{ open: openPop === 'group' }"
+          :title="`移至分组：${currentGroup}`"
+          aria-label="移至分组"
+          aria-haspopup="true"
+          :aria-expanded="openPop === 'group'"
+          @click="toggle('group')"
+        >
+          <AppIcon name="folder" :size="16" />
+          <span>{{ currentGroup }}</span>
+          <AppIcon name="chevron" :size="12" class="group-chevron" />
+        </button>
+
+        <div v-if="openPop === 'group'" class="op-popover groups-pop" role="group" aria-label="选择分组">
+          <span class="popover-heading">移至分组</span>
+          <button
+            class="group-opt"
+            :class="{ selected: notes.current.group_id === null }"
+            :aria-pressed="notes.current.group_id === null"
+            @click="notes.current && notes.setProps(notes.current.id, { group_id: null }); openPop = null"
+          >
+            未分组
+          </button>
+          <button
+            v-for="g in groups.groups"
+            :key="g.group_id"
+            class="group-opt"
+            :class="{ selected: notes.current.group_id === g.group_id }"
+            :aria-pressed="notes.current.group_id === g.group_id"
+            @click="notes.current && notes.setProps(notes.current.id, { group_id: g.group_id }); openPop = null"
+          >
+            {{ g.name }}
+          </button>
+        </div>
       </div>
 
       <!-- 回收站详情：只读，动作换成恢复 / 彻底删除 -->
@@ -132,23 +167,14 @@ const wordCount = computed(() => countWords(notes.current?.body ?? ''))
         </div>
       </template>
 
-      <!--
-        编辑态：标题不再重复展示（列表里已经有一份），三个点里的动作直接摊成一排。
-        对照原站 .clz_editor_op_btn —— 32px 圆形按钮、选中态 #f0f0f0 底。
-      -->
+      <!-- 常用操作直接可见，分组入口同时显示当前位置。 -->
       <div v-else-if="notes.current" class="op-bar">
         <button class="op-btn" data-op="undo" title="撤销 (Ctrl+Z)" aria-label="撤销" @click="editorRef?.undo?.()">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <polyline points="1 4 1 10 7 10" />
-            <path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10" />
-          </svg>
+          <AppIcon name="undo" />
         </button>
 
         <button class="op-btn" data-op="redo" title="重做 (Ctrl+Y)" aria-label="重做" @click="editorRef?.redo?.()">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <polyline points="23 4 23 10 17 10" />
-            <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10" />
-          </svg>
+          <AppIcon name="redo" />
         </button>
 
         <span class="op-separator" aria-hidden="true"></span>
@@ -162,11 +188,7 @@ const wordCount = computed(() => countWords(notes.current?.body ?? ''))
           :aria-pressed="notes.current.top === 1"
           @click="notes.setProps(notes.current.id, { top: notes.current.top === 1 ? 0 : 1 })"
         >
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
-            <path
-              d="M16 9V4h1c.55 0 1-.45 1-1s-.45-1-1-1H7c-.55 0-1 .45-1 1s.45 1 1 1h1v5c0 1.66-1.34 3-3 3v2h5.97v7l1 1 1-1v-7H19v-2c-1.66 0-3-1.34-3-3z"
-            />
-          </svg>
+          <AppIcon name="pin" />
         </button>
 
         <button
@@ -178,9 +200,7 @@ const wordCount = computed(() => countWords(notes.current?.body ?? ''))
           :aria-pressed="notes.current.star === 1"
           @click="notes.setProps(notes.current.id, { star: notes.current.star === 1 ? 0 : 1 })"
         >
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
-            <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01z" />
-          </svg>
+          <AppIcon name="star" />
         </button>
 
         <div class="op-wrap">
@@ -216,45 +236,6 @@ const wordCount = computed(() => countWords(notes.current?.body ?? ''))
           </div>
         </div>
 
-        <div class="op-wrap">
-          <button
-            class="op-btn"
-            data-op="group"
-            :class="{ open: openPop === 'group' }"
-            title="移至分组"
-            aria-label="移至分组"
-            aria-haspopup="true"
-            :aria-expanded="openPop === 'group'"
-            @click="toggle('group')"
-          >
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round">
-              <path d="M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2V7z" />
-            </svg>
-          </button>
-
-          <div v-if="openPop === 'group'" class="op-popover groups-pop" role="group" aria-label="选择分组">
-            <span class="popover-heading">移至分组</span>
-            <button
-              class="group-opt"
-              :class="{ selected: notes.current.group_id === null }"
-              :aria-pressed="notes.current.group_id === null"
-              @click="notes.current && notes.setProps(notes.current.id, { group_id: null }); openPop = null"
-            >
-              未分组
-            </button>
-            <button
-              v-for="g in groups.groups"
-              :key="g.group_id"
-              class="group-opt"
-              :class="{ selected: notes.current.group_id === g.group_id }"
-              :aria-pressed="notes.current.group_id === g.group_id"
-              @click="notes.current && notes.setProps(notes.current.id, { group_id: g.group_id }); openPop = null"
-            >
-              {{ g.name }}
-            </button>
-          </div>
-        </div>
-
         <span class="op-separator" aria-hidden="true"></span>
         <button class="op-btn focus-toggle" data-op="focus" :class="{ selected: ui.focusMode }" :aria-pressed="ui.focusMode" :title="ui.focusMode ? '退出专注模式 (Esc)' : '专注模式'" :aria-label="ui.focusMode ? '退出专注模式' : '专注模式'" @click="toggleFocus">
           <AppIcon :name="ui.focusMode ? 'collapse' : 'focus'" />
@@ -286,6 +267,7 @@ const wordCount = computed(() => countWords(notes.current?.body ?? ''))
         :editable="!readonly"
         @update:model-value="onBody"
         @flush="onFlush"
+        @ready="editorReady = true"
       />
     </div>
 

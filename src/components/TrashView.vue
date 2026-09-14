@@ -9,9 +9,12 @@ import { useNotesStore } from '../stores/notes'
 import { useUiStore } from '../stores/ui'
 import NoteSearch from './NoteSearch.vue'
 import AppIcon from './AppIcon.vue'
+import { useWorkspaceScroll } from './useWorkspaceScroll'
 
 const notes = useNotesStore()
 const ui = useUiStore()
+const list = ref<HTMLElement | null>(null)
+useWorkspaceScroll(list, 'list')
 
 function selectNote(id: string) {
   if (isMobile() && ui.mobilePane === 'list') pushNav()
@@ -55,7 +58,7 @@ async function runConfirm() {
     <EmptyState v-else-if="notes.notes.length === 0" icon="trash" title="暂无已删除笔记" />
     <EmptyState v-else-if="notes.visible.length === 0" icon="search" title="没有匹配的笔记" action="清除搜索" @action="ui.query = ''" />
 
-    <ul v-else class="note-list">
+    <ul v-else ref="list" class="note-list" aria-label="已删除笔记">
       <NoteListItem
         v-for="note in notes.visible"
         :key="note.id"

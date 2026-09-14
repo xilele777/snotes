@@ -7,6 +7,7 @@ import NoteDetail from './components/NoteDetail.vue'
 import { useNotesStore } from './stores/notes'
 import { useUiStore } from './stores/ui'
 import App from './App.vue'
+import { useGroupsStore } from './stores/groups'
 
 // Milkdown 起真实 ProseMirror，单测里换成空壳
 vi.mock('@milkdown/vue', () => ({
@@ -186,6 +187,52 @@ describe('App 数据监控视图', () => {
 
     expect(wrapper.findComponent(MetricsView).exists()).toBe(true)
     expect(wrapper.findComponent(NoteDetail).exists()).toBe(false)
+    wrapper.unmount()
+  })
+})
+
+describe('App 统计弹窗', () => {
+  it('打开统计保留分组、搜索、笔记组件和编辑器，关闭后恢复焦点', async () => {
+    const ui = useUiStore()
+    const notes = useNotesStore()
+    const group = await useGroupsStore().create('工作')
+    ui.view = 'group'
+    ui.activeGroupId = group.group_id
+    const note = await notes.create()
+    await notes.saveBody(note.id, '项目记录')
+    ui.query = '项目'
+    const wrapper = mount(App, { attachTo: document.body })
+    await flushPromises()
+    const detailId = wrapper.getComponent(NoteDetail).vm.$.uid
+    const editor = wrapper.get('.editor-body').element
+    const trigger = wrapper.get<HTMLButtonElement>('[data-view="stats"]')
+    trigger.element.focus()
+
+    await trigger.trigger('click')
+    await flushPromises()
+
+    expect(ui.view).toBe('group')
+    expect(ui.activeGroupId).toBe(group.group_id)
+    expect(ui.query).toBe('项目')
+    expect(notes.currentId).toBe(note.id)
+    expect(wrapper.getComponent(NoteDetail).vm.$.uid).toBe(detailId)
+    expect(wrapper.get('.editor-body').element).toBe(editor)
+    expect(wrapper.get('.layout').attributes('inert')).toBeDefined()
+    const dialog = document.querySelector('[role="dialog"][aria-label="记录统计"]')!
+    const close = dialog.querySelector<HTMLButtonElement>('[aria-label="关闭统计"]')!
+    expect(document.activeElement).toBe(close)
+    const create = vi.spyOn(notes, 'create')
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'n', ctrlKey: true, cancelable: true }))
+    expect(create).not.toHaveBeenCalled()
+
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', cancelable: true }))
+    await vi.waitFor(() => expect(history.state.statsOpen).toBe(false))
+    await flushPromises()
+    expect(document.querySelector('[role="dialog"][aria-label="记录统计"]')).toBeNull()
+    expect(document.activeElement).toBe(trigger.element)
+    expect(wrapper.getComponent(NoteDetail).vm.$.uid).toBe(detailId)
+    expect(notes.currentId).toBe(note.id)
+    expect(ui.query).toBe('项目')
     wrapper.unmount()
   })
 })

@@ -1,6 +1,7 @@
 import { useNotesStore } from './stores/notes'
 import { useUiStore } from './stores/ui'
-import type { MobilePane, UiView } from './stores/ui'
+import type { UiView, WorkspacePosition } from './stores/ui'
+import type { ListView } from './db/repo'
 
 /**
  * Bug 2 手机端返回：用 History API 撑起一层轻量 in-app 导航栈，不引 vue-router。
@@ -11,12 +12,9 @@ import type { MobilePane, UiView } from './stores/ui'
  * 目录页（根界面）按系统返回时栈底已无更早条目，standalone PWA 自然退出回桌面，
  * 符合便签类应用的预期；进过详情 / 抽屉后再按返回则逐层弹栈回到目录页。
  */
-export interface NavSnapshot {
-  currentId: string | null
-  view: UiView
-  activeGroupId: string | null
-  mobilePane: MobilePane
+export interface NavSnapshot extends WorkspacePosition {
   drawerOpen: boolean
+  statsOpen: boolean
 }
 
 /** 取当前界面完整状态。必须每次现取：快照是「进入下一步之前」的那份。 */
@@ -27,9 +25,88 @@ function snapshot(): NavSnapshot {
     currentId: notes.currentId,
     view: ui.view,
     activeGroupId: ui.activeGroupId,
+    query: ui.query,
     mobilePane: ui.mobilePane,
     drawerOpen: ui.drawerOpen,
+    statsOpen: ui.statsOpen,
+    scroll: {
+      list: document.querySelector('.note-list')?.scrollTop ?? 0,
+      editor: document.querySelector('.editor-body')?.scrollTop ?? 0,
+      groups: document.querySelector('.groups')?.scrollTop ?? 0,
+    },
   }
+}
+
+export function isNotesView(view: UiView): boolean {
+  return view === 'all' || view === 'star' || view === 'group'
+}
+
+export async function switchListView(view: ListView, groupId: string | null = null) {
+  const ui = useUiStore()
+  ui.focusMode = false
+  if (ui.view === view && ui.activeGroupId === groupId) {
+    ui.drawerOpen = false
+    return
+  }
+  if (isNotesView(ui.view)) ui.lastNotesPosition = snapshot()
+  pushNav()
+  if (ui.view === 'trash' || view === 'trash') ui.query = ''
+  ui.restorePosition = null
+  ui.view = view
+  ui.activeGroupId = groupId
+  ui.drawerOpen = false
+  await useNotesStore().load()
+}
+
+/** 图标栏回到离开前的笔记位置；在笔记页内点击不会重置分组。 */
+export async function showNotes() {
+  const ui = useUiStore()
+  if (isNotesView(ui.view)) {
+    ui.drawerOpen = false
+    return
+  }
+  const saved = ui.lastNotesPosition
+  pushNav()
+  restore({
+    ...(saved ?? { view: 'all', activeGroupId: null, currentId: null, query: '', mobilePane: 'list', scroll: { list: 0, editor: 0, groups: 0 } }),
+    drawerOpen: false,
+    statsOpen: false,
+  })
+  await useNotesStore().load()
+}
+
+/** 弹窗独占一层历史；关闭或系统返回都回到原工作区。 */
+export function openStats() {
+  const ui = useUiStore()
+  if (ui.statsOpen) return
+  ui.drawerOpen = false
+  pushNav()
+  ui.statsOpen = true
+  history.replaceState(snapshot(), '')
+}
+
+export function closeStats() {
+  const ui = useUiStore()
+  if (!ui.statsOpen) return
+  if (history.state?.statsOpen) popNav()
+  else ui.statsOpen = false
+}
+
+/** 榜单中的笔记是一次明确跳转，用目标笔记替换弹窗这层历史。 */
+export async function openStatsNote(id: string) {
+  const ui = useUiStore()
+  const notes = useNotesStore()
+  ui.statsOpen = false
+  ui.focusMode = false
+  ui.drawerOpen = false
+  ui.restorePosition = null
+  ui.view = 'all'
+  ui.activeGroupId = null
+  ui.query = ''
+  notes.currentId = id
+  ui.mobilePane = 'editor'
+  await notes.load()
+  if (ui.view === 'all' && notes.currentId === id) history.replaceState(snapshot(), '')
 }
 
 /** <720px 的移动端布局：只有在这里，「进详情」才是一层真正的界面切换 */
@@ -51,12 +128,10 @@ export function initNavigation() {
 
 /** 界面层级变化前调用：把当前态压栈，随后再改状态 */
 export function pushNav() {
-  if (history.state === null && document.readyState !== 'loading') {
-    // 没先 initNavigation 就 push，会把第一条直接顶成「根」，返回时无处可退。
-    // 常规路径都是从 initNavigation 之后走的，这里防御一下。
-    history.replaceState(snapshot(), '')
-  }
-  history.pushState(snapshot(), '')
+  // 桌面选中笔记和滚动不单独入栈，离开时更新当前条目才能准确返回。
+  const current = snapshot()
+  history.replaceState(current, '')
+  history.pushState(current, '')
 }
 
 /** 返回上一级：走 history.back()，由 popstate 统一恢复 */
@@ -83,8 +158,11 @@ function restore(s: NavSnapshot) {
   notes.currentId = s.currentId
   ui.view = s.view
   ui.activeGroupId = s.activeGroupId
+  ui.query = s.query ?? ''
   ui.mobilePane = s.mobilePane
   ui.drawerOpen = s.drawerOpen
+  ui.statsOpen = s.statsOpen ?? false
+  ui.restorePosition = { ...s, query: ui.query, scroll: s.scroll ?? { list: 0, editor: 0, groups: 0 } }
 }
 
 /** 防重入：双击系统返回时 popstate 可能在同一任务里连发两次，第二次直接忽略 */

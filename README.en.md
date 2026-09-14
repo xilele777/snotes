@@ -1,24 +1,47 @@
 # snotes
 
-A local-first personal Markdown notepad that runs entirely within Cloudflare's free tier.
+A lightweight personal Markdown notebook with offline editing, device sync, and Cloudflare self-hosting.
 
+[![Release](https://img.shields.io/github/v/release/xilele777/snotes)](https://github.com/xilele777/snotes/releases/latest)
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Cloudflare Workers](https://img.shields.io/badge/Cloudflare-Workers-F38020?logo=cloudflare&logoColor=white)](https://workers.cloudflare.com/)
 
 [中文](README.md) | English
 
-Every write lands in the browser's IndexedDB first, so the UI never waits on the network and works fully offline. A background Worker handles incremental sync and image storage. Self-host it with a single Cloudflare account — no third-party services involved.
+[Interface and controls](#interface-and-controls) · [Self-hosting](#deploy-to-your-own-cloudflare-account) · [Local development](#local-development) · [Changelog](CHANGELOG.md)
+
+Notes are saved to the browser's IndexedDB before syncing in the background. One Cloudflare Worker serves the web app and API, D1 stores notes and groups, and R2 stores images. Use it to write and organize notes across your own computers and phones.
 
 ## Features
 
-- **Offline first** — all reads and writes hit IndexedDB, fully usable offline, syncs incrementally once reconnected
-- **Plain Markdown** — your content is never locked into a proprietary format; export is plain text
-- **Incremental sync** — a version manifest goes first, so starring or pinning a note never re-uploads its body
-- **Direct image upload** — paste to upload to R2; `<img>` is authenticated by a same-origin cookie and stays viewable offline
-- **PWA** — installable to desktop or mobile home screen; on mobile it opens straight to the list, and the system back button exits cleanly
-- **Single Worker** — frontend and API share one origin, no CORS, static assets and API served by the same process
-- **Conflict copies** — when two devices edit the same note offline, the overwritten version is saved as a copy instead of being lost
-- **Usage monitoring** — tracks D1, R2 and Workers consumption against free-tier limits on the official billing cycles
+- **Offline editing**: read and edit notes already synced to the device, then sync when reconnected.
+- **Markdown editor**: headings, numbered lists, task lists, tables, images, and undo/redo, with Markdown stored as the source.
+- **Organization**: groups, stars, pins, color markers, and search across titles and bodies.
+- **Trash**: preview and restore deleted notes; permanent deletion and emptying the trash require confirmation.
+- **Writing statistics**: word counts, writing streaks, an activity heatmap, group distribution, and opens across devices.
+- **Device sync**: properties and bodies sync separately; concurrent edits produce conflict copies for review and merging.
+- **Images and PWA**: paste images to upload to R2, view cached images offline, and install the app on desktop or mobile.
+- **Lightweight UI**: system fonts, shared SVG icons, and lazy loading for the editor and statistics.
+
+## Interface and controls
+
+Desktop uses three columns for navigation, the note list, and the editor. Trash sits below Starred Notes and keeps the same list and preview dimensions. Statistics opens in a large dialog, preserving the editor position and undo history underneath.
+
+| Entry | Behavior |
+| --- | --- |
+| All Notes / Starred / Groups | Filter notes, then select a row to read or edit |
+| Trash | Preview, restore, or permanently delete notes; returning restores the previous filter and reading position |
+| Statistics icon | Open statistics; close with its button, Escape, the backdrop, or system Back |
+| Editor footer | View word counts, document information, and Markdown formatting hints |
+
+Mobile opens to the list and switches to the editor when a note is selected. The top-left button opens navigation; the back button or system Back returns to the list. Desktop also supports focus mode.
+
+| Shortcut | Action |
+| --- | --- |
+| `Ctrl / Cmd + N` | Create a note |
+| `Ctrl / Cmd + K` or `Ctrl / Cmd + F` | Focus note search |
+| `Ctrl / Cmd + Z` | Undo in the editor |
+| `Esc` | Close the current dialog or sidebar, exit focus mode, or clear search |
 
 ## Stack
 
@@ -32,33 +55,23 @@ Every write lands in the browser's IndexedDB first, so the UI never waits on the
 
 ## Architecture
 
-```
-Browser
-  ┌──────────────────────────────────────────────┐
-  │ Vue SPA (Milkdown editor)                    │
-  │ IndexedDB ←→ local-first reads/writes (Dexie)│
-  │ Outbox queue → background incremental push   │
-  └───────────────────┬──────────────────────────┘
-                      │ same-origin fetch (Bearer / Cookie)
-                      ▼
-        A single Cloudflare Worker
-        ┌──────────────────────────────────┐
-        │ Static assets (dist) + Hono API  │
-        │   /api/notes    /api/sync/*      │
-        │   /api/groups   /api/trash/*     │
-        │   /api/images/* /api/metrics/*   │
-        └──────┬─────────────────────┬─────┘
-               ▼                     ▼
-            D1 (notes)            R2 (images)
+```mermaid
+flowchart LR
+  UI[Vue / Markdown editor] <--> Local[IndexedDB]
+  Local <--> Sync[Incremental sync and outbox]
+  Sync <-->|Same-origin API| Worker[Cloudflare Worker]
+  UI <-->|Images| Worker
+  Worker <--> D1[D1 / Notes and groups]
+  Worker <--> R2[R2 / Images]
 ```
 
-- Every API call is authenticated with `Authorization: Bearer <token>`. The one exception is `<img>`, which falls back to a same-origin cookie scoped to `Path=/api/images/`
+- Data APIs use `Authorization: Bearer <token>`. Images also accept a same-origin cookie scoped to `Path=/api/images/`; `/api/health` needs no token.
 - The sync engine lives in `src/sync/`: `pull` fetches the version manifest and missing bodies, `push` drains the outbox queue, `conflict` handles concurrent-edit copies
 - Database schema is in `migrations/`; types shared between frontend and Worker are in `shared/types.ts`
 
 ## Deploy to your own Cloudflare account
 
-The whole app is one Worker plus two storage resources (D1 + R2), all within the free tier.
+You need one Worker, one D1 database, and one R2 bucket. Each product offers a free allowance; actual costs depend on usage. See [Free tier](#free-tier).
 
 ### 0. Prerequisites
 
@@ -75,7 +88,7 @@ The whole app is one Worker plus two storage resources (D1 + R2), all within the
 ```bash
 git clone https://github.com/xilele777/snotes.git
 cd snotes
-npm install
+npm ci
 ```
 
 ### 2. Create the D1 database and R2 bucket
@@ -132,7 +145,7 @@ node -e "console.log(Buffer.from(crypto.getRandomValues(new Uint8Array(32))).toS
 npx wrangler secret put ACCESS_TOKEN
 ```
 
-`ACCESS_TOKEN` must be a secret — **never put it in the `vars` block of `wrangler.jsonc`**, which is plaintext config committed to the repo. When it isn't set, every API endpoint returns 401.
+`ACCESS_TOKEN` must be a secret — **never put it in the `vars` block of `wrangler.jsonc`**, which is plaintext config committed to the repo. Without it, data APIs return 401; the health check remains available.
 
 ### 5. Apply database migrations
 
@@ -157,7 +170,7 @@ curl https://snotes.<your-subdomain>.workers.dev/api/health
 # expected: {"ok":true}
 ```
 
-`/api/health` is registered before the auth middleware and returns no data — it exists purely for post-deploy verification.
+`/api/health` returns service status without exposing notes or tokens, for post-deploy verification.
 
 ### 7. First run
 
@@ -165,17 +178,18 @@ Open the Worker URL and paste the token from step 4. The token is stored locally
 
 On mobile, use "Add to Home Screen" in Safari or Chrome to run it as a standalone PWA. On desktop Chrome or Edge, use the install button at the right of the address bar.
 
-### Optional: enable the usage-monitoring page
+### Optional: configure the usage-monitoring API
 
-Skipping this doesn't affect note-taking — `/api/metrics` returns 503 with `not_configured` and the page shows as unconfigured.
+The `/api/metrics` endpoint and monitoring component are retained, but the sidebar entry is currently hidden. This setup is optional and does not affect notes or writing statistics. An unconfigured metrics endpoint returns 503 with `not_configured`.
 
 Two secrets are needed:
 
 ```bash
 npx wrangler secret put CF_ACCOUNT_ID   # Cloudflare account ID, in the Dashboard sidebar
 npx wrangler secret put CF_API_TOKEN    # needs Account > Analytics > Read
-npm run deploy                          # redeploy for secret changes to take effect
 ```
+
+For an existing Worker, `wrangler secret put` creates and immediately deploys a version containing the updated secret. Run `npm run deploy` as well if code changed. See the [Wrangler secret commands](https://developers.cloudflare.com/workers/wrangler/commands/workers/#secret).
 
 To create the API token: Dashboard → My Profile → API Tokens → Create Token → Custom token, granting only **Account · Account Analytics · Read**. Don't grant anything broader.
 
@@ -201,7 +215,7 @@ For a custom domain: Cloudflare Dashboard → Workers & Pages → select the Wor
 | Deploy fails with `Couldn't find DB` or a D1 not-found error | The `database_id` from step 3 wasn't replaced, or only one of the two places was updated |
 | `wrangler r2 bucket create` fails | R2 isn't enabled on the account — enable it under Dashboard → R2 |
 | Migration can't find the database | Step 2 was skipped, or the database name in the command doesn't match `wrangler.jsonc` |
-| The page keeps asking for the token | Token mismatch. After `wrangler secret put ACCESS_TOKEN` you **must** run `npm run deploy` again |
+| The page keeps asking for the token | Check that the browser token matches the Worker's `ACCESS_TOKEN`; use `wrangler secret put ACCESS_TOKEN` to rotate it if needed |
 | `/api/health` works but notes fail to load with 401 | Same cause; clear the token in the browser and re-enter it |
 | Deploy succeeds but there's no workers.dev URL | The account's workers.dev subdomain is disabled — enable it under Workers & Pages → Settings, or attach a custom domain |
 | Images broken, everything else fine | Bucket name doesn't match `wrangler.jsonc`, or the `snotes_token` cookie is missing — see the [operations guide](docs/operations.md) |
@@ -211,9 +225,9 @@ For a custom domain: Cloudflare Dashboard → Workers & Pages → select the Wor
 ## Local development
 
 ```bash
-npm install
+npm ci
 
-# The token is required: without it the Worker returns 401 for every API call
+# Create a local token configuration on first setup
 echo "ACCESS_TOKEN=dev-token" > .dev.vars
 
 # Initialise the local database (separate from production)
@@ -239,24 +253,17 @@ npm run typecheck   # type checking
 
 The E2E suite builds the app, applies migrations, and starts `wrangler dev` on port `8790`, testing the production shape (same-origin static assets + API). It uses the fixture token in `tests/e2e/wrangler.jsonc` and stores its isolated test data in `tmp/e2e-state`. No need to start anything first.
 
-> **Behind a proxy**: run `unset HTTP_PROXY HTTPS_PROXY` before the E2E suite. workerd crashes on proxy environment variables, which shows up as tests hanging indefinitely.
-
 Please make sure `npm run test:all && npm run build` passes before committing.
 
 ## Free tier
 
-Single-user usage stays far below every limit. The in-app usage page compares consumption against the numbers below on the official billing cycles (defined in `worker/metrics/collect.ts` — update that one place if Cloudflare's policy changes):
+Costs depend on requests, database reads and writes, image storage, and operations. The app is not guaranteed to be free for every workload. Check the current allowances and billing rules in the official documentation:
 
-| Resource | Free tier | Period |
-| --- | --- | --- |
-| D1 rows read | 5,000,000 | per day |
-| D1 rows written | 100,000 | per day |
-| Workers requests | 100,000 | per day |
-| R2 Class A operations (write) | 1,000,000 | calendar month |
-| R2 Class B operations (read) | 10,000,000 | calendar month |
-| R2 storage | 10 GB | current snapshot |
+- [Workers pricing](https://developers.cloudflare.com/workers/platform/pricing/)
+- [D1 pricing](https://developers.cloudflare.com/d1/platform/pricing/)
+- [R2 pricing](https://developers.cloudflare.com/r2/pricing/)
 
-The page flags anything at or above 80% as approaching the limit; only past 100% counts as exceeded.
+Optional usage-monitoring calculations live in `worker/metrics/collect.ts` and need updating if platform policies change.
 
 ## Backup and migration
 
@@ -268,7 +275,7 @@ npx wrangler d1 export snotes --remote --output "backup-$(date +%Y%m).sql"
 npx wrangler d1 execute snotes --remote --file backup-YYYYMM.sql
 ```
 
-Note bodies and metadata both live in D1, so the exported SQL is a complete backup. Images live in R2, which is already redundant, and don't need separate backups.
+The SQL export contains notes, groups, and metadata already synced to D1. Images live in R2 and must be copied separately for a complete backup. Unsynced browser data is not part of a server backup.
 
 ## Project structure
 
@@ -280,7 +287,7 @@ src/            frontend (Vue 3 + Pinia)
   sync/          sync engine (pull / push / conflict)
   db/            Dexie schema and repos
   api/           client for talking to the Worker
-  navigation.ts  mobile History navigation stack
+  navigation.ts  History navigation for views, statistics, and reading positions
 worker/         Cloudflare Worker (Hono API)
   routes/        notes / opens / groups / sync / trash / images / metrics
   metrics/       D1/R2/HTTP metrics collection
@@ -296,6 +303,7 @@ docs/           design documents, operations guide
 - [Design document](docs/superpowers/specs/2026-08-22-snotes-design.md) (Chinese)
 - [Implementation plan](docs/superpowers/plans/2026-08-22-snotes.md) (Chinese)
 - [Operations guide](docs/operations.md) (Chinese) — token mechanics, sync failure triage, backups, FAQ
+- [UI design and verification](docs/ui-refresh.md) (Chinese)
 - [Changelog](CHANGELOG.md)
 
 ## Security
@@ -304,7 +312,7 @@ This is a **single-user, self-hosted** application. Authentication is one shared
 
 - Anyone holding the `ACCESS_TOKEN` can read and write all your notes and images. There are no multiple users, sharing, or permission levels
 - The token is kept in the browser's `localStorage`, plus a cookie scoped to `Path=/api/images/` that exists solely for `<img>` requests
-- If the token leaks, run `wrangler secret put ACCESS_TOKEN` and redeploy to invalidate the old one. All clients get a 401 and return to the token entry screen; local data is unaffected
+- If the token leaks, update the live secret with `wrangler secret put ACCESS_TOKEN`. Clients using the old token get a 401 and return to the token entry screen; local data is unaffected
 - Never commit the token to `wrangler.jsonc`, `.env`, or any file that reaches the repository
 
 Please report security issues privately via GitHub [Security Advisories](https://github.com/xilele777/snotes/security/advisories/new) rather than opening a public issue.

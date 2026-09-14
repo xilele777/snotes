@@ -21,6 +21,7 @@ const emit = defineEmits<{
   'update:modelValue': [string, string]
   /** 提前交卷：[内容所属的 noteId, 新正文, 它改自哪一版正文] */
   flush: [string, string, string]
+  ready: []
 }>()
 
 const DEBOUNCE_MS = 800
@@ -273,6 +274,7 @@ const MilkdownInner = defineComponent({
           ctx.get(listenerCtx).markdownUpdated((_ctx, markdown) => onMarkdownChange(markdown))
           ctx.get(listenerCtx).mounted((editorCtx) => {
             if (!props.modelValue.trim() && props.editable !== false) editorCtx.get(editorViewCtx).focus()
+            emit('ready')
           })
         })
         // commonmark 在前、gfm 在后：表格删除线任务清单属于 GFM 扩展，

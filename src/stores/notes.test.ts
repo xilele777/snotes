@@ -13,7 +13,7 @@ beforeEach(async () => {
 })
 
 describe('notes store', () => {
-  it.each(['star', 'trash', 'stats', 'metrics'] as const)('从 %s 新建时回到全部笔记并清除筛选', async (view) => {
+  it.each(['star', 'trash', 'metrics'] as const)('从 %s 新建时回到全部笔记并清除筛选', async (view) => {
     const store = useNotesStore()
     const ui = useUiStore()
     ui.view = view

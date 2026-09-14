@@ -28,6 +28,49 @@ async function createGroup(page: Page, name: string) {
   await expect(page.locator('.dialog')).toHaveCount(0)
 }
 
+/** 导航验收需要可滚动的列表和长正文；仅填充当前测试上下文的本地库。 */
+async function seedNavigationNotes(page: Page) {
+  await createGroup(page, '项目资料')
+  const groupId = (await page.locator('.groups li').first().getAttribute('data-group-id'))!
+  await page.evaluate(async (groupId) => {
+    const db = await new Promise<IDBDatabase>((resolve, reject) => {
+      const request = indexedDB.open('snotes')
+      request.onsuccess = () => resolve(request.result)
+      request.onerror = () => reject(request.error)
+    })
+    try {
+      await new Promise<void>((resolve, reject) => {
+        const tx = db.transaction('notes', 'readwrite')
+        const now = Date.now()
+        for (let i = 0; i < 27; i++) {
+          const title = i < 24 ? `项目记录 ${i + 1}` : `已归档 ${i - 23}`
+          tx.objectStore('notes').put({
+            id: `navigation-${i}`, group_id: groupId, title, summary: '导航与阅读位置验收',
+            thumbnail: null, version: 1, prop_version: 1, body_version: 1, star: 0, top: 0,
+            skin_color: null, invalid: i < 24 ? 0 : 1, dirty: 'none',
+            create_time: now - i * 1000, update_time: now - i * 1000,
+            body: `# ${title}\n\n` + Array.from({ length: 70 }, (_, n) => `第 ${n + 1} 段，记录项目的讨论和后续工作。`).join('\n\n'),
+          })
+        }
+        tx.oncomplete = () => resolve()
+        tx.onerror = () => reject(tx.error)
+      })
+    } finally { db.close() }
+  }, groupId)
+  await page.reload()
+  if (page.viewportSize()!.width <= 1020) await page.getByRole('button', { name: '打开侧栏' }).click()
+  await page.locator(`.groups [data-group-id="${groupId}"] .group-link`).click()
+  await expect(page.locator('.note-item')).toHaveCount(24)
+  await page.getByPlaceholder('搜索笔记').fill('项目')
+  return groupId
+}
+
+async function openStatsDialog(page: Page) {
+  if (page.viewportSize()!.width <= 1020) await page.getByRole('button', { name: '打开侧栏' }).click()
+  await page.getByRole('button', { name: '记录统计', exact: true }).click()
+  await expect(page.getByRole('dialog', { name: '记录统计' }).locator('.stats-grid')).toBeVisible()
+}
+
 /** 1×1 的 PNG，够小到可以直接内联 */
 const PNG_BASE64 =
   'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=='
@@ -159,7 +202,7 @@ test('删除后进回收站，能看详情，可恢复', async ({ page }) => {
   await expect(page.locator('.milkdown .ProseMirror')).toHaveAttribute('contenteditable', 'false')
 
   await page.locator('[data-op="recover"]').click()
-  await page.locator('[data-view="all"]').click()
+  await page.getByRole('button', { name: '笔记', exact: true }).click()
 
   await expect(page.locator('.note-item').first()).toContainText('待删除')
 })
@@ -265,10 +308,174 @@ test('窄屏下侧栏收进抽屉，点 ☰ 能拿回全部入口', async ({ pag
   await expect(page.locator('.sidebar-pane')).toContainText('星标')
   await expect(page.locator('.sidebar-pane')).toContainText('回收站')
 
+  // 打开时立即接住键盘焦点；关闭后回到触发按钮。
+  await expect(page.locator('.sidebar-close')).toBeFocused()
+  await page.keyboard.press('Escape')
+  await expect(page.locator('.drawer-btn')).toBeFocused()
+  await page.locator('.drawer-btn').click()
+  await expect(page.locator('.sidebar-close')).toBeFocused()
+
   // 选完视图自动收起
   await page.locator('[data-view="star"]').click()
   await expect(page.locator('.sidebar-pane')).not.toHaveClass(/is-open/)
+
+  // 统计覆盖在当前分组上，关闭后回到原视图和可见的抽屉入口。
+  await page.locator('.drawer-btn').click()
+  await page.locator('.group-sidebar [data-view="stats"]').click()
+  await expect(page.getByRole('dialog', { name: '记录统计' })).toBeVisible()
+  await expect(page.locator('.layout')).toHaveAttribute('data-view', 'star')
+  await expect(page.locator('.drawer-mask')).toHaveCount(0)
+  await expect(page.getByRole('button', { name: '关闭统计' })).toBeFocused()
+  await page.keyboard.press('Escape')
+  await expect(page.getByRole('dialog', { name: '记录统计' })).toHaveCount(0)
+  await expect(page.locator('.drawer-btn')).toBeFocused()
+
+  // 回收站属于笔记导航，保留同样的侧栏和关闭抽屉的入口。
+  await page.locator('.drawer-btn').click()
+  await page.locator('.group-sidebar [data-view="trash"]').click()
+  await expect(page.locator('.sidebar-content')).toHaveCount(1)
+  await expect(page.locator('.drawer-mask')).toHaveCount(0)
+  await page.locator('.drawer-btn').click()
+  await expect(page.locator('.sidebar-close')).toBeFocused()
+  await page.locator('.sidebar-close').click()
+  await expect(page.locator('.drawer-btn')).toBeFocused()
+  await page.locator('.drawer-btn').click()
+  await page.getByRole('button', { name: '笔记', exact: true }).click()
+  await expect(page.locator('.layout')).toHaveAttribute('data-view', 'star')
+  await page.locator('.drawer-btn').click()
+  await expect(page.getByRole('button', { name: '新建分组', exact: true })).toBeVisible()
 })
+
+test('统计弹窗保留编辑器、撤销和滚动位置，支持焦点循环与关闭', async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 })
+  const groupId = await seedNavigationNotes(page)
+  await page.locator('[data-note-id="navigation-12"] .note-select').click()
+  const editor = page.locator('.ProseMirror')
+  await editor.click()
+  await page.keyboard.press('Control+End')
+  await page.keyboard.type('统计前补充的内容')
+  await expect.poll(() => savedBody(page)).toContain('统计前补充的内容')
+  await editor.evaluate(el => el.setAttribute('data-preserved-editor', 'yes'))
+  await page.locator('.note-list').evaluate(el => { el.scrollTop = 610 })
+  await page.locator('.editor-body').evaluate(el => { el.scrollTop = 880 })
+  const before = await page.locator('.editor-pane').boundingBox()
+
+  await openStatsDialog(page)
+  const dialog = page.getByRole('dialog', { name: '记录统计' })
+  await expect(page.locator('.layout')).toHaveAttribute('data-view', 'group')
+  await expect(page.locator('.layout')).toHaveAttribute('inert', '')
+  expect(await page.locator('.editor-pane').boundingBox()).toEqual(before)
+  await expect(dialog.getByRole('button', { name: '关闭统计' })).toBeFocused()
+  await page.keyboard.press('Shift+Tab')
+  await expect(dialog.locator('button').last()).toBeFocused()
+  await page.keyboard.press('Tab')
+  await expect(dialog.getByRole('button', { name: '关闭统计' })).toBeFocused()
+  await page.keyboard.press('Escape')
+
+  await expect(dialog).toHaveCount(0)
+  await expect(page.getByRole('button', { name: '记录统计', exact: true })).toBeFocused()
+  await expect(editor).toHaveAttribute('data-preserved-editor', 'yes')
+  await expect(page.locator(`.groups [data-group-id="${groupId}"]`)).toHaveClass(/active/)
+  await expect(page.getByPlaceholder('搜索笔记')).toHaveValue('项目')
+  expect(await page.locator('.note-list').evaluate(el => el.scrollTop)).toBe(610)
+  expect(await page.locator('.editor-body').evaluate(el => el.scrollTop)).toBe(880)
+  await page.locator('[data-op="undo"]').click()
+  await expect(editor).not.toContainText('统计前补充的内容')
+
+  await openStatsDialog(page)
+  await page.mouse.click(8, 8)
+  await expect(dialog).toHaveCount(0)
+  await openStatsDialog(page)
+  await page.getByRole('button', { name: '关闭统计' }).click()
+  await expect(dialog).toHaveCount(0)
+
+  await openStatsDialog(page)
+  await dialog.locator('.most-opened-title').filter({ hasText: /^项目记录 1$/ }).click()
+  await expect(dialog).toHaveCount(0)
+  await expect(page.locator('.layout')).toHaveAttribute('data-view', 'all')
+  await expect(page.getByPlaceholder('搜索笔记')).toHaveValue('')
+  await expect(page.locator('.ProseMirror h1')).toHaveText('项目记录 1')
+  await page.goBack()
+  await expect(page.locator('.layout')).toHaveAttribute('data-view', 'group')
+  await expect(page.locator('[data-note-id="navigation-12"]')).toHaveClass(/is-active/)
+  await expect(page.getByPlaceholder('搜索笔记')).toHaveValue('项目')
+})
+
+test('回收站预览与正文对齐，返回后恢复分组、搜索和阅读位置', async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 })
+  const groupId = await seedNavigationNotes(page)
+  await page.locator('[data-note-id="navigation-12"] .note-select').click()
+  await expect(page.locator('.ProseMirror')).toContainText('项目记录 13')
+  await page.locator('.note-list').evaluate(el => { el.scrollTop = 610 })
+  await page.locator('.editor-body').evaluate(el => { el.scrollTop = 880 })
+  const before = await page.locator('.editor-pane').boundingBox()
+  const beforeList = await page.locator('.list-pane').boundingBox()
+
+  await page.getByRole('button', { name: '回收站', exact: true }).click()
+  await expect(page.locator('.note-item')).toHaveCount(3)
+  await expect(page.locator('.sidebar-content')).toHaveCount(1)
+  expect(await page.locator('.list-pane').boundingBox()).toEqual(beforeList)
+  expect(await page.locator('.editor-pane').boundingBox()).toEqual(before)
+  await expect(page.getByPlaceholder('搜索笔记')).toHaveValue('')
+  await expect(page.locator('.ProseMirror')).toHaveAttribute('contenteditable', 'false')
+
+  await openStatsDialog(page)
+  await page.keyboard.press('Escape')
+  await expect(page.getByRole('dialog', { name: '记录统计' })).toHaveCount(0)
+  await expect(page.locator('.layout')).toHaveAttribute('data-view', 'trash')
+  await expect(page.locator('.note-item')).toHaveCount(3)
+  await page.getByRole('button', { name: '笔记', exact: true }).click()
+
+  await expect(page.locator('.layout')).toHaveAttribute('data-view', 'group')
+  await expect(page.locator(`.groups [data-group-id="${groupId}"]`)).toHaveClass(/active/)
+  await expect(page.getByPlaceholder('搜索笔记')).toHaveValue('项目')
+  await expect(page.locator('[data-note-id="navigation-12"]')).toHaveClass(/is-active/)
+  await expect(page.locator('.ProseMirror')).toHaveAttribute('contenteditable', 'true')
+  expect(await page.locator('.editor-pane').boundingBox()).toEqual(before)
+  await expect.poll(() => page.locator('.note-list').evaluate(el => el.scrollTop)).toBe(610)
+  await expect.poll(() => page.locator('.editor-body').evaluate(el => el.scrollTop)).toBe(880)
+})
+
+for (const width of [390, 320]) {
+  test(`${width}px 手机统计返回原列表，回收站保持列表与只读预览切换`, async ({ page }) => {
+    // 先用桌面创建样例，再切到手机，避免测试准备依赖抽屉状态。
+    const groupId = await seedNavigationNotes(page)
+    await page.setViewportSize({ width, height: 844 })
+    await page.reload()
+    await page.getByRole('button', { name: '打开侧栏' }).click()
+    await page.locator(`.groups [data-group-id="${groupId}"] .group-link`).click()
+    await page.getByPlaceholder('搜索笔记').fill('项目')
+    await page.locator('.note-list').evaluate(el => { el.scrollTop = 420 })
+
+    await openStatsDialog(page)
+    const dialog = page.getByRole('dialog', { name: '记录统计' })
+    const bounds = await dialog.boundingBox()
+    expect(bounds!.x).toBeGreaterThan(0)
+    expect(bounds!.width).toBeLessThan(width)
+    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(width)
+    await page.goBack()
+    await expect(dialog).toHaveCount(0)
+    await expect(page.locator('.layout')).toHaveAttribute('data-view', 'group')
+    await expect(page.locator('.layout')).toHaveAttribute('data-mobile-pane', 'list')
+    await expect(page.getByRole('button', { name: '打开侧栏' })).toBeFocused()
+    expect(await page.locator('.note-list').evaluate(el => el.scrollTop)).toBe(420)
+
+    await page.getByRole('button', { name: '打开侧栏' }).click()
+    await page.getByRole('button', { name: '回收站', exact: true }).click()
+    await expect(page.locator('.note-item')).toHaveCount(3)
+    await expect(page.locator('.list-pane')).toBeVisible()
+    await page.locator('.note-select').first().click()
+    await expect(page.locator('.ProseMirror')).toHaveAttribute('contenteditable', 'false')
+    await page.getByRole('button', { name: '返回列表' }).click()
+    await expect(page.locator('.list-pane')).toBeVisible()
+    await page.getByRole('button', { name: '打开侧栏' }).click()
+    await page.getByRole('button', { name: '笔记', exact: true }).click()
+    await expect(page.getByPlaceholder('搜索笔记')).toHaveValue('项目')
+    await expect(page.locator('.list-pane')).toBeVisible()
+    await expect(page.getByRole('button', { name: '打开侧栏' })).toBeFocused()
+    await expect.poll(() => page.locator('.note-list').evaluate(el => el.scrollTop)).toBe(420)
+  })
+}
 
 test('粘贴图片后能正常显示——覆盖同源 Cookie 鉴权那条路径', async ({ page }) => {
   await createNote(page)
@@ -431,6 +638,12 @@ test.describe('手机操作', () => {
     expect(toolbar!.x).toBeGreaterThanOrEqual(0)
     expect(toolbar!.x + toolbar!.width).toBeLessThanOrEqual(320)
     await expect(page.locator('[data-op="trash"]')).toBeVisible()
+    await page.locator('[data-op="group"]').click()
+    const groups = await page.getByRole('group', { name: '选择分组' }).boundingBox()
+    expect(groups!.x).toBeGreaterThanOrEqual(0)
+    expect(groups!.x + groups!.width).toBeLessThanOrEqual(320)
+    await page.keyboard.press('Escape')
+    await expect(page.locator('[data-op="group"]')).toBeFocused()
     await page.keyboard.press('Control+k')
     await expect(page.getByRole('searchbox')).toBeFocused()
     await expect(page.locator('.list-pane')).toBeVisible()
