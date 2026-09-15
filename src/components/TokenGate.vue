@@ -4,6 +4,7 @@ import { authNotice, setToken } from '../api/token'
 import AppIcon from './AppIcon.vue'
 
 const input = ref('')
+const brandIconUrl = `${import.meta.env.BASE_URL}snotes.svg`
 
 function submit() {
   const value = input.value.trim()
@@ -14,7 +15,7 @@ function submit() {
 <template>
   <div class="token-gate">
     <form class="token-card" @submit.prevent="submit">
-      <span class="brand-mark"><AppIcon name="note" :size="27" /></span>
+      <img class="brand-mark" :src="brandIconUrl" alt="" width="40" height="40" />
       <h1 class="token-title">snotes</h1>
       <p class="token-intro">随手记下，此刻的想法。</p>
       <p v-if="authNotice" class="token-error" role="alert">{{ authNotice }}</p>

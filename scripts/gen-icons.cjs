@@ -1,50 +1,43 @@
-const zlib = require('zlib')
-const fs = require('fs')
+const { readFileSync } = require('node:fs')
+const path = require('node:path')
+const { chromium } = require('@playwright/test')
 
-function png(size, hex) {
-  const r = parseInt(hex.slice(0, 2), 16)
-  const g = parseInt(hex.slice(2, 4), 16)
-  const b = parseInt(hex.slice(4, 6), 16)
-  const row = Buffer.alloc(1 + size * 3)
-  for (let x = 0; x < size; x++) {
-    row[1 + x * 3] = r
-    row[2 + x * 3] = g
-    row[3 + x * 3] = b
-  }
-  const raw = Buffer.concat(Array.from({ length: size }, () => row))
-  const idat = zlib.deflateSync(raw)
-  const sig = Buffer.from([137, 80, 78, 71, 13, 10, 26, 10])
+// snotes.svg is shared by the UI and favicon. Generate every raster size from it.
+// Run `npx playwright install chromium` once, then `npm run icons:generate`.
+const publicDir = path.resolve(__dirname, '../public')
+const svg = readFileSync(path.join(publicDir, 'snotes.svg'), 'utf8')
+const icons = [
+  { name: 'favicon-32.png', size: 32 },
+  { name: 'apple-touch-icon.png', size: 180, fullBleed: true },
+  { name: 'snotes-192.png', size: 192 },
+  { name: 'snotes-512.png', size: 512 },
+  { name: 'snotes-maskable-512.png', size: 512, fullBleed: true },
+]
 
-  function chunk(type, data) {
-    const len = Buffer.alloc(4)
-    len.writeUInt32BE(data.length, 0)
-    const t = Buffer.from(type, 'ascii')
-    const crcTable = []
-    for (let n = 0; n < 256; n++) {
-      let c = n
-      for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1
-      crcTable[n] = c >>> 0
+async function main() {
+  const browser = await chromium.launch()
+  try {
+    const page = await browser.newPage({ deviceScaleFactor: 1 })
+    for (const { name, size, fullBleed } of icons) {
+      await page.setViewportSize({ width: size, height: size })
+      await page.setContent(`<!doctype html><html><head><style>
+        html, body { margin: 0; width: 100%; height: 100%; }
+        svg { display: block; width: 100%; height: 100%; }
+      </style></head><body>${svg}</body></html>`)
+      if (fullBleed) {
+        // iOS and Android apply their own masks. Keep the background opaque;
+        // the note artwork fits inside the central 80% diameter safe circle.
+        await page.locator('svg > rect').evaluate(rect => rect.setAttribute('rx', '0'))
+      }
+      await page.screenshot({ path: path.join(publicDir, name), omitBackground: true })
+      console.log(`${name}: ${size} x ${size}`)
     }
-    let crc = 0xffffffff
-    for (const b of Buffer.concat([t, data])) crc = crcTable[(crc ^ b) & 0xff] ^ (crc >>> 8)
-    const crcBuf = Buffer.alloc(4)
-    crcBuf.writeUInt32BE((crc ^ 0xffffffff) >>> 0, 0)
-    return Buffer.concat([len, t, data, crcBuf])
+  } finally {
+    await browser.close()
   }
-
-  const ihdr = Buffer.alloc(13)
-  ihdr.writeUInt32BE(size, 0)
-  ihdr.writeUInt32BE(size, 4)
-  ihdr[8] = 8
-  ihdr[9] = 2
-  ihdr[10] = 0
-  ihdr[11] = 0
-  ihdr[12] = 0
-  return Buffer.concat([sig, chunk('IHDR', ihdr), chunk('IDAT', idat), chunk('IEND', Buffer.alloc(0))])
 }
 
-fs.mkdirSync('public', { recursive: true })
-fs.writeFileSync('public/icon-192.png', png(192, '4f7cff'))
-fs.writeFileSync('public/icon-512.png', png(512, '4f7cff'))
-console.log('icon-192:', fs.statSync('public/icon-192.png').size, 'bytes')
-console.log('icon-512:', fs.statSync('public/icon-512.png').size, 'bytes')
+main().catch(error => {
+  console.error(error)
+  process.exitCode = 1
+})

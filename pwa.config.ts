@@ -24,7 +24,7 @@ interface PwaOptions {
     start_url: string
     background_color: string
     theme_color: string
-    icons: { src: string; sizes: string; type: string }[]
+    icons: { src: string; sizes: string; type: string; purpose?: 'any' | 'maskable' }[]
   }
   workbox: {
     globPatterns: string[]
@@ -34,7 +34,7 @@ interface PwaOptions {
 
 export const pwaOptions: PwaOptions = {
   registerType: 'autoUpdate',
-  includeAssets: ['icon-192.png', 'icon-512.png'],
+  includeAssets: ['snotes.svg', 'favicon-32.png', 'apple-touch-icon.png', 'snotes-192.png', 'snotes-512.png', 'snotes-maskable-512.png'],
   manifest: {
     name: 'snotes',
     short_name: 'snotes',
@@ -44,8 +44,9 @@ export const pwaOptions: PwaOptions = {
     background_color: '#ffffff',
     theme_color: '#ffffff',
     icons: [
-      { src: '/icon-192.png', sizes: '192x192', type: 'image/png' },
-      { src: '/icon-512.png', sizes: '512x512', type: 'image/png' },
+      { src: '/snotes-192.png', sizes: '192x192', type: 'image/png', purpose: 'any' },
+      { src: '/snotes-512.png', sizes: '512x512', type: 'image/png', purpose: 'any' },
+      { src: '/snotes-maskable-512.png', sizes: '512x512', type: 'image/png', purpose: 'maskable' },
     ],
   },
   workbox: {

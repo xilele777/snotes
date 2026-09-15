@@ -61,7 +61,7 @@ kbd { font-family: inherit; font-size: 10px; line-height: 20px; white-space: now
 .group-sidebar { display: grid; grid-template-columns: var(--rail-width) minmax(0, 1fr); height: 100%; }
 .group-sidebar.rail-only { grid-template-columns: minmax(0, 1fr); }
 .app-rail { display: flex; flex-direction: column; align-items: center; gap: 10px; padding: 17px 0 18px; padding-bottom: max(18px, env(safe-area-inset-bottom)); background: var(--bg-rail); }
-.brand-mark { width: 30px; height: 30px; border-radius: 8px; display: inline-flex; align-items: center; justify-content: center; background: var(--accent); color: white; flex: none; }
+.brand-mark { display: block; width: 30px; height: 30px; flex: none; }
 .app-rail .brand-mark { margin-bottom: 12px; }
 .rail-button { position: relative; display: flex; align-items: center; justify-content: center; flex: none; width: 36px; height: 36px; padding: 0; border: 0; border-radius: 6px; background: transparent; color: var(--text-tertiary); }
 .rail-button:hover { background: var(--bg-press); color: var(--text-primary); }

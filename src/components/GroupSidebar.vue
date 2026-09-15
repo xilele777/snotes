@@ -13,6 +13,7 @@ import { useWorkspaceScroll } from './useWorkspaceScroll'
 const groups = useGroupsStore()
 const notes = useNotesStore()
 const ui = useUiStore()
+const brandIconUrl = `${import.meta.env.BASE_URL}snotes.svg`
 const inNotes = computed(() => ui.view !== 'metrics')
 const groupList = ref<HTMLElement | null>(null)
 useWorkspaceScroll(groupList, 'groups')
@@ -101,7 +102,7 @@ async function submitDialog(name: string) {
 <template>
   <nav class="group-sidebar" :class="{ 'rail-only': !inNotes }" aria-label="便签导航">
     <div class="app-rail">
-      <span class="brand-mark" aria-hidden="true"><AppIcon name="note" :size="20" /></span>
+      <img class="brand-mark" :src="brandIconUrl" alt="" width="30" height="30" />
       <button v-if="!inNotes" class="sidebar-close rail-close icon-button" aria-label="关闭侧栏" title="关闭侧栏" @click="ui.drawerOpen = false"><AppIcon name="close" /></button>
       <button class="rail-button" type="button" :class="{ active: inNotes }" :aria-pressed="inNotes" title="笔记" aria-label="笔记" @click="showNotes">
         <AppIcon name="notes" :size="20" /><span class="rail-label">笔记</span>

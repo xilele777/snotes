@@ -17,6 +17,19 @@
 
 图标栏和分组栏共用 `GroupSidebar.vue` 与现有导航状态。`StatsDialog.vue` 提供弹窗外壳，统计内容和 `insights.css` 仍按需加载；滚动恢复集中在 `useWorkspaceScroll.ts`。使用系统字体、内联 SVG 和 CSS 动画，没有新增运行时依赖。
 
+## 应用图标
+
+`public/snotes.svg` 是应用标识的唯一设计源文件：蓝色圆角底、白色折角便签。侧栏、登录页和浏览器 SVG 图标直接引用它；PNG 图标由同一文件生成，避免不同入口的图案不一致。
+
+修改 SVG 后运行 `npm run icons:generate`，并提交生成的 PNG。首次运行需要 `npx playwright install chromium`；生成器复用项目已有的 Playwright，日常构建无需启动浏览器。
+
+- `favicon-32.png`：浏览器图标的 PNG 回退。
+- `apple-touch-icon.png`：180px、不透明背景，供 iOS 添加到主屏幕。
+- `snotes-192.png` / `snotes-512.png`：普通 PWA 图标。
+- `snotes-maskable-512.png`：不透明背景，供 Android 等平台按系统形状裁切；便签图案保留在中心直径 80% 的安全圆内。
+
+这些资源均进入 PWA 预缓存，离线时可用。新图标使用新的资源地址，便于浏览器更新旧的纯色占位图标；已安装应用的桌面图标更新时间由浏览器和系统决定。
+
 ## 加载体积
 
 与已发布的 v0.6.1 产物比较，使用同一 Node.js gzip 方法测量，单位为十进制 KB：
