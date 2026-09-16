@@ -23,6 +23,7 @@ const versionOpen = ref(false)
 const versionButton = ref<HTMLButtonElement | null>(null)
 const versionCloseButton = ref<HTMLButtonElement | null>(null)
 const versionLabel = `v${appVersion}`
+const isServerDeployment = import.meta.env.VITE_DEPLOY_TARGET === 'server'
 const hasUpdate = computed(() => updateInfo.value?.hasUpdate === true)
 const latestLabel = computed(() => (updateInfo.value ? `v${updateInfo.value.latest}` : null))
 const releaseUrl = computed(() => hasUpdate.value ? updateInfo.value!.url : RELEASES_URL)
@@ -216,7 +217,8 @@ async function submitDialog(name: string) {
             <li v-if="hasUpdate" class="update-row">
               <span class="info-label">最新版本</span>
               <span class="info-value">{{ latestLabel }}</span>
-              <span class="info-sub">先按 README 的升级步骤保留自己的部署配置，再依次执行 <code>git pull --ff-only</code>、<code>npm ci</code>、<code>npx wrangler d1 migrations apply snotes --remote</code>、<code>npm run deploy</code>。数据库改过名时替换 <code>snotes</code>。</span>
+              <span v-if="isServerDeployment" class="info-sub">备份数据后执行 <code>git pull --ff-only</code>。Docker 部署运行 <code>docker compose up -d --build</code>；直接使用 Node.js 时运行 <code>npm ci</code>、<code>npm run build:server</code>，再重启服务。数据库迁移在启动时自动执行。</span>
+              <span v-else class="info-sub">先按 README 的升级步骤保留自己的部署配置，再依次执行 <code>git pull --ff-only</code>、<code>npm ci</code>、<code>npx wrangler d1 migrations apply snotes --remote</code>、<code>npm run deploy</code>。数据库改过名时替换 <code>snotes</code>。</span>
             </li>
             <li v-else-if="latestLabel"><span class="info-label">最新版本</span><span class="info-value">{{ latestLabel }}</span><span class="info-sub">已是最新</span></li>
           </ul>

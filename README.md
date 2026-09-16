@@ -1,6 +1,6 @@
 # snotes
 
-轻量的个人 Markdown 笔记，支持离线编辑、多设备同步和 Cloudflare 自托管。
+轻量的个人 Markdown 笔记，支持离线编辑、多设备同步，以及 Cloudflare 或独立服务器自托管。
 
 [![Release](https://img.shields.io/github/v/release/xilele777/snotes)](https://github.com/xilele777/snotes/releases/latest)
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
@@ -8,9 +8,9 @@
 
 中文 | [English](README.en.md)
 
-[界面与操作](#界面与操作) · [自托管部署](#部署到你自己的-cloudflare-账号) · [本地开发](#本地开发) · [更新记录](CHANGELOG.md)
+[界面与操作](#界面与操作) · [Cloudflare 部署](#部署到你自己的-cloudflare-账号) · [服务器部署](docs/server-deployment.md) · [本地开发](#本地开发) · [更新记录](CHANGELOG.md)
 
-笔记先保存在浏览器的 IndexedDB，再由后台增量同步。一个 Cloudflare Worker 同时提供网页和 API，D1 保存笔记与分组，R2 保存图片。适合在自己的电脑和手机之间记录、整理与继续写作。
+笔记先保存在浏览器的 IndexedDB，再由后台增量同步。可以使用 Cloudflare Workers + D1 + R2，也可以在自己的服务器运行 Node.js + SQLite + 本地图片存储，两种方式共用笔记 API 与同步逻辑。适合在自己的电脑和手机之间记录、整理与继续写作。
 
 ## 特点
 
@@ -20,7 +20,7 @@
 - **回收站**：删除后可预览并恢复；彻底删除和清空需要确认。
 - **写作统计**：查看字数、连续写作、更新热力图、分组分布和跨设备打开记录。
 - **多设备同步**：属性与正文分开同步；并发编辑时保存冲突副本，供后续合并。
-- **图片与 PWA**：粘贴图片上传到 R2，已缓存的图片可离线查看；支持安装到桌面或手机主屏。
+- **图片与 PWA**：粘贴图片上传到自己的服务端，已缓存的图片可离线查看；支持安装到桌面或手机主屏。
 - **轻量界面**：系统字体、共享 SVG 图标，编辑器与统计内容按需加载。
 
 ## 界面与操作
@@ -49,8 +49,8 @@
 | --- | --- |
 | 前端 | Vue 3、Pinia、Milkdown（Markdown 编辑器）、Dexie（IndexedDB） |
 | PWA | vite-plugin-pwa（Workbox） |
-| 后端 | Cloudflare Workers、Hono |
-| 存储 | Cloudflare D1（元数据/正文）、R2（图片） |
+| 后端 | Hono，运行于 Cloudflare Workers 或 Node.js 24 |
+| 存储 | Cloudflare D1 / R2，或 SQLite / 本地磁盘 |
 | 测试 | Vitest（单元/集成）、Playwright（端到端） |
 
 ## 架构
@@ -59,10 +59,10 @@
 flowchart LR
   UI[Vue / Markdown 编辑器] <--> Local[IndexedDB]
   Local <--> Sync[增量同步与任务队列]
-  Sync <-->|同源 API| Worker[Cloudflare Worker]
+  Sync <-->|同源 API| Worker[Hono API / Workers 或 Node.js]
   UI <-->|图片| Worker
-  Worker <--> D1[D1 / 笔记与分组]
-  Worker <--> R2[R2 / 图片]
+  Worker <--> D1[D1 或 SQLite / 笔记与分组]
+  Worker <--> R2[R2 或磁盘 / 图片]
 ```
 
 - 数据 API 使用 `Authorization: Bearer <token>` 鉴权；图片请求支持同源 Cookie（`Path=/api/images/`），健康检查 `/api/health` 无需令牌。
@@ -250,11 +250,19 @@ npx wrangler secret put CF_API_TOKEN    # 需要 Account > Analytics > Read 权�
 
 ## 能否部署到自己的服务器
 
-当前版本只支持 Cloudflare Workers：后端直接使用 D1 与 R2 绑定，静态资源由 Workers Assets 托管，代码里没有对接其他数据库或对象存储的适配层。因此**暂时不能**原样部署到 VPS、Docker 或其他云平台。
+支持。可以使用 **Docker Compose**，也可以直接运行 **Node.js 24 LTS**。服务同时提供网页和 API，笔记保存到 SQLite，图片保存在磁盘；不需要 Cloudflare 账号。
 
-并不要求代码托管在 GitHub。你可以把代码放在 GitLab、Gitee 或本地，再用 `wrangler` 从电脑或 CI 部署到 Cloudflare。运行依赖 Cloudflare Workers、D1 与 R2；应用内的版本提醒仍查询原项目的 GitHub Releases，查询失败不影响笔记功能。
+```bash
+npm ci
+npm run build:server
+cp server.env.example .env.server
+# 编辑 .env.server，设置自己的随机 ACCESS_TOKEN
+npm start
+```
 
-如果希望脱离 Cloudflare 自托管，需要把 `worker/` 下的 D1 SQL 换成 SQLite/Postgres、把 R2 换成本地磁盘或 S3 兼容存储，并用 Node 服务器提供静态文件。这属于一次独立的移植工作，欢迎在 issue 里讨论。
+默认地址为 `http://127.0.0.1:3000`，首次启动自动建库和迁移。远程访问需配置 HTTPS 反向代理。完整的 Docker、systemd、域名、备份和升级步骤见[服务器部署文档](docs/server-deployment.md)。原 Cloudflare 实例的数据不会自动迁入新服务器。
+
+源码可以放在 GitHub、GitLab、Gitee 或本地。应用内版本提醒查询原项目的 GitHub Releases，查询失败不影响笔记功能；服务器版不提供 Cloudflare 用量监控，写作统计照常可用。
 
 ## 本地开发
 
@@ -280,12 +288,16 @@ npm run dev          # 终端 2：前端跑在 5173
 ```bash
 npm test            # 前端与 shared 纯逻辑
 npm run test:worker # Worker 集成测试（跑在真实 Workers 运行时里）
+npm run test:server # 服务器 SQLite / 磁盘 / API 集成测试
 npm run test:all    # 以上全部
 npm run test:e2e    # Playwright 端到端
+npm run test:e2e:server # 相同浏览器用例，改用 Node.js 服务
 npm run typecheck   # 类型检查
 ```
 
 E2E 会自己构建、应用迁移并在 `8790` 端口拉起 `wrangler dev`，打的是生产形态（同源静态资源 + API），不需要手动先起服务。测试使用 `tests/e2e/wrangler.jsonc` 中的固定测试令牌，数据独立保存在 `tmp/e2e-state`。
+
+服务器测试使用 Node.js 24；`test:e2e:server` 在 `8791` 端口启动真实 Node.js 服务，数据位于 `tmp/e2e-server-state`。两种 E2E 都构建到 `dist/`，请顺序执行。
 
 提交前请跑通 `npm run test:all && npm run build`。
 
@@ -322,12 +334,14 @@ src/            前端（Vue 3 + Pinia）
   db/            Dexie schema 与 repo
   api/           与 Worker 通信的客户端
   navigation.ts  视图、统计弹窗和阅读位置的 History 导航
-worker/         Cloudflare Worker（Hono API）
+worker/         共用 Hono API 与 Cloudflare 入口
   routes/        notes / opens / groups / sync / trash / images / metrics
   metrics/       D1/R2/HTTP 指标采集
   auth.ts        Bearer + Cookie 鉴权中间件
+server/         Node.js 入口、SQLite 与本地图片适配器
+deploy/         systemd 与 HTTPS 反向代理示例
 shared/         前后端共用类型与逻辑（同步归并、排序、清洗）
-migrations/     D1 数据库迁移
+migrations/     D1 / SQLite 数据库迁移
 tests/          端到端、Worker 集成、单元测试与 setup
 docs/           设计文档、运维手册
 ```

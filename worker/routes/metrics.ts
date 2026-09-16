@@ -12,6 +12,10 @@ export const metricsRoutes = new Hono<{ Bindings: Env }>()
 metricsRoutes.post('/api/metrics/types', async (c) => {
   const env = c.env
 
+  if (env.RUNTIME === 'server') {
+    return c.json({ error: 'not_supported', message: '服务器部署不提供 Cloudflare 用量监控，笔记统计可正常使用。' }, 503)
+  }
+
   if (!env.CF_ACCOUNT_ID || !env.CF_API_TOKEN) {
     return c.json(
       {

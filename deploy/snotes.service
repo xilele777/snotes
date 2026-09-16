@@ -1,0 +1,28 @@
+[Unit]
+Description=snotes personal notes
+After=network.target
+
+[Service]
+Type=simple
+User=snotes
+Group=snotes
+WorkingDirectory=/opt/snotes
+EnvironmentFile=/etc/snotes.env
+Environment=NODE_ENV=production
+Environment=HOST=127.0.0.1
+Environment=PORT=3000
+Environment=SNOTES_DATA_DIR=/var/lib/snotes
+StateDirectory=snotes
+ExecStart=/usr/bin/node /opt/snotes/dist-server/index.mjs
+Restart=on-failure
+RestartSec=3
+TimeoutStopSec=15
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/snotes
+
+[Install]
+WantedBy=multi-user.target

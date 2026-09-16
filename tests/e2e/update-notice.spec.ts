@@ -21,6 +21,10 @@ for (const width of [1440, 390, 320]) {
     const dialog = page.getByRole('dialog', { name: '版本信息', exact: true })
     await expect(dialog).toContainText('v9.9.9')
     await expect(dialog).toContainText('git pull --ff-only')
+    if (process.env.E2E_BACKEND === 'server') {
+      await expect(dialog).toContainText('docker compose up -d --build')
+      await expect(dialog).not.toContainText('wrangler')
+    }
     const close = dialog.getByRole('button', { name: '关闭' })
     const release = dialog.getByRole('link', { name: '查看发布说明' })
     await expect(close).toBeFocused()

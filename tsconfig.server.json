@@ -1,17 +1,19 @@
 {
   "compilerOptions": {
     "composite": true,
-    "tsBuildInfoFile": "./node_modules/.tmp/tsconfig.node.tsbuildinfo",
+    "tsBuildInfoFile": "./node_modules/.tmp/tsconfig.server.tsbuildinfo",
     "target": "ES2022",
     "module": "ESNext",
     "moduleResolution": "bundler",
     "strict": true,
-    "isolatedModules": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
     "esModuleInterop": true,
     "skipLibCheck": true,
     "noEmit": true,
     "lib": ["ES2022", "DOM", "DOM.Iterable"],
     "types": ["node"]
   },
-  "include": ["vite.config.ts", "vitest.config.ts", "vitest.worker.config.ts", "vitest.server.config.ts", "playwright*.config.ts", "pwa.config.ts", "tests/e2e/**/*.ts"]
+  "include": ["server/**/*.ts", "tests/server/**/*.ts", "worker/**/*.ts", "shared/**/*.ts"],
+  "exclude": ["worker/index.ts", "shared/**/*.test.ts"]
 }

@@ -1,0 +1,17 @@
+node_modules
+.git
+.wrangler
+.dev.vars*
+.env*
+data
+backups
+dist
+dist-server
+tmp
+test-results
+playwright-report
+.playwright-mcp
+*.log
+*.apk
+before-desktop.png
+docs/0916.md

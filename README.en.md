@@ -1,6 +1,6 @@
 # snotes
 
-A lightweight personal Markdown notebook with offline editing, device sync, and Cloudflare self-hosting.
+A lightweight personal Markdown notebook with offline editing, device sync, and self-hosting on Cloudflare or your own server.
 
 [![Release](https://img.shields.io/github/v/release/xilele777/snotes)](https://github.com/xilele777/snotes/releases/latest)
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
@@ -8,9 +8,9 @@ A lightweight personal Markdown notebook with offline editing, device sync, and 
 
 [中文](README.md) | English
 
-[Interface and controls](#interface-and-controls) · [Self-hosting](#deploy-to-your-own-cloudflare-account) · [Local development](#local-development) · [Changelog](CHANGELOG.md)
+[Interface and controls](#interface-and-controls) · [Cloudflare](#deploy-to-your-own-cloudflare-account) · [Server deployment](#can-i-host-this-on-my-own-server) · [Local development](#local-development) · [Changelog](CHANGELOG.md)
 
-Notes are saved to the browser's IndexedDB before syncing in the background. One Cloudflare Worker serves the web app and API, D1 stores notes and groups, and R2 stores images. Use it to write and organize notes across your own computers and phones.
+Notes are saved to the browser's IndexedDB before syncing in the background. Choose Cloudflare Workers with D1/R2, or Node.js with SQLite and local image storage. Both runtimes share the same API and sync logic. Use it to write and organize notes across your own computers and phones.
 
 ## Features
 
@@ -20,7 +20,7 @@ Notes are saved to the browser's IndexedDB before syncing in the background. One
 - **Trash**: preview and restore deleted notes; permanent deletion and emptying the trash require confirmation.
 - **Writing statistics**: word counts, writing streaks, an activity heatmap, group distribution, and opens across devices.
 - **Device sync**: properties and bodies sync separately; concurrent edits produce conflict copies for review and merging.
-- **Images and PWA**: paste images to upload to R2, view cached images offline, and install the app on desktop or mobile.
+- **Images and PWA**: paste images to upload to your server, view cached images offline, and install the app on desktop or mobile.
 - **Lightweight UI**: system fonts, shared SVG icons, and lazy loading for the editor and statistics.
 
 ## Interface and controls
@@ -49,8 +49,8 @@ Mobile opens to the list and switches to the editor when a note is selected. The
 | --- | --- |
 | Frontend | Vue 3, Pinia, Milkdown (Markdown editor), Dexie (IndexedDB) |
 | PWA | vite-plugin-pwa (Workbox) |
-| Backend | Cloudflare Workers, Hono |
-| Storage | Cloudflare D1 (metadata/body), R2 (images) |
+| Backend | Hono on Cloudflare Workers or Node.js 24 |
+| Storage | Cloudflare D1/R2 or SQLite/local disk |
 | Testing | Vitest (unit/integration), Playwright (end-to-end) |
 
 ## Architecture
@@ -59,10 +59,10 @@ Mobile opens to the list and switches to the editor when a note is selected. The
 flowchart LR
   UI[Vue / Markdown editor] <--> Local[IndexedDB]
   Local <--> Sync[Incremental sync and outbox]
-  Sync <-->|Same-origin API| Worker[Cloudflare Worker]
+  Sync <-->|Same-origin API| Worker[Hono API / Workers or Node.js]
   UI <-->|Images| Worker
-  Worker <--> D1[D1 / Notes and groups]
-  Worker <--> R2[R2 / Images]
+  Worker <--> D1[D1 or SQLite / Notes and groups]
+  Worker <--> R2[R2 or disk / Images]
 ```
 
 - Data APIs use `Authorization: Bearer <token>`. Images also accept a same-origin cookie scoped to `Path=/api/images/`; `/api/health` needs no token.
@@ -250,11 +250,21 @@ For a custom domain: Cloudflare Dashboard → Workers & Pages → select the Wor
 
 ## Can I host this on my own server?
 
-Not in its current form. The backend talks to D1 and R2 through Workers bindings and the static files are served by Workers Assets; there is no adapter layer for other databases or object stores, so the app cannot be dropped onto a VPS, Docker host or another cloud as-is.
+Yes. Use **Docker Compose** or **Node.js 24 LTS** directly. The server serves both the frontend and API, stores notes in SQLite and saves images to disk. No Cloudflare account is required.
 
-The source does not have to be hosted on GitHub. Keep it on GitLab, Gitee or locally and deploy to Cloudflare using `wrangler` from a computer or CI. Runtime dependencies are Cloudflare Workers, D1 and R2. In-app release notifications still query the original project's GitHub Releases; a failed check does not affect notes.
+```bash
+npm ci
+npm run build:server
+cp server.env.example .env.server
+# Set a random ACCESS_TOKEN in .env.server before starting
+npm start
+```
 
-Hosting outside Cloudflare would mean replacing the D1 SQL in `worker/` with SQLite/Postgres, swapping R2 for local disk or S3-compatible storage, and serving the static files from a Node server. That is a separate porting effort; open an issue if you want to discuss it.
+The default address is `http://127.0.0.1:3000`. Startup automatically applies pending migrations. `SNOTES_DATA_DIR` defaults to `./data`; preserve this entire directory, including images and SQLite WAL files, across upgrades. Configure an HTTPS reverse proxy for remote use. The provided [systemd service](deploy/snotes.service) uses `/var/lib/snotes` for data; the [Caddy example](deploy/Caddyfile.example) provides HTTPS.
+
+For Docker, copy `server.env.example` to `.env`, set `ACCESS_TOKEN`, then run `docker compose up -d --build`. The service binds to localhost port 3000 and keeps data in the `snotes-data` named volume. Never use `docker compose down -v` unless you intend to delete your notes. Back up the entire data directory while the service is stopped. Node upgrades use `npm ci`, `npm run build:server`, then a service restart; Docker upgrades rebuild the container while retaining the volume.
+
+Cloudflare data is not migrated automatically. Source code may live on any Git host; release notifications query the original GitHub repository but are optional for normal operation. Cloudflare usage monitoring is unavailable on the server runtime; writing statistics remain available. See the [detailed server deployment guide (Chinese)](docs/server-deployment.md) for setup, backup and recovery.
 
 ## Local development
 
@@ -280,12 +290,16 @@ Local development doesn't need real D1/R2 resources — wrangler simulates them 
 ```bash
 npm test            # frontend and shared pure logic
 npm run test:worker # Worker integration tests (in the real Workers runtime)
-npm run test:all    # both of the above
+npm run test:server # SQLite / disk / API server integration tests
+npm run test:all    # all unit and integration tests
 npm run test:e2e    # Playwright end-to-end
+npm run test:e2e:server # same browser suite against Node.js
 npm run typecheck   # type checking
 ```
 
 The E2E suite builds the app, applies migrations, and starts `wrangler dev` on port `8790`, testing the production shape (same-origin static assets + API). It uses the fixture token in `tests/e2e/wrangler.jsonc` and stores its isolated test data in `tmp/e2e-state`. No need to start anything first.
+
+Server tests require Node.js 24. `test:e2e:server` starts a real Node.js server on port `8791`, with data in `tmp/e2e-server-state`. Run the two E2E suites sequentially because both build into `dist/`.
 
 Please make sure `npm run test:all && npm run build` passes before committing.
 
@@ -322,11 +336,13 @@ src/            frontend (Vue 3 + Pinia)
   db/            Dexie schema and repos
   api/           client for talking to the Worker
   navigation.ts  History navigation for views, statistics, and reading positions
-worker/         Cloudflare Worker (Hono API)
+worker/         shared Hono API and Cloudflare entry
   routes/        notes / opens / groups / sync / trash / images / metrics
   metrics/       D1/R2/HTTP metrics collection
   auth.ts        Bearer + cookie auth middleware
 shared/         types and logic shared by both sides (sync reduce, sorting, sanitising)
+server/         Node.js entry, SQLite and disk image adapters
+deploy/         systemd and HTTPS reverse proxy examples
 migrations/     D1 database migrations
 tests/          e2e, Worker integration, unit tests and setup
 docs/           design documents, operations guide

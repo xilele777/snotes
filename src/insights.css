@@ -213,15 +213,15 @@
 
 /* 更新热力图：53 周 × 7 天，列宽随可用空间收缩，不产生横向滚动。 */
 .heatmap-scroll { overflow: hidden; }
-.heatmap-grid { display: grid; grid-template-columns: repeat(53, minmax(0, 12px)); justify-content: space-between; gap: 0; width: 100%; }
-.heatmap-col { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.heatmap-grid { display: grid; grid-template-columns: repeat(53, minmax(0, 1fr)); gap: 1px; width: 100%; max-width: 688px; }
+.heatmap-col { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
 /* 单色顺序色阶：OKLCH 亮度约 0.95 → 0.85 → 0.74 → 0.57 → 0.48，相邻级之间的差距肉眼可辨；
    0 级用中性灰而不是浅蓝，避免「无更新」与「少量更新」混在一起。 */
 .heatmap-cell {
   width: 100%;
   height: auto;
   aspect-ratio: 1;
-  border-radius: 2px;
+  border-radius: 1px;
   background: var(--bg-press);
   box-shadow: inset 0 0 0 1px rgb(20 22 28 / 4%);
   transition: background 0.15s ease-in-out;

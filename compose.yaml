@@ -1,0 +1,14 @@
+services:
+  snotes:
+    build: .
+    restart: unless-stopped
+    init: true
+    environment:
+      ACCESS_TOKEN: ${ACCESS_TOKEN:?Set ACCESS_TOKEN in .env}
+    ports:
+      - "127.0.0.1:${PORT:-3000}:3000"
+    volumes:
+      - snotes-data:/app/data
+
+volumes:
+  snotes-data:

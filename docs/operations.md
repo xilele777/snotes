@@ -1,5 +1,7 @@
 # snotes 运维手册
 
+服务器部署的启动、升级、备份和恢复见[服务器部署文档](server-deployment.md)。下文的 D1/R2、Wrangler 和 Cloudflare 密钥操作仅适用于 Cloudflare 部署；令牌、同步和浏览器排查适用于两种部署。
+
 ## 令牌是怎么用的
 
 令牌同时存在两个地方，缺一不可：

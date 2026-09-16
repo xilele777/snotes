@@ -1,7 +1,14 @@
+import type { Database, ImageStore } from './storage'
+
 export interface Env {
-  DB: D1Database
-  R2: R2Bucket
+  DB: Database
+  R2: ImageStore
   ACCESS_TOKEN: string
+  RUNTIME?: 'server'
+  EDGE_CACHE?: {
+    match(request: Request): Promise<Response | undefined>
+    put(request: Request, response: Response): Promise<void>
+  }
   /** 监控页（Bug 8）用到的 CF 账号级信息。三个查询字段 */
   D1_DATABASE_ID?: string
   R2_BUCKET_NAME?: string

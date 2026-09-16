@@ -57,38 +57,19 @@ imagesRoutes.post('/api/images/upload', async (c) => {
 
 imagesRoutes.get('/api/images/:file_key{.+}', async (c) => {
   const fileKey = c.req.param('file_key')
+  const cache = c.env.EDGE_CACHE
+  const cacheKey = new Request(c.req.url, { method: 'GET' })
 
-  // Cache API 在 Miniflare 测试环境里可能抛「This context has no ExecutionContext」，
-  // 边缘缓存只是性能优化、不是正确性要求，因此整体用 try 包住，失败时直读 R2。
+  // 只有 Cloudflare 入口注入边缘缓存；服务器直接读取磁盘适配器。
   try {
-    const cache = caches.default
-    const cacheKey = new Request(new URL(c.req.url).toString(), { method: 'GET' })
-
-    const cached = await cache.match(cacheKey)
-    if (cached) return cached
-
-    const object = await c.env.R2.get(fileKey)
-    if (!object) return c.json({ error: 'not_found' }, 404)
-
-    const etag = object.httpEtag
-
-    if (c.req.header('If-None-Match') === etag) {
-      return new Response(null, { status: 304, headers: { ETag: etag } })
+    const cached = await cache?.match(cacheKey)
+    if (cached) {
+      const etag = cached.headers.get('ETag')
+      if (etag && c.req.header('If-None-Match') === etag) return new Response(null, { status: 304, headers: { ETag: etag } })
+      return cached
     }
-
-    const response = new Response(object.body, {
-      headers: {
-        'Content-Type': object.httpMetadata?.contentType ?? 'application/octet-stream',
-        'Cache-Control': CACHE_CONTROL,
-        ETag: etag,
-      },
-    })
-
-    c.executionCtx.waitUntil?.(cache.put(cacheKey, response.clone()))
-
-    return response
   } catch {
-    // 落到无缓存路径
+    // 缓存仅是性能优化，失败时仍可读取原始图片。
   }
 
   const object = await c.env.R2.get(fileKey)
@@ -100,11 +81,15 @@ imagesRoutes.get('/api/images/:file_key{.+}', async (c) => {
     return new Response(null, { status: 304, headers: { ETag: etag } })
   }
 
-  return new Response(object.body, {
+  const response = new Response(object.body, {
     headers: {
       'Content-Type': object.httpMetadata?.contentType ?? 'application/octet-stream',
       'Cache-Control': CACHE_CONTROL,
       ETag: etag,
     },
   })
+  if (cache) {
+    try { c.executionCtx.waitUntil(cache.put(cacheKey, response.clone())) } catch { /* 无 ExecutionContext 时跳过缓存 */ }
+  }
+  return response
 })
