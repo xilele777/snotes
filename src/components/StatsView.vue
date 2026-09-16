@@ -43,7 +43,8 @@ const openedList = computed(() => openedTab.value === 'most'
   ? (stats.value?.mostOpened ?? []).map((n) => ({ id: n.id, title: n.title, value: `${n.total_count} 次` }))
   : (stats.value?.recentOpened ?? []).map((n) => ({ id: n.id, title: n.title, value: fmtTime(n.time) }))
 )
-function heatLevel(count: number): number { if (!count) return 0; const r = count / heatMax.value; return r < .25 ? 1 : r < .5 ? 2 : r < .75 ? 3 : 4 }
+/** 0 = 无更新；1-4 按当天次数占最高单日的比例分四档，任何非零值至少是 1 档 */
+function heatLevel(count: number): number { if (!count) return 0; return Math.min(4, Math.max(1, Math.ceil((count / heatMax.value) * 4))) }
 function fmtFull(ts: number | null): string { if (!ts) return '-'; const d = new Date(ts); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}` }
 function fmtTime(ts: number): string { return new Date(ts).toLocaleString('zh-CN', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' }) }
 function dayLabel(date: string): string { return `${Number(date.slice(5, 7))}/${Number(date.slice(8))}` }

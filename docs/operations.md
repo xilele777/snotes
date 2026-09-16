@@ -58,6 +58,20 @@ npx wrangler secret put ACCESS_TOKEN
 所有客户端会在下次请求时收到 401 并自动回到令牌输入页，重新输入新令牌即可。
 本地数据不受影响。
 
+## 升级到新版本
+
+应用启动时，左下角版本按钮检查 GitHub 最新 Release，成功结果缓存 24 小时；检测到新版本会出现蓝点。先阅读 CHANGELOG、备份 D1 与 R2，并按 [README 的升级步骤](../README.md#8-更新到新版本)保存个人部署配置、拉取新代码、恢复配置并解决冲突，然后执行：
+
+```bash
+npm ci
+npx wrangler d1 migrations apply snotes --remote   # CHANGELOG 提到新迁移时必须执行
+npm run deploy
+```
+
+- 不要用 `skip-worktree` 规避配置冲突。恢复配置时手动保留自己的资源标识并合入上游字段；数据库改名后也要修改迁移命令中的 `snotes`。fork 用户还需先同步原仓库更新。
+- 部署失败时先确认线上仍在运行的版本；已部署的 Worker 可在 Dashboard → Workers → Deployments 回滚。已经成功执行的数据库迁移不会随代码回滚，需检查 schema 兼容性，必要时按备份恢复。
+- 版本检查失败（离线、GitHub 不可达）只会静默跳过，不影响笔记功能。
+
 ## 数据库迁移
 
 schema 变更一律通过迁移文件，不手工改库：

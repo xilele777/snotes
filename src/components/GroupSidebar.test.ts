@@ -7,9 +7,16 @@ import { db } from '../db/schema'
 import { useGroupsStore } from '../stores/groups'
 import { useUiStore } from '../stores/ui'
 import GroupSidebar from './GroupSidebar.vue'
+import { updateInfo } from '../update-check'
 
 const syncNow = vi.hoisted(() => vi.fn())
 vi.mock('../sync/engine', () => ({ syncNow }))
+// 版本检查会请求 GitHub，单测里不出网；updateInfo 保留为真实 ref 以便用例直接赋值
+const checkForUpdate = vi.hoisted(() => vi.fn())
+vi.mock('../update-check', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../update-check')>()),
+  checkForUpdate,
+}))
 
 beforeEach(async () => {
   setActivePinia(createPinia())
@@ -18,6 +25,8 @@ beforeEach(async () => {
   // 弹窗 Teleport 到 body，上一条用例的残留会污染 querySelector
   document.body.innerHTML = ''
   syncNow.mockReset().mockResolvedValue(undefined)
+  checkForUpdate.mockReset().mockResolvedValue(null)
+  updateInfo.value = null
 })
 
 /** 弹窗被 Teleport 到 body，取不到 wrapper 里，只能走 document */
@@ -212,6 +221,7 @@ describe('GroupSidebar 底部版本与同步入口', () => {
     await wrapper.get('.version-button').trigger('click')
     await nextTick()
     const closeButton = document.querySelector<HTMLButtonElement>('[aria-label="版本信息"] button')!
+    document.querySelector<HTMLAnchorElement>('[aria-label="版本信息"] a')!.focus()
     const tab = new KeyboardEvent('keydown', { key: 'Tab', shiftKey: true, cancelable: true })
     window.dispatchEvent(tab)
     expect(tab.defaultPrevented).toBe(true)
@@ -223,6 +233,38 @@ describe('GroupSidebar 底部版本与同步入口', () => {
 
     expect(escape.defaultPrevented).toBe(true)
     expect(document.querySelector('[aria-label="版本信息"]')).toBeNull()
+    wrapper.unmount()
+  })
+
+  it('挂载时触发一次版本检查；没有新版本时不显示提示点', async () => {
+    const wrapper = mount(GroupSidebar)
+    await wrapper.vm.$nextTick()
+    expect(checkForUpdate).toHaveBeenCalledTimes(1)
+    expect(wrapper.get('.version-button').classes()).not.toContain('has-update')
+    wrapper.unmount()
+  })
+
+  it('检测到新版本时版本按钮带提示点，弹窗给出更新命令与发布页链接', async () => {
+    updateInfo.value = { latest: '9.9.9', url: 'https://github.com/xilele777/snotes/releases/tag/v9.9.9', hasUpdate: true }
+    const wrapper = mount(GroupSidebar, { attachTo: document.body })
+    const button = wrapper.get('.version-button')
+    expect(button.classes()).toContain('has-update')
+    expect(button.attributes('title')).toContain('v9.9.9')
+
+    await button.trigger('click')
+    await nextTick()
+    const versionDialog = document.querySelector<HTMLElement>('[aria-label="版本信息"]')!
+    expect(versionDialog.textContent).toContain('v9.9.9')
+    expect(versionDialog.textContent).toContain('npm run deploy')
+    const link = versionDialog.querySelector<HTMLAnchorElement>('a')!
+    expect(link.href).toBe('https://github.com/xilele777/snotes/releases/tag/v9.9.9')
+    expect(link.target).toBe('_blank')
+    const close = versionDialog.querySelector<HTMLButtonElement>('.dialog-btn')!
+    close.focus()
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Tab', bubbles: true, cancelable: true }))
+    expect(document.activeElement).toBe(link)
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Tab', shiftKey: true, bubbles: true, cancelable: true }))
+    expect(document.activeElement).toBe(close)
     wrapper.unmount()
   })
 

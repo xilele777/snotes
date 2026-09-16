@@ -20,6 +20,11 @@ vi.mock('./api/token', async () => {
   const { ref } = await import('vue')
   return { hasToken: ref(true) }
 })
+// 侧栏挂载会检查 GitHub 新版本，单测不出网
+vi.mock('./update-check', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('./update-check')>()),
+  checkForUpdate: vi.fn().mockResolvedValue(null),
+}))
 // 监控页走 apiMetrics，App 级用例不关心它真的拉到什么数据
 const apiMetrics = vi.hoisted(() => vi.fn())
 vi.mock('./api/client', async (importOriginal) => ({

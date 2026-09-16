@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import { version as appVersion } from '../../package.json'
+import { RELEASES_URL, checkForUpdate, updateInfo } from '../update-check'
 import { openStats, showNotes, switchListView } from '../navigation'
 import { syncNow } from '../sync/engine'
 import AppIcon from './AppIcon.vue'
@@ -22,6 +23,11 @@ const versionOpen = ref(false)
 const versionButton = ref<HTMLButtonElement | null>(null)
 const versionCloseButton = ref<HTMLButtonElement | null>(null)
 const versionLabel = `v${appVersion}`
+const hasUpdate = computed(() => updateInfo.value?.hasUpdate === true)
+const latestLabel = computed(() => (updateInfo.value ? `v${updateInfo.value.latest}` : null))
+const releaseUrl = computed(() => hasUpdate.value ? updateInfo.value!.url : RELEASES_URL)
+const versionDialog = ref<HTMLElement | null>(null)
+const versionTitle = computed(() => (hasUpdate.value ? `有新版本 ${latestLabel.value} 可用，当前 ${versionLabel}` : `当前网页版本：${versionLabel}`))
 
 const syncTitle = computed(() => {
   if (ui.syncing) return '正在同步…'
@@ -33,6 +39,7 @@ const syncTitle = computed(() => {
 const online = ref(navigator.onLine)
 function updateOnline() { online.value = navigator.onLine }
 onMounted(() => {
+  void checkForUpdate()
   window.addEventListener('online', updateOnline)
   window.addEventListener('offline', updateOnline)
 })
@@ -53,8 +60,16 @@ function onVersionKeydown(event: KeyboardEvent) {
     event.preventDefault()
     versionOpen.value = false
   } else if (event.key === 'Tab') {
-    event.preventDefault()
-    versionCloseButton.value?.focus()
+    const controls = versionDialog.value?.querySelectorAll<HTMLElement>('a[href], button')
+    const first = controls?.[0]
+    const last = controls?.[controls.length - 1]
+    if (event.shiftKey && document.activeElement === first) {
+      event.preventDefault()
+      last?.focus()
+    } else if (!event.shiftKey && document.activeElement === last) {
+      event.preventDefault()
+      first?.focus()
+    }
   }
 }
 
@@ -179,8 +194,9 @@ async function submitDialog(name: string) {
           ref="versionButton"
           type="button"
           class="version-button"
-          :title="`当前网页版本：${versionLabel}`"
-          :aria-label="`查看版本信息，当前版本 ${versionLabel}`"
+          :title="versionTitle"
+          :aria-label="hasUpdate ? `查看版本信息，有新版本 ${latestLabel} 可用` : `查看版本信息，当前版本 ${versionLabel}`"
+          :class="{ 'has-update': hasUpdate }"
           aria-haspopup="dialog"
           :aria-expanded="versionOpen"
           @click="versionOpen = true"
@@ -192,12 +208,19 @@ async function submitDialog(name: string) {
 
     <Teleport to="body">
       <div v-if="versionOpen" class="dialog-mask" @click.self="versionOpen = false">
-        <div class="dialog info-dialog" role="dialog" aria-modal="true" aria-label="版本信息">
+        <div ref="versionDialog" class="dialog info-dialog" role="dialog" aria-modal="true" aria-label="版本信息">
           <h3 class="dialog-title">版本信息</h3>
           <ul class="info-list">
             <li><span class="info-label">应用名称</span><span class="info-value">snotes</span></li>
             <li><span class="info-label">网页版本</span><span class="info-value">{{ versionLabel }}</span></li>
+            <li v-if="hasUpdate" class="update-row">
+              <span class="info-label">最新版本</span>
+              <span class="info-value">{{ latestLabel }}</span>
+              <span class="info-sub">先按 README 的升级步骤保留自己的部署配置，再依次执行 <code>git pull --ff-only</code>、<code>npm ci</code>、<code>npx wrangler d1 migrations apply snotes --remote</code>、<code>npm run deploy</code>。数据库改过名时替换 <code>snotes</code>。</span>
+            </li>
+            <li v-else-if="latestLabel"><span class="info-label">最新版本</span><span class="info-value">{{ latestLabel }}</span><span class="info-sub">已是最新</span></li>
           </ul>
+          <p class="update-links"><a :href="releaseUrl" target="_blank" rel="noopener noreferrer">{{ hasUpdate ? '查看发布说明' : '查看全部版本' }}</a></p>
           <div class="dialog-footer">
             <button ref="versionCloseButton" type="button" class="dialog-btn ok" @click="versionOpen = false">关闭</button>
           </div>

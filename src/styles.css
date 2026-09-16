@@ -106,6 +106,11 @@ kbd { font-family: inherit; font-size: 10px; line-height: 20px; white-space: now
 .failed-badge { position: absolute; top: -2px; left: 17px; min-width: 13px; height: 13px; line-height: 13px; padding: 0 3px; border-radius: 8px; background: var(--danger); color: white; font-size: 9px; }
 .version-button { margin-left: auto; border: 0; padding: 6px; border-radius: 5px; background: transparent; color: var(--text-tertiary); font-size: 10px; font-variant-numeric: tabular-nums; }
 .version-button:hover { background: var(--bg-hover); color: var(--text-primary); }
+.version-button.has-update { position: relative; color: var(--text-secondary); padding-right: 14px; }
+.version-button.has-update::after { content: ""; position: absolute; top: 6px; right: 4px; width: 6px; height: 6px; border-radius: 50%; background: var(--accent); }
+.update-row .info-sub { grid-column: 1 / -1; margin-top: 6px; font-size: 12px; line-height: 1.65; }
+.update-row .info-sub code { font-size: 11px; padding: 1px 4px; border-radius: 3px; background: var(--bg-press); color: var(--text-primary); overflow-wrap: anywhere; }
+.update-links { margin: -6px 0 0; font-size: 12px; }.update-links a { color: var(--accent); text-decoration: none; }.update-links a:hover { text-decoration: underline; }
 
 /* Compact rows keep titles, excerpts and metadata aligned. */
 .list-view { display: flex; flex-direction: column; height: 100%; }

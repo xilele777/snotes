@@ -178,6 +178,32 @@ Open the Worker URL and paste the token from step 4. The token is stored locally
 
 On mobile, use "Add to Home Screen" in Safari or Chrome to run it as a standalone PWA. On desktop Chrome or Edge, use the install button at the right of the address bar.
 
+### 8. Updating to a new version
+
+Manually deployed Workers do **not** update themselves when a release is published; pull the code and redeploy. At app startup, the bottom-left version button checks the latest GitHub Release and caches successful results for 24 hours. A blue dot indicates a newer release; the dialog links to release notes and shows upgrade steps. For release notifications, choose **Watch → Custom → Releases** on GitHub and enable email in your notification settings.
+
+Read the [CHANGELOG](CHANGELOG.md), back up your data following the [operations guide](docs/operations.md), enter the project directory and check `git status`. **If `wrangler.jsonc` has uncommitted deployment settings**, back it up outside the repository, then stash those changes:
+
+```bash
+git stash push -m "snotes deployment config" -- wrangler.jsonc
+```
+
+Only run this when there are config changes and confirm that Git created a stash. Save any other code changes too. If you previously enabled `skip-worktree`, run `git update-index --no-skip-worktree wrangler.jsonc` before checking status. That flag does not prevent upstream merge conflicts.
+
+```bash
+git pull --ff-only                                  # update the current branch
+```
+
+If you created the config stash above, run `git stash apply 'stash@{0}'` next (do not create another stash in between). Resolve any conflicts, preserving your Worker name, both database IDs and bucket names while incorporating upstream fields. Check the config before continuing. The stash remains as a backup until you choose to remove it after verification. Fork users must also sync the original project's changes into their branch; `git pull` only updates the current tracking branch.
+
+```bash
+npm ci                                              # install the locked dependencies
+npx wrangler d1 migrations apply snotes --remote    # only does work when there are new migrations
+npm run deploy                                      # build and deploy
+```
+
+Replace `snotes` in the migration command if you renamed the database. Secrets such as `ACCESS_TOKEN` stay on Cloudflare and do not need to be re-entered. After deployment, stay online while the browser downloads the new Service Worker and cache, then reload or close all app windows and reopen. Check the version dialog to verify the new build; offline clients or clients still using the old cache do not update immediately.
+
 ### Optional: configure the usage-monitoring API
 
 The `/api/metrics` endpoint and monitoring component are retained, but the sidebar entry is currently hidden. This setup is optional and does not affect notes or writing statistics. An unconfigured metrics endpoint returns 503 with `not_configured`.
@@ -221,6 +247,14 @@ For a custom domain: Cloudflare Dashboard → Workers & Pages → select the Wor
 | Images broken, everything else fine | Bucket name doesn't match `wrangler.jsonc`, or the `snotes_token` cookie is missing — see the [operations guide](docs/operations.md) |
 | Monitoring page shows "not configured" | `CF_ACCOUNT_ID` / `CF_API_TOKEN` aren't set, or the token lacks Account Analytics Read |
 | `stdin is not a tty` on Windows Git Bash | Run interactive commands like `wrangler secret put` from PowerShell or CMD, or prefix them with `winpty` |
+
+## Can I host this on my own server?
+
+Not in its current form. The backend talks to D1 and R2 through Workers bindings and the static files are served by Workers Assets; there is no adapter layer for other databases or object stores, so the app cannot be dropped onto a VPS, Docker host or another cloud as-is.
+
+The source does not have to be hosted on GitHub. Keep it on GitLab, Gitee or locally and deploy to Cloudflare using `wrangler` from a computer or CI. Runtime dependencies are Cloudflare Workers, D1 and R2. In-app release notifications still query the original project's GitHub Releases; a failed check does not affect notes.
+
+Hosting outside Cloudflare would mean replacing the D1 SQL in `worker/` with SQLite/Postgres, swapping R2 for local disk or S3-compatible storage, and serving the static files from a Node server. That is a separate porting effort; open an issue if you want to discuss it.
 
 ## Local development
 

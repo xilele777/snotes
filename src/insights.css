@@ -215,18 +215,21 @@
 .heatmap-scroll { overflow: hidden; }
 .heatmap-grid { display: grid; grid-template-columns: repeat(53, minmax(0, 12px)); justify-content: space-between; gap: 0; width: 100%; }
 .heatmap-col { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+/* 单色顺序色阶：OKLCH 亮度约 0.95 → 0.85 → 0.74 → 0.57 → 0.48，相邻级之间的差距肉眼可辨；
+   0 级用中性灰而不是浅蓝，避免「无更新」与「少量更新」混在一起。 */
 .heatmap-cell {
   width: 100%;
   height: auto;
   aspect-ratio: 1;
   border-radius: 2px;
   background: var(--bg-press);
+  box-shadow: inset 0 0 0 1px rgb(20 22 28 / 4%);
   transition: background 0.15s ease-in-out;
 }
-.heatmap-cell[data-level='1'] { background: #e3e9fc; }
-.heatmap-cell[data-level='2'] { background: #b9c9fa; }
-.heatmap-cell[data-level='3'] { background: #8da5f7; }
-.heatmap-cell[data-level='4'] { background: var(--accent); }
+.heatmap-cell[data-level='1'] { background: #bacdfd; box-shadow: none; }
+.heatmap-cell[data-level='2'] { background: #86a4f7; box-shadow: none; }
+.heatmap-cell[data-level='3'] { background: var(--accent); box-shadow: none; }
+.heatmap-cell[data-level='4'] { background: #314ec7; box-shadow: none; }
 .heatmap-legend { display: flex; align-items: center; flex-wrap: wrap; gap: 4px; margin-top: 10px; font-size: 11px; color: var(--text-tertiary); }
 .heatmap-legend .heatmap-cell { width: 12px; height: 12px; aspect-ratio: auto; }
 
