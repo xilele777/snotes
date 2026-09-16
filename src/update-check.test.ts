@@ -3,7 +3,7 @@ import { version as appVersion } from '../package.json'
 import { checkForUpdate, compareVersions, updateInfo } from './update-check'
 
 const bump = (v: string, patch = 1) => {
-  const [a, b, c] = v.split('.').map(Number)
+  const [a, b, c] = v.split(/[+-]/)[0]!.split('.').map(Number)
   return `${a}.${b}.${(c ?? 0) + patch}`
 }
 

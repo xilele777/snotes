@@ -8,9 +8,25 @@
 
 中文 | [English](README.en.md)
 
+当前预览版：**[v0.7.0-beta.1](https://github.com/xilele777/snotes/releases/tag/v0.7.0-beta.1)**。稳定版见 [Latest Release](https://github.com/xilele777/snotes/releases/latest)。服务器部署从此预览版开始提供；稳定版 `v0.6.3` 尚不包含该功能。
+
 [界面与操作](#界面与操作) · [Cloudflare 部署](#部署到你自己的-cloudflare-账号) · [服务器部署](docs/server-deployment.md) · [本地开发](#本地开发) · [更新记录](CHANGELOG.md)
 
 笔记先保存在浏览器的 IndexedDB，再由后台增量同步。可以使用 Cloudflare Workers + D1 + R2，也可以在自己的服务器运行 Node.js + SQLite + 本地图片存储，两种方式共用笔记 API 与同步逻辑。适合在自己的电脑和手机之间记录、整理与继续写作。
+
+## 选择部署方式与版本
+
+| 方式 | 环境要求 | 数据保存位置 | 指引 |
+| --- | --- | --- | --- |
+| Cloudflare | Cloudflare 账号、D1、R2；部署机 Node.js 22.12+ | D1 数据库、R2 图片桶 | [部署步骤](#部署到你自己的-cloudflare-账号) |
+| 直接运行 Node.js | Node.js 24 LTS、持久化磁盘 | SQLite、本地图片目录 | [快速开始](#能否部署到自己的服务器) |
+| Docker Compose | Docker Engine、Compose 插件 | `snotes-data` 持久化卷 | [完整指引](docs/server-deployment.md#docker-compose) |
+
+未指定标签的克隆命令默认跟踪 `main`。要安装本次预览版，在克隆后、安装或构建前执行 `git switch --detach v0.7.0-beta.1`；下方服务器快速开始已在克隆命令中指定此标签。`main` 可能包含尚未发布的后续改动；需要固定版本时请选择明确的发布标签。
+
+已有部署先完成同步、备份数据并保存本地配置，再执行 `git fetch origin --tags` 和 `git switch --detach v0.7.0-beta.1`，随后按对应部署方式重新安装、构建和启动。固定标签处于 detached HEAD 状态，后续升级需获取并切换到新标签，不能直接 `git pull`；Cloudflare 配置的保存与恢复见下方[更新步骤](#8-更新到新版本)。不要使用强制切换覆盖本地改动。
+
+应用内更新提醒只查询 GitHub 最新**稳定版**，成功结果缓存 24 小时，不自动提示预览版，也不会自动更新服务端。预览版需在 [Releases](https://github.com/xilele777/snotes/releases) 手动选择。此预览版已验证直接运行 Node.js；Docker Compose 配置检查已通过，镜像构建与容器运行尚未实测。
 
 ## 特点
 
@@ -180,7 +196,7 @@ curl https://snotes.<你的子域>.workers.dev/api/health
 
 ### 8. 更新到新版本
 
-仓库发布新版本后，手动部署的 Worker **不会自动更新**，需要在部署机上重新拉代码并部署。应用启动时，左下角的版本按钮查询 GitHub 最新 Release，成功结果缓存 24 小时：有新版本时按钮旁出现蓝点，点开可看到最新版本号、发布说明链接和更新步骤。若想收到发布通知，可在 GitHub 仓库页面点 **Watch → Custom → Releases**，并在 GitHub 通知设置中启用邮件。
+仓库发布新版本后，手动部署的 Worker **不会自动更新**，需要在部署机上重新拉代码并部署。应用启动时，左下角的版本按钮查询 GitHub 最新稳定版 Release，成功结果缓存 24 小时：有新版本时按钮旁出现蓝点，点开可看到最新版本号、发布说明链接和更新步骤。若想收到发布通知，可在 GitHub 仓库页面点 **Watch → Custom → Releases**，并在 GitHub 通知设置中启用邮件。以下 `git pull` 步骤用于跟踪分支的部署；固定标签部署请改用上方的[标签升级步骤](#选择部署方式与版本)。
 
 先阅读 [CHANGELOG](CHANGELOG.md)，按[运维手册](docs/operations.md)备份数据，进入项目目录运行 `git status` 检查本地改动。**如果 `wrangler.jsonc` 有未提交的个人配置**，先在仓库外备份一份，再暂存到 Git stash：
 
@@ -252,13 +268,29 @@ npx wrangler secret put CF_API_TOKEN    # 需要 Account > Analytics > Read 权�
 
 支持。可以使用 **Docker Compose**，也可以直接运行 **Node.js 24 LTS**。服务同时提供网页和 API，笔记保存到 SQLite，图片保存在磁盘；不需要 Cloudflare 账号。
 
+直接运行 Node.js：
+
 ```bash
+git clone --branch v0.7.0-beta.1 https://github.com/xilele777/snotes.git
+cd snotes
 npm ci
 npm run build:server
 cp server.env.example .env.server
 # 编辑 .env.server，设置自己的随机 ACCESS_TOKEN
 npm start
 ```
+
+或使用 Docker Compose（独立安装，二选一）：
+
+```bash
+git clone --branch v0.7.0-beta.1 https://github.com/xilele777/snotes.git
+cd snotes
+cp server.env.example .env
+# 编辑 .env，设置自己的随机 ACCESS_TOKEN
+docker compose up -d --build
+```
+
+使用密码管理器生成至少 32 字节的随机令牌，或执行 `node -e "console.log(crypto.randomBytes(32).toString('base64url'))"`。Node.js 使用 `.env.server`，Compose 使用 `.env`；两者均已被 Git 忽略。Compose 将数据保存在 `snotes-data` 命名卷，升级时保留该卷；`docker compose down -v` 会删除它。
 
 默认地址为 `http://127.0.0.1:3000`，首次启动自动建库和迁移。远程访问需配置 HTTPS 反向代理。完整的 Docker、systemd、域名、备份和升级步骤见[服务器部署文档](docs/server-deployment.md)。原 Cloudflare 实例的数据不会自动迁入新服务器。
 
@@ -313,8 +345,12 @@ E2E 会自己构建、应用迁移并在 `8790` 端口拉起 `wrangler dev`，�
 
 ## 数据备份与迁移
 
+**独立服务器 / Docker**：先让客户端同步，再停止服务并备份整个数据目录或数据卷，包括 SQLite、可能存在的 WAL/SHM 文件和图片。具体命令及恢复方法见[服务器备份、升级与恢复](docs/server-deployment.md#备份升级与恢复)。Cloudflare 与服务器的数据不会自动互相迁移。
+
+**Cloudflare**：以下为 D1 备份与恢复命令（Bash）：
+
 ```bash
-# 导出（建议每月手动一次）
+# 定期导出，升级前也应备份
 npx wrangler d1 export snotes --remote --output "backup-$(date +%Y%m).sql"
 
 # 恢复
@@ -351,6 +387,7 @@ docs/           设计文档、运维手册
 - [设计文档](docs/superpowers/specs/2026-08-22-snotes-design.md)
 - [实施计划](docs/superpowers/plans/2026-08-22-snotes.md)
 - [运维手册](docs/operations.md) —— 令牌机制、同步失败排查、备份、常见问题
+- [服务器部署](docs/server-deployment.md) —— Node.js、Docker、systemd、HTTPS、备份与升级
 - [界面设计与验收](docs/ui-refresh.md)
 - [变更记录](CHANGELOG.md)
 
@@ -360,8 +397,8 @@ docs/           设计文档、运维手册
 
 - 拿到 `ACCESS_TOKEN` 的人可以读写你的全部笔记与图片，没有多用户、分享或权限分级
 - 令牌保存在浏览器 `localStorage`，另有一个作用域限定为 `Path=/api/images/` 的 Cookie 专供 `<img>` 使用
-- 令牌泄露时，使用 `wrangler secret put ACCESS_TOKEN` 更新线上密钥；使用旧令牌的客户端会收到 401 并回到输入页，本地数据不受影响
-- 不要把令牌写进 `wrangler.jsonc`、`.env` 或任何会进仓库的文件
+- 更换令牌：Cloudflare 使用 `wrangler secret put ACCESS_TOKEN`；直接运行 Node.js 时修改 `.env.server` 或服务环境文件并重启进程；Docker 修改 `.env` 后执行 `docker compose up -d --force-recreate snotes`。使用旧令牌的客户端会收到 401 并回到输入页，本地数据不受影响
+- 不要把令牌写进 `wrangler.jsonc` 或任何会进仓库的文件；服务器令牌仅保存在被忽略的环境文件或服务端密钥文件中
 
 发现安全问题请通过 GitHub 的 [Security Advisory](https://github.com/xilele777/snotes/security/advisories/new) 私下报告，不要开公开 issue。
 

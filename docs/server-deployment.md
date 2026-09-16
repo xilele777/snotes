@@ -4,12 +4,14 @@
 
 这是单用户应用，一枚访问令牌允许读写全部笔记。服务器版支持编辑、离线缓存、多设备同步、冲突副本、图片、回收站和写作统计；Cloudflare 用量监控不适用。建议单进程运行，数据目录放在本地持久化磁盘，不要让多个实例共享网络文件系统上的 SQLite。
 
+服务器支持首次提供于预览版 `v0.7.0-beta.1`。下面的克隆命令固定到该标签；应用内只提醒稳定版更新，后续预览版请手动到 [Releases](https://github.com/xilele777/snotes/releases) 选择。此预览版已验证直接运行 Node.js；Docker Compose 配置检查通过，但镜像构建和容器运行尚未实测。
+
 ## Docker Compose
 
 需要 Docker Engine 与 Compose 插件，宿主机无需安装 Node.js。
 
 ```bash
-git clone https://github.com/xilele777/snotes.git
+git clone --branch v0.7.0-beta.1 https://github.com/xilele777/snotes.git
 cd snotes
 cp server.env.example .env
 ```
@@ -38,7 +40,7 @@ Compose 将端口绑定到宿主机 `127.0.0.1:3000`，通过下文的 HTTPS 反
 要求 **Node.js 24 LTS**。使用内置 `node:sqlite`，不需要编译第三方 SQLite 扩展；部分 Node.js 24 版本会显示 SQLite 实验性 API 提示。
 
 ```bash
-git clone https://github.com/xilele777/snotes.git
+git clone --branch v0.7.0-beta.1 https://github.com/xilele777/snotes.git
 cd snotes
 npm ci
 npm run build:server
@@ -122,7 +124,9 @@ docker compose start snotes
 
 每次备份请使用不同文件名保留历史。`backups/` 不要放在公开静态目录或提交到仓库。
 
-升级先阅读 CHANGELOG 并备份。Docker 部署执行 `git pull --ff-only` 和 `docker compose up -d --build`；直接运行 Node.js 时先停止服务，再执行 `git pull --ff-only`、`npm ci`、`npm run build:server`，最后重启服务。数据目录和令牌配置需要保留。迁移在新进程启动时自动完成，首次出现的迁移失败会阻止新服务就绪。
+升级先阅读 CHANGELOG 并备份，运行 `git status` 检查并保存本地改动。按本文固定标签安装时，先执行 `git fetch origin --tags`，再执行 `git switch --detach <新版本标签>`（将占位符替换成 Releases 中选定的标签），不要在 detached HEAD 上使用 `git pull`。只有跟踪分支的安装才使用 `git pull --ff-only`。
+
+切换代码后，Docker 部署执行 `docker compose up -d --build`；直接运行 Node.js 时先停止服务，再执行 `npm ci`、`npm run build:server`，最后重启服务。数据目录和令牌配置需要保留。迁移在新进程启动时自动完成，首次出现的迁移失败会阻止新服务就绪。联网等待浏览器更新缓存后重新打开应用，在版本弹窗核对版本号。
 
 恢复时先停服务并另存当前数据，将备份解压到一个空的数据目录（Docker 对应 `/app/data` 数据卷），确保文件属于运行服务的用户，再启动。回滚代码不会自动撤销数据库迁移，恢复旧代码时要确认数据库兼容，必要时一起恢复对应备份。
 

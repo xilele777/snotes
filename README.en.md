@@ -8,9 +8,25 @@ A lightweight personal Markdown notebook with offline editing, device sync, and 
 
 [中文](README.md) | English
 
+Current preview: **[v0.7.0-beta.1](https://github.com/xilele777/snotes/releases/tag/v0.7.0-beta.1)**. For the stable version, see [Latest Release](https://github.com/xilele777/snotes/releases/latest). Standalone server support starts with this preview and is not included in stable `v0.6.3`.
+
 [Interface and controls](#interface-and-controls) · [Cloudflare](#deploy-to-your-own-cloudflare-account) · [Server deployment](#can-i-host-this-on-my-own-server) · [Local development](#local-development) · [Changelog](CHANGELOG.md)
 
 Notes are saved to the browser's IndexedDB before syncing in the background. Choose Cloudflare Workers with D1/R2, or Node.js with SQLite and local image storage. Both runtimes share the same API and sync logic. Use it to write and organize notes across your own computers and phones.
+
+## Choose a deployment and version
+
+| Option | Requirements | Persistent storage | Guide |
+| --- | --- | --- | --- |
+| Cloudflare | Cloudflare account, D1, R2; Node.js 22.12+ on the deployment machine | D1 database and R2 images | [Setup](#deploy-to-your-own-cloudflare-account) |
+| Direct Node.js | Node.js 24 LTS and persistent disk | SQLite and local images | [Quick start](#can-i-host-this-on-my-own-server) |
+| Docker Compose | Docker Engine and Compose plugin | `snotes-data` named volume | [Detailed guide (Chinese)](docs/server-deployment.md#docker-compose) |
+
+Unpinned clone commands below follow `main`. To install this preview, run `git switch --detach v0.7.0-beta.1` after cloning and before installing or building. `main` may contain subsequent unreleased changes; use a release tag to pin a version.
+
+For an existing deployment, sync clients, back up data and save local configuration first. Run `git fetch origin --tags` and `git switch --detach v0.7.0-beta.1`, then install, build and restart using the instructions for your deployment. A pinned tag uses detached HEAD: future upgrades require fetching and switching to the next tag instead of `git pull`. See the [Cloudflare update steps](#8-updating-to-a-new-version) for preserving configuration. Do not force a checkout over local changes.
+
+The in-app update check only queries the latest **stable** GitHub release, caching successful results for 24 hours. It does not notify about previews or update your server automatically. Select previews manually from [Releases](https://github.com/xilele777/snotes/releases). Direct Node.js operation has been tested for this preview. Docker Compose configuration was validated, but image builds and container execution have not been tested.
 
 ## Features
 
@@ -180,7 +196,7 @@ On mobile, use "Add to Home Screen" in Safari or Chrome to run it as a standalon
 
 ### 8. Updating to a new version
 
-Manually deployed Workers do **not** update themselves when a release is published; pull the code and redeploy. At app startup, the bottom-left version button checks the latest GitHub Release and caches successful results for 24 hours. A blue dot indicates a newer release; the dialog links to release notes and shows upgrade steps. For release notifications, choose **Watch → Custom → Releases** on GitHub and enable email in your notification settings.
+Manually deployed Workers do **not** update themselves when a release is published; pull the code and redeploy. At app startup, the bottom-left version button checks the latest stable GitHub Release and caches successful results for 24 hours. A blue dot indicates a newer release; the dialog links to release notes and shows upgrade steps. For release notifications, choose **Watch → Custom → Releases** on GitHub and enable email in your notification settings. The `git pull` instructions below apply to a tracked branch; pinned deployments should use the [tag upgrade steps](#choose-a-deployment-and-version) above.
 
 Read the [CHANGELOG](CHANGELOG.md), back up your data following the [operations guide](docs/operations.md), enter the project directory and check `git status`. **If `wrangler.jsonc` has uncommitted deployment settings**, back it up outside the repository, then stash those changes:
 
@@ -252,7 +268,11 @@ For a custom domain: Cloudflare Dashboard → Workers & Pages → select the Wor
 
 Yes. Use **Docker Compose** or **Node.js 24 LTS** directly. The server serves both the frontend and API, stores notes in SQLite and saves images to disk. No Cloudflare account is required.
 
+Direct Node.js:
+
 ```bash
+git clone --branch v0.7.0-beta.1 https://github.com/xilele777/snotes.git
+cd snotes
 npm ci
 npm run build:server
 cp server.env.example .env.server
@@ -262,7 +282,17 @@ npm start
 
 The default address is `http://127.0.0.1:3000`. Startup automatically applies pending migrations. `SNOTES_DATA_DIR` defaults to `./data`; preserve this entire directory, including images and SQLite WAL files, across upgrades. Configure an HTTPS reverse proxy for remote use. The provided [systemd service](deploy/snotes.service) uses `/var/lib/snotes` for data; the [Caddy example](deploy/Caddyfile.example) provides HTTPS.
 
-For Docker, copy `server.env.example` to `.env`, set `ACCESS_TOKEN`, then run `docker compose up -d --build`. The service binds to localhost port 3000 and keeps data in the `snotes-data` named volume. Never use `docker compose down -v` unless you intend to delete your notes. Back up the entire data directory while the service is stopped. Node upgrades use `npm ci`, `npm run build:server`, then a service restart; Docker upgrades rebuild the container while retaining the volume.
+Alternatively, install with Docker Compose:
+
+```bash
+git clone --branch v0.7.0-beta.1 https://github.com/xilele777/snotes.git
+cd snotes
+cp server.env.example .env
+# Set a random ACCESS_TOKEN in .env before starting
+docker compose up -d --build
+```
+
+Generate a token with at least 32 random bytes using a password manager or `node -e "console.log(crypto.randomBytes(32).toString('base64url'))"`. Node.js reads `.env.server`; Compose reads `.env`. Both files are gitignored. Docker binds to localhost port 3000 and keeps data in the `snotes-data` named volume. Never use `docker compose down -v` unless you intend to delete your notes. Back up the entire data directory while the service is stopped. After switching to the new release tag, Node upgrades use `npm ci`, `npm run build:server`, then a service restart; Docker upgrades rebuild the container while retaining the volume.
 
 Cloudflare data is not migrated automatically. Source code may live on any Git host; release notifications query the original GitHub repository but are optional for normal operation. Cloudflare usage monitoring is unavailable on the server runtime; writing statistics remain available. See the [detailed server deployment guide (Chinese)](docs/server-deployment.md) for setup, backup and recovery.
 
@@ -315,8 +345,12 @@ Optional usage-monitoring calculations live in `worker/metrics/collect.ts` and n
 
 ## Backup and migration
 
+**Standalone server / Docker**: sync clients, stop the service and back up the entire data directory or volume, including SQLite, any WAL/SHM files and images. See [backup, upgrade and recovery (Chinese)](docs/server-deployment.md#备份升级与恢复). Data is not migrated automatically between Cloudflare and standalone deployments.
+
+**Cloudflare**: D1 backup and restore commands (Bash):
+
 ```bash
-# Export (a manual run each month is enough)
+# Export regularly and before upgrades
 npx wrangler d1 export snotes --remote --output "backup-$(date +%Y%m).sql"
 
 # Restore
@@ -343,7 +377,7 @@ worker/         shared Hono API and Cloudflare entry
 shared/         types and logic shared by both sides (sync reduce, sorting, sanitising)
 server/         Node.js entry, SQLite and disk image adapters
 deploy/         systemd and HTTPS reverse proxy examples
-migrations/     D1 database migrations
+migrations/     D1 / SQLite database migrations
 tests/          e2e, Worker integration, unit tests and setup
 docs/           design documents, operations guide
 ```
@@ -353,6 +387,7 @@ docs/           design documents, operations guide
 - [Design document](docs/superpowers/specs/2026-08-22-snotes-design.md) (Chinese)
 - [Implementation plan](docs/superpowers/plans/2026-08-22-snotes.md) (Chinese)
 - [Operations guide](docs/operations.md) (Chinese) — token mechanics, sync failure triage, backups, FAQ
+- [Server deployment](docs/server-deployment.md) (Chinese) — Node.js, Docker, systemd, HTTPS, backups and upgrades
 - [UI design and verification](docs/ui-refresh.md) (Chinese)
 - [Changelog](CHANGELOG.md)
 
@@ -362,8 +397,8 @@ This is a **single-user, self-hosted** application. Authentication is one shared
 
 - Anyone holding the `ACCESS_TOKEN` can read and write all your notes and images. There are no multiple users, sharing, or permission levels
 - The token is kept in the browser's `localStorage`, plus a cookie scoped to `Path=/api/images/` that exists solely for `<img>` requests
-- If the token leaks, update the live secret with `wrangler secret put ACCESS_TOKEN`. Clients using the old token get a 401 and return to the token entry screen; local data is unaffected
-- Never commit the token to `wrangler.jsonc`, `.env`, or any file that reaches the repository
+- To rotate the token, use `wrangler secret put ACCESS_TOKEN` on Cloudflare. For Node.js, edit `.env.server` or your service environment file and restart the process. For Docker, edit `.env` and run `docker compose up -d --force-recreate snotes`. Clients using the old token get a 401 and return to the token entry screen; local data is unaffected
+- Never put tokens in `wrangler.jsonc` or any committed file. Keep server tokens in ignored environment files or server-side secret files
 
 Please report security issues privately via GitHub [Security Advisories](https://github.com/xilele777/snotes/security/advisories/new) rather than opening a public issue.
 
