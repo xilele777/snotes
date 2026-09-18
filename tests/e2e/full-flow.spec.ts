@@ -649,6 +649,24 @@ test.describe('手机操作', () => {
     await expect(page.locator('.list-pane')).toBeVisible()
   })
 
+  test('顶栏「插入图片」经文件选择器上传——手机浏览器不把剪贴板图片交给 paste 事件', async ({ page }) => {
+    await createNote(page)
+    await page.keyboard.type('手机选图')
+
+    // 1x1 PNG。手机端没有键盘粘贴，选图是唯一可靠入口，走的必须是隐藏 input 的 change。
+    const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==', 'base64')
+    const chooser = page.waitForEvent('filechooser')
+    await page.locator('[data-op="image"]').click()
+    const picker = await chooser
+    expect(picker.isMultiple()).toBe(true)
+    await picker.setFiles({ name: 'phone.png', mimeType: 'image/png', buffer: png })
+
+    const img = page.locator('.milkdown img[src^="/api/images/"]')
+    await expect(img).toHaveCount(1, { timeout: 15_000 })
+    await expect(page.locator('.milkdown img[src^="blob:"]')).toHaveCount(0)
+    await expect.poll(() => savedBody(page), { timeout: 15_000 }).toContain('](/api/images/')
+  })
+
   test('纵向滚动不触发删除，左滑只展开操作而不打开正文', async ({ page }) => {
     await createNote(page)
     await expect(page.getByRole('textbox', { name: '笔记正文' })).toBeFocused()

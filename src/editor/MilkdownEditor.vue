@@ -11,7 +11,7 @@ import { Milkdown, MilkdownProvider, useEditor } from '@milkdown/vue'
 import { defineComponent, h, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import type { ComponentPublicInstance } from 'vue'
 import { escapeRawHtml, migrateLegacyBr } from '../../shared/sanitize'
-import { clipboardImageFiles, uploadImage } from './image-upload'
+import { clipboardImageFiles, isAllowedImage, uploadImage } from './image-upload'
 import { taskCheckboxes } from './task-checkboxes'
 import { configureListSerialization, orderedList } from './ordered-list'
 
@@ -152,7 +152,20 @@ function onMarkdownChange(markdown: string) {
       ctx.get(commandsCtx).call(command.key)
     })
   }
-defineExpose({ onMarkdownChange, undo: () => runCommand(undoCommand), redo: () => runCommand(redoCommand) })
+/**
+ * 顶栏「插入图片」按钮走的入口。手机浏览器（iOS Safari、微信内置浏览器等）
+ * 基本不会把剪贴板里的图片交给网页 paste 事件，所以粘贴之外必须有文件选择器这条路。
+ * 不支持的类型或超限的文件一次性提示，剩下的照常插占位、上传、替换。
+ */
+function insertImages(files: File[]) {
+  const rejected = files.filter((file) => !isAllowedImage(file))
+  if (rejected.length > 0) {
+    alert(`有 ${rejected.length} 个文件未插入：仅支持 10MB 以内的 JPG、PNG、GIF、WebP 图片`)
+  }
+  void handleImageFiles(files.filter(isAllowedImage))
+}
+
+defineExpose({ onMarkdownChange, insertImages, undo: () => runCommand(undoCommand), redo: () => runCommand(redoCommand) })
 
 /**
  * 在光标处插入图片节点（替代旧的全篇 replaceAll 追加：那会把图片甩到整份

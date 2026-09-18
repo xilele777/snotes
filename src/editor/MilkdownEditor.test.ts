@@ -60,6 +60,16 @@ describe('MilkdownEditor 外壳', () => {
     expect(wrapper.emitted('update:modelValue')).toBeUndefined()
   })
 
+  it('暴露 insertImages 供顶栏文件选择器调用；编辑器未就绪时不抛错', () => {
+    const wrapper = mount(MilkdownEditor, {
+      props: { noteId: 'n1', modelValue: 'a' },
+    })
+
+    expect(typeof wrapper.vm.insertImages).toBe('function')
+    expect(() => wrapper.vm.insertImages([new File(['x'], 'a.png', { type: 'image/png' })])).not.toThrow()
+    expect(wrapper.emitted('update:modelValue')).toBeUndefined()
+  })
+
   it('切换 noteId 前先把上一条的待存内容 flush 出去，且带的是旧 id', async () => {
     const wrapper = mount(MilkdownEditor, {
       props: { noteId: 'n1', modelValue: 'a' },

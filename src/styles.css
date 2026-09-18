@@ -173,6 +173,7 @@ kbd { font-family: inherit; font-size: 10px; line-height: 20px; white-space: now
 .op-btn[data-op='star'].selected .app-icon { fill: var(--accent); }
 .op-btn.danger:hover { color: var(--danger); background: var(--danger-bg); }
 .op-separator { width: 1px; height: 14px; background: var(--border-light); margin: 0 4px; }
+.image-input { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
 .op-dot { width: 15px; height: 15px; display: block; border: 1px solid var(--border-default); border-radius: 50%; }
 .op-dot.is-none, .more-swatch.is-none { background: linear-gradient(135deg, white 45%, var(--border-default) 46% 53%, white 54%); }
 .op-wrap { position: relative; display: flex; }

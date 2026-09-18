@@ -91,6 +91,17 @@ async function toggleFocus() {
   editorBody.value?.querySelector<HTMLElement>('.ProseMirror')?.focus()
 }
 
+/** 隐藏的图片文件选择器：手机端没有可靠的粘贴图片途径，顶栏按钮触发它 */
+const imageInput = ref<HTMLInputElement | null>(null)
+
+function onImagePicked(event: Event) {
+  const input = event.target as HTMLInputElement
+  const files = Array.from(input.files ?? [])
+  // 先清空再插入：不清空的话再次选同一张图不会触发 change
+  input.value = ''
+  if (files.length > 0) editorRef.value?.insertImages?.(files)
+}
+
 /** 删除动作统一定点到这个弹窗；null = 未打开 */
 const confirmAction = ref<'trash' | 'purge' | null>(null)
 
@@ -176,6 +187,11 @@ const wordCount = computed(() => countWords(notes.current?.body ?? ''))
         <button class="op-btn" data-op="redo" title="重做 (Ctrl+Y)" aria-label="重做" @click="editorRef?.redo?.()">
           <AppIcon name="redo" />
         </button>
+
+        <button class="op-btn" data-op="image" title="插入图片" aria-label="插入图片" @click="imageInput?.click()">
+          <AppIcon name="image" />
+        </button>
+        <input ref="imageInput" class="image-input" type="file" accept="image/*" multiple tabindex="-1" aria-hidden="true" @change="onImagePicked" />
 
         <span class="op-separator" aria-hidden="true"></span>
 
@@ -280,7 +296,7 @@ const wordCount = computed(() => countWords(notes.current?.body ?? ''))
         <div v-if="openPop === 'help'" class="op-popover help-popover">
           <span class="popover-heading">用简单符号，轻松排版</span>
           <dl><div><dt><code># 空格</code></dt><dd>标题</dd></div><div><dt><code>- 空格</code></dt><dd>无序列表</dd></div><div><dt><code>1. 空格</code></dt><dd>有序列表</dd></div><div><dt><code>&gt; 空格</code></dt><dd>引用</dd></div><div><dt><code>**文字**</code></dt><dd>加粗</dd></div></dl>
-          <p>也可以直接粘贴文字或图片。</p>
+          <p>也可以直接粘贴文字或图片；手机上请用顶栏的「插入图片」按钮。</p>
         </div>
       </div>
     </footer>

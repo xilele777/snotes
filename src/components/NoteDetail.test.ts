@@ -207,6 +207,50 @@ describe('NoteDetail 顶栏操作条', () => {
     wrapper.unmount()
   })
 
+  it('编辑态顶栏有插入图片按钮，点击打开图片文件选择器', async () => {
+    const notes = useNotesStore()
+    const note = await notes.create()
+    notes.currentId = note.id
+
+    const wrapper = mount(NoteDetail, { attachTo: document.body })
+    await wrapper.vm.$nextTick()
+
+    expect(op(wrapper, 'image').exists()).toBe(true)
+    const input = wrapper.find<HTMLInputElement>('input[type="file"]')
+    expect(input.exists()).toBe(true)
+    expect(input.attributes('accept')).toBe('image/*')
+    expect(input.attributes('multiple')).toBeDefined()
+
+    const click = vi.spyOn(input.element, 'click')
+    await op(wrapper, 'image').trigger('click')
+    expect(click).toHaveBeenCalledTimes(1)
+    wrapper.unmount()
+  })
+
+  it('选中文件后交给编辑器插入，并清空 input 以便再次选同一张', async () => {
+    const notes = useNotesStore()
+    const note = await notes.create()
+    notes.currentId = note.id
+
+    const wrapper = mount(NoteDetail, { attachTo: document.body })
+    await wrapper.vm.$nextTick()
+    await flushPromises()
+
+    const editor = wrapper.findComponent(MilkdownEditor)
+    // 父组件通过 ref 拿到的是 expose 代理，它实时读 instance.exposed；spy 必须打在这个对象上
+    const exposed = editor.vm.$.exposed as { insertImages: (files: File[]) => void }
+    const insert = vi.spyOn(exposed, 'insertImages').mockImplementation(() => {})
+
+    const input = wrapper.find<HTMLInputElement>('input[type="file"]')
+    const file = new File(['x'], 'a.png', { type: 'image/png' })
+    Object.defineProperty(input.element, 'files', { value: [file], configurable: true })
+    await input.trigger('change')
+
+    expect(insert).toHaveBeenCalledWith([file])
+    expect(input.element.value).toBe('')
+    wrapper.unmount()
+  })
+
   it('点浮层外部收起浮层', async () => {
     const notes = useNotesStore()
     const note = await notes.create()
@@ -299,6 +343,7 @@ describe('NoteDetail 回收站只读态', () => {
     expect(op(wrapper, 'trash').exists()).toBe(false)
     expect(op(wrapper, 'undo').exists()).toBe(false)
     expect(op(wrapper, 'redo').exists()).toBe(false)
+    expect(op(wrapper, 'image').exists()).toBe(false)
     wrapper.unmount()
   })
 
