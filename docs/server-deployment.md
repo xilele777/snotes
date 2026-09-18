@@ -4,14 +4,14 @@
 
 这是单用户应用，一枚访问令牌允许读写全部笔记。服务器版支持编辑、离线缓存、多设备同步、冲突副本、图片、回收站和写作统计；Cloudflare 用量监控不适用。建议单进程运行，数据目录放在本地持久化磁盘，不要让多个实例共享网络文件系统上的 SQLite。
 
-服务器支持首次提供于预览版 `v0.7.0-beta.1`。下面的克隆命令固定到该标签；应用内只提醒稳定版更新，后续预览版请手动到 [Releases](https://github.com/xilele777/snotes/releases) 选择。此预览版已验证直接运行 Node.js；Docker Compose 配置检查通过，但镜像构建和容器运行尚未实测。
+服务器支持自 `v0.7.0` 起提供。下面的克隆命令固定到该标签；应用内只提醒稳定版更新，预览版请手动到 [Releases](https://github.com/xilele777/snotes/releases) 选择。直接运行 Node.js 已验证；Docker Compose 配置检查通过，但镜像构建和容器运行尚未实测。
 
 ## Docker Compose
 
 需要 Docker Engine 与 Compose 插件，宿主机无需安装 Node.js。
 
 ```bash
-git clone --branch v0.7.0-beta.1 https://github.com/xilele777/snotes.git
+git clone --branch v0.7.0 https://github.com/xilele777/snotes.git
 cd snotes
 cp server.env.example .env
 ```
@@ -40,7 +40,7 @@ Compose 将端口绑定到宿主机 `127.0.0.1:3000`，通过下文的 HTTPS 反
 要求 **Node.js 24 LTS**。使用内置 `node:sqlite`，不需要编译第三方 SQLite 扩展；部分 Node.js 24 版本会显示 SQLite 实验性 API 提示。
 
 ```bash
-git clone --branch v0.7.0-beta.1 https://github.com/xilele777/snotes.git
+git clone --branch v0.7.0 https://github.com/xilele777/snotes.git
 cd snotes
 npm ci
 npm run build:server
