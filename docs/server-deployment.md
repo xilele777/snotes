@@ -11,7 +11,7 @@
 需要 Docker Engine 与 Compose 插件，宿主机无需安装 Node.js。
 
 ```bash
-git clone --branch v0.7.0 https://github.com/xilele777/snotes.git
+git clone --branch v0.7.1 https://github.com/xilele777/snotes.git
 cd snotes
 cp server.env.example .env
 ```
@@ -40,7 +40,7 @@ Compose 将端口绑定到宿主机 `127.0.0.1:3000`，通过下文的 HTTPS 反
 要求 **Node.js 24 LTS**。使用内置 `node:sqlite`，不需要编译第三方 SQLite 扩展；部分 Node.js 24 版本会显示 SQLite 实验性 API 提示。
 
 ```bash
-git clone --branch v0.7.0 https://github.com/xilele777/snotes.git
+git clone --branch v0.7.1 https://github.com/xilele777/snotes.git
 cd snotes
 npm ci
 npm run build:server
