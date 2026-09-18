@@ -127,6 +127,27 @@ describe('checkForUpdate', () => {
     expect(info?.hasUpdate).toBe(true)
   })
 
+  it('缓存里的最新版比当前运行版本旧时视为过期，立即重新查询', async () => {
+    // 网页刚升级到新版，浏览器里还留着升级前查到的旧结果：这份缓存必然过时
+    const stale = { latest: '0.0.1', url: 'https://github.com/xilele777/snotes/releases/tag/v0.0.1', checkedAt: Date.now() }
+    localStorage.setItem('snotes_update_check', JSON.stringify(stale))
+    const fetchMock = release(`v${appVersion}`)
+    vi.stubGlobal('fetch', fetchMock)
+
+    const info = await checkForUpdate()
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    expect(info).toEqual({ latest: appVersion, url: expect.stringContaining(`/tag/v${appVersion}`), hasUpdate: false })
+  })
+
+  it('过时缓存在请求失败时不回退，避免显示比当前还旧的「最新版本」', async () => {
+    const stale = { latest: '0.0.1', url: 'https://github.com/xilele777/snotes/releases/tag/v0.0.1', checkedAt: Date.now() }
+    localStorage.setItem('snotes_update_check', JSON.stringify(stale))
+    vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new TypeError('network')))
+
+    await expect(checkForUpdate()).resolves.toBeNull()
+    expect(updateInfo.value).toBeNull()
+  })
+
   it('离线时不发请求', async () => {
     const fetchMock = release('v9.9.9')
     vi.stubGlobal('fetch', fetchMock)

@@ -71,6 +71,9 @@ function readCache(): CacheEntry | null {
     if (!raw) return null
     const parsed = JSON.parse(raw) as Partial<CacheEntry>
     if (typeof parsed.latest !== 'string' || !VERSION_PATTERN.test(parsed.latest) || typeof parsed.checkedAt !== 'number' || !Number.isFinite(parsed.checkedAt)) return null
+    // 缓存里的「最新版」比当前运行的网页还旧，说明是升级前查到的结果，必然过时：
+    // 既不能拿它跳过查询，也不能在请求失败时回退到它——否则会显示「最新版本」低于当前版本。
+    if (compareVersions(parsed.latest, appVersion) < 0) return null
     return { latest: parsed.latest, url: releaseUrl(parsed.url), checkedAt: parsed.checkedAt }
   } catch {
     return null
