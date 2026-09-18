@@ -7,6 +7,7 @@ import { commonmark, paragraphAttr } from '@milkdown/kit/preset/commonmark'
 import { gfm } from '@milkdown/kit/preset/gfm'
 import { $nodeSchema, replaceAll } from '@milkdown/kit/utils'
 import { Fragment } from '@milkdown/kit/prose/model'
+import { TextSelection } from '@milkdown/kit/prose/state'
 import { Milkdown, MilkdownProvider, useEditor } from '@milkdown/vue'
 import { defineComponent, h, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import type { ComponentPublicInstance } from 'vue'
@@ -308,6 +309,20 @@ const MilkdownInner = defineComponent({
             // 回收站详情走 ProseMirror 原生只读，不是 pointer-events:none 那种假只读——
             // 假只读挡得住鼠标，挡不住键盘聚焦和输入法，照样能把内容改了。
             editable: () => props.editable !== false,
+            // 点图片时把文本光标放到图片旁边，而不是让 ProseMirror 选中图片本身。
+            // 默认的 NodeSelection 会隐藏光标，且此时打字直接把图片替换掉——
+            // 手机上传的照片在电脑端往往占满整个编辑区，用户能点的只有图片，
+            // 表现就是「点了没光标、打字还把图弄没了」。按点击落在图片左半还是右半决定前后。
+            handleClickOn: (view, _pos, node, nodePos, event, direct) => {
+              if (!direct || node.type !== view.state.schema.nodes.image) return false
+              const target = event.target as HTMLElement | null
+              const rect = target?.getBoundingClientRect()
+              const after = rect ? event.clientX > rect.left + rect.width / 2 : true
+              const pos = after ? nodePos + node.nodeSize : nodePos
+              view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, pos)))
+              view.focus()
+              return true
+            },
             handlePaste: (_view, event) => {
               // 只拦图片。全量拦截会把复制来的富文本、文件附件一并吞掉，
               // 而 return true 意味着 ProseMirror 不再执行默认粘贴——文字就丢了。

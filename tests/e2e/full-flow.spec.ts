@@ -498,6 +498,43 @@ test('粘贴图片后能正常显示——覆盖同源 Cookie 鉴权那条路径
     .toBeGreaterThan(0)
 })
 
+test('点图片把文本光标放到图片旁边，打字不会吞掉图片', async ({ page }) => {
+  // 手机上传的照片在电脑端往往占满整个编辑区，用户能点的只有图片本身。
+  // 默认的 NodeSelection 会隐藏光标、打字直接替换掉图片——看起来就是「无法聚焦」。
+  await createNote(page)
+  await page.locator('.milkdown').click()
+  // 1x1 的 PNG 分不出左右半边，在页面里画一张 400x300 再粘贴
+  await page.locator('.milkdown .ProseMirror').evaluate(async (el) => {
+    const c = document.createElement('canvas')
+    c.width = 400; c.height = 300
+    c.getContext('2d')!.fillRect(0, 0, 400, 300)
+    const blob = await new Promise<Blob>((resolve) => c.toBlob((b) => resolve(b!), 'image/png'))
+    const dt = new DataTransfer()
+    dt.items.add(new File([blob], 'wide.png', { type: 'image/png' }))
+    el.dispatchEvent(new ClipboardEvent('paste', { clipboardData: dt, bubbles: true }))
+  })
+  const img = page.locator('.milkdown img[src^="/api/images/"]')
+  await expect(img).toHaveCount(1, { timeout: 15_000 })
+  await expect.poll(() => img.evaluate((el: HTMLImageElement) => el.naturalWidth), { timeout: 15_000 }).toBe(400)
+
+  const box = (await img.boundingBox())!
+  // 点右半边：光标落在图片后
+  await page.mouse.click(box.x + box.width * 0.75, box.y + box.height / 2)
+  await expect(page.locator('.ProseMirror-hideselection')).toHaveCount(0)
+  await page.keyboard.type('后')
+  await expect(img).toHaveCount(1)
+  await expect(page.locator('.ProseMirror p').first()).toHaveText('后')
+
+  // 点左半边：光标落在图片前
+  await page.mouse.click(box.x + box.width * 0.25, box.y + box.height / 2)
+  await expect(page.locator('.ProseMirror-hideselection')).toHaveCount(0)
+  await page.keyboard.type('前')
+  await expect(img).toHaveCount(1)
+  await expect(page.locator('.ProseMirror p').first()).toHaveText('前后')
+  await expect.poll(() => page.locator('.ProseMirror p').first().evaluate((p) => Array.from(p.childNodes).map((n) => n.nodeName).join(',')))
+    .toMatch(/^#text,IMG,#text/)
+})
+
 test('同步：两个上下文之间数据可互通', async ({ browser }) => {
   const a = await browser.newContext()
   const pageA = await a.newPage()
