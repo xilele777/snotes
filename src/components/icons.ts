@@ -52,6 +52,9 @@ export const iconPaths = {
   table: ['M4 5h16v14H4Z', 'M4 10h16M4 15h16', 'M10 5v14'],
   link: ['M10.5 13.5a4 4 0 0 0 5.7 0l2.3-2.3a4 4 0 0 0-5.7-5.7l-1 1', 'M13.5 10.5a4 4 0 0 0-5.7 0l-2.3 2.3a4 4 0 0 0 5.7 5.7l1-1'],
   external: ['M14 4h6v6', 'M20 4l-8.5 8.5', 'M18 14v5a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V8a1 1 0 0 1 1-1h5'],
+  zoomIn: ['M11 4a7 7 0 1 0 0 14 7 7 0 0 0 0-14Z', 'M20 20l-3.6-3.6', 'M11 8.5v5M8.5 11h5'],
+  zoomOut: ['M11 4a7 7 0 1 0 0 14 7 7 0 0 0 0-14Z', 'M20 20l-3.6-3.6', 'M8.5 11h5'],
+  fit: ['M9 4v5H4', 'M15 4v5h5', 'M9 20v-5H4', 'M15 20v-5h5'],
 } as const
 
 export type IconName = keyof typeof iconPaths

@@ -9,6 +9,7 @@ import { gfm, insertTableCommand } from '@milkdown/kit/preset/gfm'
 import { $nodeSchema, replaceAll } from '@milkdown/kit/utils'
 import { Fragment } from '@milkdown/kit/prose/model'
 import { TextSelection } from '@milkdown/kit/prose/state'
+import type { EditorView } from '@milkdown/kit/prose/view'
 import { Milkdown, MilkdownProvider, useEditor } from '@milkdown/vue'
 import { defineComponent, h, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import type { ComponentPublicInstance } from 'vue'
@@ -32,6 +33,8 @@ const emit = defineEmits<{
   'edit-link': [string]
   /** 一次性提示（复制成功之类），宿主显示在底栏 */
   notice: [string]
+  /** 双击图片：打开灯箱查看 [图片列表, 当前索引] */
+  'open-lightbox': [string[], number]
   ready: []
 }>()
 
@@ -364,6 +367,45 @@ async function handleImageFiles(files: File[]) {
   }
 }
 
+/** 长按多久算「查看图片」；再短会和滚动/轻点选词打架 */
+const LONG_PRESS_MS = 500
+
+/**
+ * 取出正文里的全部图片，并算出目标图片排第几。灯箱要能左右翻同一笔记里的图，
+ * 所以每次都从文档现取，不缓存——正文随时可能被外部替换。
+ */
+function imagesAround(view: EditorView, targetPos: number) {
+  const imageType = view.state.schema.nodes.image
+  const images: string[] = []
+  let index = 0
+  if (!imageType) return { images, index }
+  view.state.doc.descendants((node, pos) => {
+    if (node.type !== imageType) return
+    const src = String(node.attrs.src ?? '')
+    if (!src) return
+    if (pos === targetPos) index = images.length
+    images.push(src)
+  })
+  return { images, index }
+}
+
+function openLightboxAt(view: EditorView, pos: number): boolean {
+  const node = view.state.doc.nodeAt(pos)
+  if (!node || node.type !== view.state.schema.nodes.image) return false
+  const { images, index } = imagesAround(view, pos)
+  if (images.length === 0) return false
+  emit('open-lightbox', images, index)
+  return true
+}
+
+/** 长按计时器。手指抬起、移动或系统打断时都要清掉，否则滚动到一半也会弹灯箱 */
+let touchTimer: ReturnType<typeof setTimeout> | undefined
+
+function clearTouchTimer() {
+  clearTimeout(touchTimer)
+  touchTimer = undefined
+}
+
 /**
  * 内部子组件：useEditor 必须在 MilkdownProvider 的后代里执行——
  * provider 在自己的 setup 里 provide(editorInfoCtxKey)，只有它的子组件
@@ -431,6 +473,30 @@ const MilkdownInner = defineComponent({
               view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, pos)))
               view.focus()
               return true
+            },
+            handleDoubleClickOn: (view, _pos, node, nodePos, event, direct) => {
+              if (!direct || node.type !== view.state.schema.nodes.image) return false
+              // 双击图片默认会选中整段文字，灯箱一开遮罩就盖住，选中态留到关掉之后很别扭
+              event.preventDefault()
+              openLightboxAt(view, nodePos)
+              return true
+            },
+            handleDOMEvents: {
+              // 手机上没有可靠的 dblclick（双击常被浏览器抢去做缩放），长按才是
+              // 移动端「放大看看」的自然手势。手指一动或抬起就取消，避免和滚动抢。
+              touchstart: (view, event) => {
+                const target = event.target as HTMLElement | null
+                if (!view.editable || target?.tagName !== 'IMG') return false
+                const pos = view.posAtDOM(target, 0)
+                touchTimer = setTimeout(() => {
+                  touchTimer = undefined
+                  openLightboxAt(view, pos)
+                }, LONG_PRESS_MS)
+                return false
+              },
+              touchmove: () => { clearTouchTimer(); return false },
+              touchend: () => { clearTouchTimer(); return false },
+              touchcancel: () => { clearTouchTimer(); return false },
             },
             handlePaste: (_view, event) => {
               // 只拦图片。全量拦截会把复制来的富文本、文件附件一并吞掉，

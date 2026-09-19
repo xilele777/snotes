@@ -11,6 +11,7 @@ import AppIcon from './AppIcon.vue'
 import EditorLoading from './EditorLoading.vue'
 import FormatToolbar, { type ToolbarAction } from './FormatToolbar.vue'
 import LinkDialog from './LinkDialog.vue'
+import ImageLightbox from './ImageLightbox.vue'
 import { SKIN_COLORS } from './palette'
 import { EMPTY_FORMAT_STATE, type FormatState } from '../editor/format'
 import { copyMarkdown, downloadMarkdown, shareMarkdown } from '../export/share'
@@ -157,6 +158,21 @@ function runDelete() {
 /** 文档信息 / 字数统计弹窗开关 */
 const showInfo = ref(false)
 const showWordCount = ref(false)
+
+/** 图片灯箱状态 */
+const lightboxOpen = ref(false)
+const lightboxImages = ref<string[]>([])
+const lightboxIndex = ref(0)
+
+function openLightbox(images: string[], index: number) {
+  lightboxImages.value = images
+  lightboxIndex.value = index
+  lightboxOpen.value = true
+}
+
+function closeLightbox() {
+  lightboxOpen.value = false
+}
 
 /** 当前笔记字数统计（实时随正文变化） */
 const wordCount = computed(() => countWords(notes.current?.body ?? ''))
@@ -367,6 +383,7 @@ onUnmounted(() => clearTimeout(noticeTimer))
         @flush="onFlush"
         @format-state="formatState = $event"
         @edit-link="onEditLink"
+        @open-lightbox="openLightbox"
         @notice="flash"
         @ready="editorReady = true"
       />
@@ -425,6 +442,12 @@ onUnmounted(() => clearTimeout(noticeTimer))
       :editing="linkDraft.editing"
       @submit="submitLink"
       @close="linkDialog = false"
+    />
+    <ImageLightbox
+      :open="lightboxOpen"
+      :images="lightboxImages"
+      :initial-index="lightboxIndex"
+      @close="closeLightbox"
     />
   </main>
 </template>

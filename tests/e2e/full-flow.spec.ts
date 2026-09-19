@@ -1,4 +1,4 @@
-import { expect, test, type Page } from '@playwright/test'
+import { expect, test, type Locator, type Page } from '@playwright/test'
 import { resetServer } from './reset-server'
 
 const TOKEN = 'dev-token'
@@ -18,6 +18,20 @@ async function signIn(page: Page) {
  * 列表空态里那颗引导按钮文案也是「新建笔记」，两个都匹配会触发 strict mode 违例。
  */
 const createNote = (page: Page) => page.locator('.header-create').click()
+
+/**
+ * 新建笔记，并等编辑器真的换成新笔记的正文。
+ *
+ * 点「新建」只是发起创建：store 的 create() 还要等两次 IndexedDB 往返（写入新笔记、
+ * 再 load() 整个列表）才把 currentId 指过去，这中间编辑器仍然挂着上一条笔记的正文。
+ * 测试是零延迟打字的，不等这一步，敲进去的字会落进上一条笔记的节点里，随后被
+ * replaceContent 冲掉——正文变空、断言全错，看起来却像格式命令失效。
+ */
+async function createNoteAndWait(page: Page, editor: Locator) {
+  const before = await editor.innerHTML()
+  await createNote(page)
+  await expect.poll(() => editor.innerHTML()).not.toBe(before)
+}
 
 /** 新建分组走弹窗：分组标题行的 + → 填名字 → 确定 */
 async function createGroup(page: Page, name: string) {
@@ -343,6 +357,120 @@ test('以图片开头的笔记，列表标题不是一串 base64', async ({ page
   await expect(title).toHaveText('白板照片', { timeout: 5_000 })
 })
 
+test('双击图片打开灯箱：缩放、左右切换、下载与关闭', async ({ page }) => {
+  await createNote(page)
+  await page.locator('.milkdown').click()
+
+  // 粘贴两张图片
+  await pasteImage(page)
+  await page.keyboard.press('Enter')
+  await pasteImage(page)
+
+  // 等待图片上传完成
+  await expect(page.locator('.milkdown img[src^="/api/images/"]')).toHaveCount(2, {
+    timeout: 15_000,
+  })
+
+  // 只认上传完成的站内图片：占位阶段的 blob: 会在图上停留一会儿
+  const uploaded = await page
+    .locator('.milkdown img[src^="/api/images/"]')
+    .evaluateAll((els) => els.map((el) => el.getAttribute('src') ?? ''))
+  expect(uploaded).toHaveLength(2)
+
+  await page.locator('.milkdown img').first().dblclick()
+
+  const stage = page.locator('.lightbox-stage img')
+  await expect(page.locator('.lightbox-mask')).toBeVisible()
+  await expect(stage).toHaveAttribute('src', uploaded[0]!)
+  await expect(page.locator('.lightbox-counter')).toHaveText('1 / 2')
+
+  // 放大后再缩回：transform 里的 scale 是唯一可观察的缩放结果
+  await page.locator('[data-op="zoom-in"]').click()
+  await expect(stage).toHaveCSS('transform', /matrix\(1\.25/)
+  await page.locator('[data-op="fit"]').click()
+  await expect(stage).toHaveCSS('transform', /matrix\(1, 0, 0, 1, 0, 0\)/)
+
+  // 左右切换：按钮、键盘、首尾禁用
+  await page.locator('[data-op="next"]').click()
+  await expect(stage).toHaveAttribute('src', uploaded[1]!)
+  await expect(page.locator('.lightbox-counter')).toHaveText('2 / 2')
+  await expect(page.locator('[data-op="next"]')).toBeDisabled()
+
+  await page.keyboard.press('ArrowLeft')
+  await expect(stage).toHaveAttribute('src', uploaded[0]!)
+  await expect(page.locator('[data-op="prev"]')).toBeDisabled()
+
+  // 下载：文件名取自 URL 末段，不带上 /api/images/ 前缀
+  const download = page.waitForEvent('download')
+  await page.locator('[data-op="download"]').click()
+  expect((await download).suggestedFilename()).toMatch(/\.(jpe?g|png|webp)$/)
+
+  // 点工具条空白不关闭，点遮罩空白才关
+  await page.locator('.lightbox-bar').click({ position: { x: 200, y: 10 } })
+  await expect(page.locator('.lightbox-mask')).toBeVisible()
+
+  await page.keyboard.press('Escape')
+  await expect(page.locator('.lightbox-mask')).toHaveCount(0)
+
+  // 单张图片不显示计数，避免「1 / 1」这种没信息量的提示
+  await page.locator('.milkdown .ProseMirror').click()
+  await page.keyboard.press('Control+a')
+  await page.keyboard.press('Backspace')
+  await page.locator('.milkdown').click()
+  await pasteImage(page)
+  await expect(page.locator('.milkdown img[src^="/api/images/"]')).toHaveCount(1, { timeout: 15_000 })
+  await page.locator('.milkdown img').first().dblclick()
+  await expect(page.locator('.lightbox-stage img')).toBeVisible()
+  await expect(page.locator('.lightbox-counter')).toHaveCount(0)
+})
+
+test.describe('触摸操作', () => {
+  // 默认上下文是桌面形态，不派发触摸事件；长按路径必须显式开 hasTouch
+  test.use({ hasTouch: true })
+
+  test('长按图片打开灯箱，轻点不会误触发', async ({ page }) => {
+    await createNote(page)
+    await page.locator('.milkdown').click()
+    await pasteImage(page)
+    await expect(page.locator('.milkdown img[src^="/api/images/"]')).toHaveCount(1, { timeout: 15_000 })
+
+    const box = (await page.locator('.milkdown img').first().boundingBox())!
+    const x = box.x + box.width / 2
+    const y = box.y + box.height / 2
+
+    await page.touchscreen.tap(x, y)
+    await expect(page.locator('.lightbox-mask')).toHaveCount(0)
+
+    // page.touchscreen 没有长按，只能自己按住并跨过 500ms 阈值
+    const cdp = await page.context().newCDPSession(page)
+    await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x, y }] })
+    await page.waitForTimeout(700)
+    await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] })
+
+    await expect(page.locator('.lightbox-stage img')).toBeVisible()
+  })
+
+  test('长按后手指滑动（滚动正文）不会弹出灯箱', async ({ page }) => {
+    await createNote(page)
+    await page.locator('.milkdown').click()
+    await pasteImage(page)
+    await expect(page.locator('.milkdown img[src^="/api/images/"]')).toHaveCount(1, { timeout: 15_000 })
+
+    const box = (await page.locator('.milkdown img').first().boundingBox())!
+    const x = box.x + box.width / 2
+    const y = box.y + box.height / 2
+
+    const cdp = await page.context().newCDPSession(page)
+    await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x, y }] })
+    await page.waitForTimeout(200)
+    await cdp.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [{ x, y: y - 60 }] })
+    await page.waitForTimeout(600)
+    await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] })
+
+    await expect(page.locator('.lightbox-mask')).toHaveCount(0)
+  })
+})
+
 test('窄屏下侧栏收进抽屉，点 ☰ 能拿回全部入口', async ({ page }) => {
   await page.setViewportSize({ width: 900, height: 800 })
 
@@ -508,7 +636,7 @@ test('编辑工具栏把格式写进正文，且不抢编辑器焦点', async ({
   await expect(editor.locator('strong')).toHaveCount(0)
 
   // 待办清单：正文段落直接变成可勾选的清单
-  await createNote(page)
+  await createNoteAndWait(page, editor)
   await page.keyboard.type('买牛奶')
   await page.keyboard.press('Shift+Home')
   await page.locator('.format-bar [data-format="taskList"]').click()
@@ -516,7 +644,7 @@ test('编辑工具栏把格式写进正文，且不抢编辑器焦点', async ({
   await expect.poll(() => savedBody(page)).toContain('[ ] 买牛奶')
 
   // 表格：插入走 Milkdown 的表格预设，行列由预设的默认值决定
-  await createNote(page)
+  await createNoteAndWait(page, editor)
   await page.locator('.format-bar [data-format="table"]').click()
   const table = page.locator('.milkdown table')
   await expect(table).toHaveCount(1)
@@ -524,7 +652,7 @@ test('编辑工具栏把格式写进正文，且不抢编辑器焦点', async ({
   await expect.poll(() => savedBody(page)).toContain('| :')
 
   // 链接：选中文字后填地址，改成 https 并写进正文
-  await createNote(page)
+  await createNoteAndWait(page, editor)
   await page.keyboard.type('参考资料')
   await page.keyboard.press('Shift+Home')
   await page.locator('.format-bar [data-format="link"]').click()
