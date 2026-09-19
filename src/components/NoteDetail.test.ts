@@ -418,6 +418,46 @@ describe('NoteDetail 编辑工具栏', () => {
     expect((dialog.querySelector('[data-field="text"]') as HTMLInputElement).value).toBe('文档')
     wrapper.unmount()
   })
+  it('正文气泡点「编辑」时带着地址打开弹窗，文字一并预填', async () => {
+    const notes = useNotesStore()
+    const note = await notes.create()
+    notes.currentId = note.id
+
+    const wrapper = mount(NoteDetail, { attachTo: document.body })
+    await wrapper.vm.$nextTick()
+    await flushPromises()
+
+    const editor = wrapper.findComponent(MilkdownEditor)
+    const exposed = editor.vm.$.exposed as {
+      currentLink: () => { href: string; text: string } | null
+    }
+    vi.spyOn(exposed, 'currentLink').mockReturnValue({ href: 'https://a.cn', text: '文档' })
+
+    editor.vm.$emit('edit-link', 'https://a.cn')
+    await wrapper.vm.$nextTick()
+
+    const dialog = document.querySelector('.link-dialog')!
+    expect(dialog.textContent).toContain('编辑链接')
+    expect((dialog.querySelector('[data-field="href"]') as HTMLInputElement).value).toBe('https://a.cn')
+    expect((dialog.querySelector('[data-field="text"]') as HTMLInputElement).value).toBe('文档')
+    wrapper.unmount()
+  })
+
+  it('编辑器的一次性提示显示在底栏', async () => {
+    const notes = useNotesStore()
+    const note = await notes.create()
+    notes.currentId = note.id
+
+    const wrapper = mount(NoteDetail, { attachTo: document.body })
+    await wrapper.vm.$nextTick()
+    await flushPromises()
+
+    wrapper.findComponent(MilkdownEditor).vm.$emit('notice', '已复制链接')
+    await wrapper.vm.$nextTick()
+
+    expect(wrapper.find('.share-notice').text()).toBe('已复制链接')
+    wrapper.unmount()
+  })
 })
 
 describe('NoteDetail 回收站只读态', () => {

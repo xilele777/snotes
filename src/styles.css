@@ -244,6 +244,13 @@ kbd { font-family: inherit; font-size: 10px; line-height: 20px; white-space: now
 .format-btn.selected { color: var(--accent); background: var(--accent-soft); }
 .format-heading { font-size: 11px; font-weight: 650; letter-spacing: -.2px; }
 .format-separator { width: 1px; height: 14px; background: var(--border-light); margin: 0 4px; flex: none; }
+/* 链接气泡：贴在链接上方的一排按钮 */
+.link-tooltip { position: fixed; z-index: 30; display: flex; align-items: center; gap: 2px; padding: 4px; background: var(--bg-surface); border: 1px solid var(--border-light); border-radius: 8px; box-shadow: 0 6px 24px rgb(0 0 0 / 12%); }
+/* 类上的 display 会盖掉 UA 的 [hidden]，得自己写一条 */
+.link-tooltip[hidden] { display: none; }
+.link-tooltip-btn { padding: 5px 8px; border: 0; border-radius: 5px; background: transparent; color: var(--text-secondary); font-size: 12px; white-space: nowrap; }
+.link-tooltip-btn:hover { color: var(--text-primary); background: var(--bg-hover); }
+.link-tooltip-btn.danger:hover { color: var(--danger); background: var(--danger-bg); }
 .editor-body { flex: 1; min-height: 0; overflow: auto; overscroll-behavior: contain; }
 .editor-body .milkdown, .editor-body .milkdown-mock { max-width: var(--editor-max-width); min-height: 100%; margin: 0 auto; padding: 36px 40px 56px; color: var(--text-primary); font-size: var(--editor-font-size); line-height: 1.9; overflow-wrap: anywhere; }
 .editor-body .milkdown { display: flex; flex-direction: column; }
@@ -516,5 +523,5 @@ kbd { font-family: inherit; font-size: 10px; line-height: 20px; white-space: now
 [data-theme="dark"] { --swatch-border: rgb(255 255 255 / 18%); }
 [data-theme="dark"] .note-item .thumb, [data-theme="dark"] .editor-body .milkdown img { filter: brightness(.88); }
 [data-theme="dark"] .note-item::before { filter: saturate(1.2) brightness(1.15); }
-[data-theme="dark"] .group-menu, [data-theme="dark"] .op-popover, [data-theme="dark"] .dialog { box-shadow: 0 12px 40px rgb(0 0 0 / 50%); }
+[data-theme="dark"] .group-menu, [data-theme="dark"] .op-popover, [data-theme="dark"] .dialog, [data-theme="dark"] .link-tooltip { box-shadow: 0 12px 40px rgb(0 0 0 / 50%); }
 [data-theme="dark"] .settings-seg button[aria-checked='true'] { background: var(--bg-press); box-shadow: 0 1px 3px rgb(0 0 0 / 40%); }

@@ -4,7 +4,7 @@ import type { Ctx } from '@milkdown/kit/ctx'
 import { clipboard } from '@milkdown/kit/plugin/clipboard'
 import { history, redoCommand, undoCommand } from '@milkdown/kit/plugin/history'
 import { listener, listenerCtx } from '@milkdown/kit/plugin/listener'
-import { commonmark, paragraphAttr } from '@milkdown/kit/preset/commonmark'
+import { commonmark, linkAttr, paragraphAttr } from '@milkdown/kit/preset/commonmark'
 import { gfm, insertTableCommand } from '@milkdown/kit/preset/gfm'
 import { $nodeSchema, replaceAll } from '@milkdown/kit/utils'
 import { Fragment } from '@milkdown/kit/prose/model'
@@ -17,7 +17,8 @@ import { clipboardImageFiles, isAllowedImage, uploadImage } from './image-upload
 import { taskCheckboxes } from './task-checkboxes'
 import { configureListSerialization, orderedList } from './ordered-list'
 import { readFormatState, runFormat, type FormatAction, type FormatState } from './format'
-import { linkRangeAt, setLink, unlink } from './link'
+import { isExternalHref, linkRangeAt, setLink, unlink } from './link'
+import { linkTooltip } from './link-tooltip'
 
 const props = defineProps<{ noteId: string; modelValue: string; editable?: boolean }>()
 const emit = defineEmits<{
@@ -27,6 +28,10 @@ const emit = defineEmits<{
   flush: [string, string, string]
   /** 光标处可用的格式，驱动工具栏按钮的点亮状态 */
   'format-state': [FormatState]
+  /** 气泡里点了「编辑」：宿主弹地址输入框 */
+  'edit-link': [string]
+  /** 一次性提示（复制成功之类），宿主显示在底栏 */
+  notice: [string]
   ready: []
 }>()
 
@@ -245,7 +250,12 @@ function unlinkAt() {
 let lastFormatState = ''
 function pushFormatState(editorCtx: Ctx) {
   if (props.editable === false) return
-  const next = readFormatState(editorCtx.get(editorViewCtx).state)
+  // 编辑器创建期间同样会派发事务，此刻 view.state 还没挂上。直接读 .state 会抛错，
+  // 而错误一旦抛在 create() 里，整个编辑器实例就建不出来：provider 的 editor 永远为空，
+  // get() 一直返回 undefined，之后切笔记时正文再也不会跟着换。
+  const view = editorCtx.get(editorViewCtx)
+  if (!view?.state) return
+  const next = readFormatState(view.state)
   const key = JSON.stringify(next)
   if (key === lastFormatState) return
   lastFormatState = key
@@ -387,10 +397,20 @@ const MilkdownInner = defineComponent({
         .use(paragraphSchema)
         .use(gfm)
         .use(taskCheckboxes)
+        .use(linkTooltip({ edit: (href) => emit('edit-link', href), notify: (message) => emit('notice', message) }))
         .use(listener)
         .use(clipboard)
         // Milestone 8：撤销/重做（自带 Mod-z / Mod-y / Shift-Mod-z 快捷键）
         .use(history)
+        .config((ctx) => {
+          // 外链补 target 与 rel：不加 noopener 的话，新开的页面能通过 window.opener 反向操作本站
+          ctx.update(linkAttr.key, (previous) => (mark) => {
+            const attrs = previous(mark)
+            const href = String(mark.attrs.href ?? '')
+            if (!isExternalHref(href)) return attrs
+            return { ...attrs, target: '_blank', rel: 'noopener noreferrer' }
+          })
+        })
         .config((ctx) => {
           ctx.update(editorViewOptionsCtx, (prev) => ({
             ...prev,

@@ -65,6 +65,41 @@ async function seedNavigationNotes(page: Page) {
   return groupId
 }
 
+/**
+ * 塞几条长正文笔记再 reload，用于验收「切换笔记时正文跟着换」。
+ * 正文必须够长：短正文下编辑器创建得很快，撞不上「创建期间就派发事务」的窗口；
+ * 70 段是照着 seedNavigationNotes 的正文量取的，能稳定复现。
+ * 先建一个分组，借它写一次库，确保 IndexedDB 已经就绪再直接往库里塞笔记。
+ */
+async function seedLongNotes(page: Page, titles: string[]) {
+  await createGroup(page, '长文验收')
+  await page.evaluate(async (list) => {
+    const db = await new Promise<IDBDatabase>((resolve, reject) => {
+      const request = indexedDB.open('snotes')
+      request.onsuccess = () => resolve(request.result)
+      request.onerror = () => reject(request.error)
+    })
+    try {
+      await new Promise<void>((resolve, reject) => {
+        const tx = db.transaction('notes', 'readwrite')
+        const now = Date.now()
+        list.forEach((title, i) => {
+          tx.objectStore('notes').put({
+            id: `long-${i}`, group_id: null, title, summary: '切换笔记验收',
+            thumbnail: null, version: 1, prop_version: 1, body_version: 1, star: 0, top: 0,
+            skin_color: null, invalid: 0, dirty: 'none',
+            create_time: now - i * 1000, update_time: now - i * 1000,
+            body: `# ${title}\n\n` + Array.from({ length: 70 }, (_, n) => `第 ${n + 1} 段，记录项目的讨论和后续工作。`).join('\n\n'),
+          })
+        })
+        tx.oncomplete = () => resolve()
+        tx.onerror = () => reject(tx.error)
+      })
+    } finally { db.close() }
+  }, titles)
+  await page.reload()
+}
+
 async function openStatsDialog(page: Page) {
   if (page.viewportSize()!.width <= 1020) await page.getByRole('button', { name: '打开侧栏' }).click()
   await page.getByRole('button', { name: '记录统计', exact: true }).click()
@@ -263,6 +298,21 @@ test('刷新后默认选中列表第一条并打开详情', async ({ page }) => 
   // 没显式选过任何笔记，加载时应自动选中第一条并展示详情
   await expect(page.locator('.editor-top-bar')).toBeVisible()
   await expect(page.locator('.milkdown .ProseMirror')).toContainText('默认选中我')
+})
+
+test('切换笔记时编辑器正文跟着换（含长正文）', async ({ page }) => {
+  await seedLongNotes(page, ['长文记录 1', '长文记录 2'])
+  const body = page.locator('.milkdown .ProseMirror')
+
+  // 带着已有笔记重新加载：编辑器创建期间不能再被格式状态读取打断。一旦抛错，
+  // provider 里的编辑器实例永远建不起来，点哪条笔记正文都不会换。
+  await expect(body).toContainText('长文记录 1')
+
+  await page.getByRole('button', { name: '打开笔记：长文记录 2' }).click()
+  await expect(body).toContainText('长文记录 2')
+
+  await page.getByRole('button', { name: '打开笔记：长文记录 1' }).click()
+  await expect(body).toContainText('长文记录 1')
 })
 
 test('以图片开头的笔记，列表标题不是一串 base64', async ({ page }) => {
@@ -487,6 +537,70 @@ test('编辑工具栏把格式写进正文，且不抢编辑器焦点', async ({
   await expect(page.locator('.milkdown a[href="https://example.com"]')).toHaveText('参考资料')
   await expect.poll(() => savedBody(page)).toContain('[参考资料](https://example.com)')
   await expect(editor).toBeFocused()
+})
+
+test('链接气泡：打开、复制、编辑地址与移除，外链带 noopener', async ({ page }) => {
+  await page.context().grantPermissions(['clipboard-read', 'clipboard-write'])
+  await createNote(page)
+  const editor = page.getByRole('textbox', { name: '笔记正文' })
+  await expect(editor).toBeFocused()
+  await page.keyboard.type('参考资料')
+  await page.keyboard.press('Shift+Home')
+  await page.locator('.format-bar [data-format="link"]').click()
+  const dialog = page.locator('.link-dialog')
+  await dialog.locator('[data-field="href"]').fill('example.com')
+  await dialog.locator('[data-op="confirm"]').click()
+
+  const anchor = page.locator('.milkdown a[href="https://example.com"]')
+  await expect(anchor).toHaveText('参考资料')
+  // 外链另开标签时必须带 noopener，否则新页面能通过 window.opener 反向操作本站
+  await expect(anchor).toHaveAttribute('target', '_blank')
+  await expect(anchor).toHaveAttribute('rel', 'noopener noreferrer')
+
+  // 光标进到链接里，气泡浮出来
+  await anchor.click()
+  const tooltip = page.locator('.link-tooltip')
+  await expect(tooltip).toBeVisible()
+
+  await tooltip.locator('[data-link-action="copy"]').click()
+  await expect(page.locator('.share-notice')).toHaveText('已复制链接')
+  expect(await page.evaluate(() => navigator.clipboard.readText())).toBe('https://example.com')
+  // 气泡里的按钮同样不能把编辑器的选区抢走，否则按完一下气泡就自己没了
+  await expect(tooltip).toBeVisible()
+
+  // Ctrl + 点击直接打开。这里手工派发带 ctrlKey 的点击：真实按键在 Chromium 里走的是
+  // 浏览器自己的「新标签打开」，Playwright 会一直等那个打不开的新页面加载完。
+  await page.evaluate(() => {
+    const opened: string[] = []
+    ;(window as unknown as Record<string, unknown>).__opened = opened
+    window.open = (url?: string | URL) => {
+      opened.push(String(url))
+      return null
+    }
+  })
+  await anchor.evaluate((el) => {
+    el.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, ctrlKey: true }))
+  })
+  expect(await page.evaluate(() => (window as unknown as { __opened: string[] }).__opened))
+    .toEqual(['https://example.com'])
+
+  // 编辑地址：只换地址，文字保持不动
+  await tooltip.locator('[data-link-action="edit"]').click()
+  await expect(dialog.locator('[data-field="href"]')).toHaveValue('https://example.com')
+  await expect(dialog.locator('[data-field="text"]')).toHaveValue('参考资料')
+  await dialog.locator('[data-field="href"]').fill('/笔记/1')
+  await dialog.locator('[data-op="confirm"]').click()
+  await expect(page.locator('.milkdown a[href="/笔记/1"]')).toHaveText('参考资料')
+  await expect.poll(() => savedBody(page)).toContain('[参考资料](/笔记/1)')
+
+  // 移除：文字留下，链接没了
+  await page.locator('.milkdown a[href="/笔记/1"]').click()
+  await expect(tooltip).toBeVisible()
+  await tooltip.locator('[data-link-action="remove"]').click()
+  await expect(page.locator('.milkdown a')).toHaveCount(0)
+  await expect(editor).toContainText('参考资料')
+  await expect.poll(() => savedBody(page)).toContain('参考资料')
+  await expect.poll(() => savedBody(page)).not.toContain('](')
 })
 
 for (const width of [390, 320]) {

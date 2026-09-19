@@ -24,13 +24,13 @@ export function downloadMarkdown(title: string, body: string): void {
 }
 
 /**
- * 复制正文。Clipboard API 只在安全上下文（https / localhost）可用，
+ * 复制任意文本。Clipboard API 只在安全上下文（https / localhost）可用，
  * 独立服务器用 http 访问时没有它，退回 textarea + execCommand。
  */
-export async function copyMarkdown(body: string): Promise<boolean> {
+export async function copyText(text: string): Promise<boolean> {
   try {
     if (navigator.clipboard?.writeText) {
-      await navigator.clipboard.writeText(body)
+      await navigator.clipboard.writeText(text)
       return true
     }
   } catch {
@@ -39,7 +39,7 @@ export async function copyMarkdown(body: string): Promise<boolean> {
 
   try {
     const area = document.createElement('textarea')
-    area.value = body
+    area.value = text
     area.setAttribute('readonly', '')
     area.style.position = 'fixed'
     area.style.opacity = '0'
@@ -51,6 +51,11 @@ export async function copyMarkdown(body: string): Promise<boolean> {
   } catch {
     return false
   }
+}
+
+/** 复制正文 */
+export function copyMarkdown(body: string): Promise<boolean> {
+  return copyText(body)
 }
 
 export type ShareOutcome = 'shared' | 'copied' | 'failed'

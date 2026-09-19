@@ -105,6 +105,13 @@ function submitLink(payload: { href: string; text: string }) {
   editorRef.value?.setLinkAt?.(payload.href, payload.text)
 }
 
+/** 正文气泡里的「编辑」：带着这条链接的地址与文字打开弹窗 */
+function onEditLink(href: string) {
+  const current = editorRef.value?.currentLink?.() ?? null
+  linkDraft.value = { href, text: current?.text ?? '', editing: true }
+  linkDialog.value = true
+}
+
 function onBody(md: string, base: string) {
   if (props.readonly) return
   if (notes.current) notes.saveBody(notes.current.id, md, base)
@@ -359,6 +366,8 @@ onUnmounted(() => clearTimeout(noticeTimer))
         @update:model-value="onBody"
         @flush="onFlush"
         @format-state="formatState = $event"
+        @edit-link="onEditLink"
+        @notice="flash"
         @ready="editorReady = true"
       />
     </div>
