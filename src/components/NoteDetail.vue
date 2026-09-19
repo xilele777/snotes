@@ -9,7 +9,10 @@ import NoteInfoDialog from './NoteInfoDialog.vue'
 import WordCountDialog from './WordCountDialog.vue'
 import AppIcon from './AppIcon.vue'
 import EditorLoading from './EditorLoading.vue'
+import FormatToolbar, { type ToolbarAction } from './FormatToolbar.vue'
+import LinkDialog from './LinkDialog.vue'
 import { SKIN_COLORS } from './palette'
+import { EMPTY_FORMAT_STATE, type FormatState } from '../editor/format'
 import { copyMarkdown, downloadMarkdown, shareMarkdown } from '../export/share'
 import { useUiStore } from '../stores/ui'
 import { useWorkspaceScroll } from './useWorkspaceScroll'
@@ -65,11 +68,42 @@ onUnmounted(() => {
   window.removeEventListener('keydown', onPopoverKeydown, true)
 })
 
+/** 光标处的格式，由编辑器在选区或文档变化时上报，驱动工具栏点亮 */
+const formatState = ref<FormatState>(EMPTY_FORMAT_STATE)
+
+/** 链接弹窗：工具栏的「链接」按钮与正文气泡共用，editing 决定文案与预填内容 */
+const linkDialog = ref(false)
+const linkDraft = ref({ href: '', text: '', editing: false })
+
 watch(() => notes.currentId, () => {
   openPop.value = null
+  formatState.value = EMPTY_FORMAT_STATE
   if (editorBody.value) editorBody.value.scrollTop = 0
 }, { flush: 'post' })
 useWorkspaceScroll(editorBody, 'editor', () => editorReady.value)
+
+function onFormat(action: ToolbarAction) {
+  if (action === 'table') {
+    editorRef.value?.insertTable?.()
+    return
+  }
+  if (action === 'link') {
+    const existing = editorRef.value?.currentLink?.() ?? null
+    linkDraft.value = {
+      href: existing?.href ?? '',
+      text: existing?.text ?? editorRef.value?.selectedText?.() ?? '',
+      editing: existing !== null,
+    }
+    linkDialog.value = true
+    return
+  }
+  editorRef.value?.format?.(action)
+}
+
+function submitLink(payload: { href: string; text: string }) {
+  linkDialog.value = false
+  editorRef.value?.setLinkAt?.(payload.href, payload.text)
+}
 
 function onBody(md: string, base: string) {
   if (props.readonly) return
@@ -307,6 +341,9 @@ onUnmounted(() => clearTimeout(noticeTimer))
       </div>
     </div>
 
+    <!-- 编辑工具栏独立一行：顶栏在 320px 已经排满，塞不下十几个格式按钮 -->
+    <FormatToolbar v-if="!readonly && notes.current" :state="formatState" @action="onFormat" />
+
     <div ref="editorBody" class="editor-body">
       <div v-if="!notes.current && !readonly" class="editor-welcome">
         <AppIcon name="note" :size="40" class="empty-art" />
@@ -321,6 +358,7 @@ onUnmounted(() => clearTimeout(noticeTimer))
         :editable="!readonly"
         @update:model-value="onBody"
         @flush="onFlush"
+        @format-state="formatState = $event"
         @ready="editorReady = true"
       />
     </div>
@@ -371,5 +409,13 @@ onUnmounted(() => clearTimeout(noticeTimer))
 
     <NoteInfoDialog :open="showInfo" :note="notes.current" @close="showInfo = false" />
     <WordCountDialog :open="showWordCount" :count="wordCount" @close="showWordCount = false" />
+    <LinkDialog
+      :open="linkDialog"
+      :href="linkDraft.href"
+      :text="linkDraft.text"
+      :editing="linkDraft.editing"
+      @submit="submitLink"
+      @close="linkDialog = false"
+    />
   </main>
 </template>

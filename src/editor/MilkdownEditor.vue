@@ -1,10 +1,11 @@
 <script setup lang="ts">
 import { commandsCtx, Editor, defaultValueCtx, editorViewCtx, editorViewOptionsCtx, rootCtx } from '@milkdown/kit/core'
+import type { Ctx } from '@milkdown/kit/ctx'
 import { clipboard } from '@milkdown/kit/plugin/clipboard'
 import { history, redoCommand, undoCommand } from '@milkdown/kit/plugin/history'
 import { listener, listenerCtx } from '@milkdown/kit/plugin/listener'
 import { commonmark, paragraphAttr } from '@milkdown/kit/preset/commonmark'
-import { gfm } from '@milkdown/kit/preset/gfm'
+import { gfm, insertTableCommand } from '@milkdown/kit/preset/gfm'
 import { $nodeSchema, replaceAll } from '@milkdown/kit/utils'
 import { Fragment } from '@milkdown/kit/prose/model'
 import { TextSelection } from '@milkdown/kit/prose/state'
@@ -15,6 +16,8 @@ import { escapeRawHtml, migrateLegacyBr } from '../../shared/sanitize'
 import { clipboardImageFiles, isAllowedImage, uploadImage } from './image-upload'
 import { taskCheckboxes } from './task-checkboxes'
 import { configureListSerialization, orderedList } from './ordered-list'
+import { readFormatState, runFormat, type FormatAction, type FormatState } from './format'
+import { linkRangeAt, setLink, unlink } from './link'
 
 const props = defineProps<{ noteId: string; modelValue: string; editable?: boolean }>()
 const emit = defineEmits<{
@@ -22,6 +25,8 @@ const emit = defineEmits<{
   'update:modelValue': [string, string]
   /** 提前交卷：[内容所属的 noteId, 新正文, 它改自哪一版正文] */
   flush: [string, string, string]
+  /** 光标处可用的格式，驱动工具栏按钮的点亮状态 */
+  'format-state': [FormatState]
   ready: []
 }>()
 
@@ -166,7 +171,86 @@ function insertImages(files: File[]) {
   void handleImageFiles(files.filter(isAllowedImage))
 }
 
-defineExpose({ onMarkdownChange, insertImages, undo: () => runCommand(undoCommand), redo: () => runCommand(redoCommand) })
+defineExpose({ onMarkdownChange, insertImages, undo: () => runCommand(undoCommand), redo: () => runCommand(redoCommand), format, insertTable, currentLink, selectedText, setLinkAt, unlinkAt })
+
+/**
+ * 工具栏的格式按钮。跑完命令把焦点还给编辑器：按钮上的 mousedown 已经拦掉了失焦，
+ * 这一步是为了让键盘用户和「点了没反应」的怀疑都不存在。
+ */
+function format(action: FormatAction) {
+  const editor = inner.value?.getEditor?.()
+  if (!editor) return
+  editor.action((ctx) => {
+    const view = ctx.get(editorViewCtx)
+    runFormat(view.state, action, view.dispatch)
+    view.focus()
+  })
+}
+
+/** 插入表格走 Milkdown 的表格预设：行列与对齐都由它决定，比手搓节点稳 */
+function insertTable(row = 3, col = 3) {
+  const editor = inner.value?.getEditor?.()
+  if (!editor) return
+  editor.action((ctx) => {
+    ctx.get(commandsCtx).call(insertTableCommand.key, { row, col })
+    ctx.get(editorViewCtx).focus()
+  })
+}
+
+/** 光标所在的链接，用来预填编辑弹窗 */
+function currentLink(): { href: string; text: string } | null {
+  const editor = inner.value?.getEditor?.()
+  if (!editor) return null
+  return editor.action((ctx) => {
+    const range = linkRangeAt(ctx.get(editorViewCtx).state)
+    return range ? { href: range.href, text: range.text } : null
+  })
+}
+
+/** 选中的文字，作为插入链接时的默认显示文字 */
+function selectedText(): string {
+  const editor = inner.value?.getEditor?.()
+  if (!editor) return ''
+  return editor.action((ctx) => {
+    const { state } = ctx.get(editorViewCtx)
+    return state.doc.textBetween(state.selection.from, state.selection.to, ' ')
+  })
+}
+
+/** 写入或改写链接；地址不合法时不动文档 */
+function setLinkAt(href: string, text: string) {
+  const editor = inner.value?.getEditor?.()
+  if (!editor) return
+  editor.action((ctx) => {
+    const view = ctx.get(editorViewCtx)
+    const command = setLink(view.state, href, text)
+    if (command) command(view.state, view.dispatch, view)
+    view.focus()
+  })
+}
+
+/** 去掉链接标记，留下文字 */
+function unlinkAt() {
+  const editor = inner.value?.getEditor?.()
+  if (!editor) return
+  editor.action((ctx) => {
+    const view = ctx.get(editorViewCtx)
+    const command = unlink(view.state)
+    if (command) command(view.state, view.dispatch, view)
+    view.focus()
+  })
+}
+
+/** 上次广播出去的格式，避免每敲一个字就让工具栏重渲染一遍 */
+let lastFormatState = ''
+function pushFormatState(editorCtx: Ctx) {
+  if (props.editable === false) return
+  const next = readFormatState(editorCtx.get(editorViewCtx).state)
+  const key = JSON.stringify(next)
+  if (key === lastFormatState) return
+  lastFormatState = key
+  emit('format-state', next)
+}
 
 /**
  * 在光标处插入图片节点（替代旧的全篇 replaceAll 追加：那会把图片甩到整份
@@ -286,8 +370,13 @@ const MilkdownInner = defineComponent({
           ctx.set(rootCtx, root)
           ctx.set(defaultValueCtx, escapeRawHtml(migrateLegacyBr(props.modelValue)))
           ctx.get(listenerCtx).markdownUpdated((_ctx, markdown) => onMarkdownChange(markdown))
+          // 光标移动与文档变化都要刷新工具栏的点亮状态：命令改的是文档，
+          // 点一下按钮后按钮自己也得跟着亮起来
+          ctx.get(listenerCtx).updated(pushFormatState)
+          ctx.get(listenerCtx).selectionUpdated(pushFormatState)
           ctx.get(listenerCtx).mounted((editorCtx) => {
             if (!props.modelValue.trim() && props.editable !== false) editorCtx.get(editorViewCtx).focus()
+            pushFormatState(editorCtx)
             emit('ready')
           })
         })

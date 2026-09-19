@@ -25,6 +25,7 @@
   --mask: rgb(20 22 28 / 28%);
   --header-height: 64px;
   --rail-width: 52px;
+  --format-bar-height: 0px;
   --editor-font-size: 15px;
   --editor-max-width: 800px;
   --editor-focus-max-width: 880px;
@@ -233,10 +234,20 @@ kbd { font-family: inherit; font-size: 10px; line-height: 20px; white-space: now
 .group-opt { padding: 8px 10px; border: 0; border-radius: 5px; background: transparent; font-size: 13px; text-align: left; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .group-opt:hover { background: var(--bg-hover); }
 .group-opt.selected { color: var(--selected-text); background: var(--selected-bg); font-weight: 500; }
+/* 编辑工具栏：顶栏在 320px 已经排满，格式按钮单独占一行，窄屏横向滚动。 */
+.format-bar { display: flex; align-items: center; gap: 2px; flex: none; min-height: 40px; padding: 0 20px; border-bottom: 1px solid var(--border-light); overflow-x: auto; overflow-y: hidden; scrollbar-width: none; }
+.format-bar::-webkit-scrollbar { display: none; }
+/* 工具栏占掉的高度要从正文最小高度里减掉，否则短内容也会多出一条滚动条 */
+.editor-pane:has(> .format-bar) { --format-bar-height: 40px; }
+.format-btn { display: flex; align-items: center; justify-content: center; width: 32px; height: 28px; padding: 0; border: 0; border-radius: 5px; background: transparent; color: var(--text-tertiary); flex: none; }
+.format-btn:hover { color: var(--text-primary); background: var(--bg-hover); }
+.format-btn.selected { color: var(--accent); background: var(--accent-soft); }
+.format-heading { font-size: 11px; font-weight: 650; letter-spacing: -.2px; }
+.format-separator { width: 1px; height: 14px; background: var(--border-light); margin: 0 4px; flex: none; }
 .editor-body { flex: 1; min-height: 0; overflow: auto; overscroll-behavior: contain; }
 .editor-body .milkdown, .editor-body .milkdown-mock { max-width: var(--editor-max-width); min-height: 100%; margin: 0 auto; padding: 36px 40px 56px; color: var(--text-primary); font-size: var(--editor-font-size); line-height: 1.9; overflow-wrap: anywhere; }
 .editor-body .milkdown { display: flex; flex-direction: column; }
-.editor-body .ProseMirror { flex: 1; min-height: calc(100vh - var(--header-height) - 36px - 92px); min-height: calc(100dvh - var(--header-height) - 36px - 92px); outline: none; padding: 0; white-space: pre-wrap; }
+.editor-body .ProseMirror { flex: 1; min-height: calc(100vh - var(--header-height) - var(--format-bar-height) - 36px - 92px); min-height: calc(100dvh - var(--header-height) - var(--format-bar-height) - 36px - 92px); outline: none; padding: 0; white-space: pre-wrap; }
 .editor-body .ProseMirror:focus { outline: none; }
 .editor-body .ProseMirror[contenteditable='false'] { cursor: default; }
 .editor-body .ProseMirror[contenteditable='true'] > p:only-child:has(> br.ProseMirror-trailingBreak:only-child)::before { content: "开始记录…"; float: left; height: 0; color: var(--text-disabled); pointer-events: none; }
@@ -321,6 +332,12 @@ kbd { font-family: inherit; font-size: 10px; line-height: 20px; white-space: now
 .dialog-btn.ok { color: white; background: var(--accent); font-weight: 550; }
 .dialog-btn.ok:hover:not(:disabled) { background: var(--accent-press); }
 .dialog-btn.ok:disabled { background: var(--bg-press); color: var(--text-disabled); border-color: transparent; }
+/* 链接弹窗：地址 + 文字两项，错误提示只在填了非法地址时出现 */
+.link-dialog { width: min(420px, 92vw); }
+.link-field { display: block; margin-bottom: 14px; }
+.link-field > span { display: block; margin-bottom: 6px; font-size: 12px; color: var(--text-secondary); }
+.link-hint { margin: -6px 0 12px; font-size: 12px; color: var(--text-tertiary); }
+.link-hint.error { color: var(--danger); }
 .confirm-message { margin: 0; font-size: 13px; color: var(--text-secondary); line-height: 1.8; }
 .confirm-dialog .dialog-btn.ok { background: var(--danger); color: white; border-color: var(--danger); }
 .confirm-dialog .dialog-btn.ok:hover { background: #b94d43; }
@@ -451,7 +468,9 @@ kbd { font-family: inherit; font-size: 10px; line-height: 20px; white-space: now
   .focus-toggle { display: none; }
   .editor-body .milkdown, .is-focused .editor-body .milkdown { padding: 28px 22px 56px; font-size: 16px; line-height: 1.85; }
   .editor-body .milkdown h1 { font-size: 24px; }
-  .editor-body .ProseMirror { min-height: calc(100dvh - 56px - 40px - 84px); }
+  .editor-body .ProseMirror { min-height: calc(100dvh - 56px - var(--format-bar-height) - 40px - 84px); }
+  .format-bar { min-height: 38px; padding: 0 12px; }
+  .editor-pane:has(> .format-bar) { --format-bar-height: 38px; }
   .editor-footer { min-height: 40px; padding-left: 16px; padding-right: 12px; gap: 6px; }
   .editor-loading { padding: 28px 22px; }
   .trash-notice { font-size: 10px; }

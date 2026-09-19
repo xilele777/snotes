@@ -436,6 +436,59 @@ test('回收站预览与正文对齐，返回后恢复分组、搜索和阅读�
   await expect.poll(() => page.locator('.editor-body').evaluate(el => el.scrollTop)).toBe(880)
 })
 
+test('编辑工具栏把格式写进正文，且不抢编辑器焦点', async ({ page }) => {
+  // 标题：光标所在的段落整段升级成二级标题
+  await createNote(page)
+  const editor = page.getByRole('textbox', { name: '笔记正文' })
+  await expect(editor).toBeFocused()
+  await page.keyboard.type('小标题')
+  await page.keyboard.press('Shift+Home')
+  await page.locator('.format-bar [data-format="heading2"]').click()
+  await expect(editor.locator('h2')).toHaveText('小标题')
+  await expect.poll(() => savedBody(page)).toMatch(/^## 小标题/)
+  // 按钮上的 mousedown 被拦住了，点完还能接着敲字，不用再点一次正文
+  await expect(editor).toBeFocused()
+
+  // 加粗：同级按钮再点一次应该取消，而不是叠加
+  await page.keyboard.press('Control+a')
+  await page.locator('.format-bar [data-format="bold"]').click()
+  await expect(editor.locator('strong')).toHaveText('小标题')
+  await expect.poll(() => savedBody(page)).toContain('## **小标题**')
+  await page.locator('.format-bar [data-format="bold"]').click()
+  await expect(editor.locator('strong')).toHaveCount(0)
+
+  // 待办清单：正文段落直接变成可勾选的清单
+  await createNote(page)
+  await page.keyboard.type('买牛奶')
+  await page.keyboard.press('Shift+Home')
+  await page.locator('.format-bar [data-format="taskList"]').click()
+  await expect(page.locator('.task-checkbox')).toHaveCount(1)
+  await expect.poll(() => savedBody(page)).toContain('[ ] 买牛奶')
+
+  // 表格：插入走 Milkdown 的表格预设，行列由预设的默认值决定
+  await createNote(page)
+  await page.locator('.format-bar [data-format="table"]').click()
+  const table = page.locator('.milkdown table')
+  await expect(table).toHaveCount(1)
+  await expect(page.locator('.milkdown table th')).toHaveCount(3)
+  await expect.poll(() => savedBody(page)).toContain('| :')
+
+  // 链接：选中文字后填地址，改成 https 并写进正文
+  await createNote(page)
+  await page.keyboard.type('参考资料')
+  await page.keyboard.press('Shift+Home')
+  await page.locator('.format-bar [data-format="link"]').click()
+  const dialog = page.locator('.link-dialog')
+  await expect(dialog).toBeVisible()
+  await expect(dialog.locator('[data-field="text"]')).toHaveValue('参考资料')
+  await dialog.locator('[data-field="href"]').fill('example.com')
+  await dialog.locator('[data-op="confirm"]').click()
+  await expect(dialog).toHaveCount(0)
+  await expect(page.locator('.milkdown a[href="https://example.com"]')).toHaveText('参考资料')
+  await expect.poll(() => savedBody(page)).toContain('[参考资料](https://example.com)')
+  await expect(editor).toBeFocused()
+})
+
 for (const width of [390, 320]) {
   test(`${width}px 手机统计返回原列表，回收站保持列表与只读预览切换`, async ({ page }) => {
     // 先用桌面创建样例，再切到手机，避免测试准备依赖抽屉状态。
@@ -674,6 +727,12 @@ test.describe('手机操作', () => {
     const toolbar = await page.locator('.op-bar').boundingBox()
     expect(toolbar!.x).toBeGreaterThanOrEqual(0)
     expect(toolbar!.x + toolbar!.width).toBeLessThanOrEqual(320)
+    // 格式工具栏是横向滚动的一条，不能把页面撑宽
+    const formatBar = await page.locator('.format-bar').boundingBox()
+    expect(formatBar!.x).toBeGreaterThanOrEqual(0)
+    expect(formatBar!.x + formatBar!.width).toBeLessThanOrEqual(320)
+    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(320)
+    await expect(page.locator('.format-bar [data-format="bold"]')).toBeVisible()
     await expect(page.locator('[data-op="trash"]')).toBeVisible()
     await page.locator('[data-op="group"]').click()
     const groups = await page.getByRole('group', { name: '选择分组' }).boundingBox()

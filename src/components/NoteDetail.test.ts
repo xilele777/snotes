@@ -316,6 +316,110 @@ describe('NoteDetail 顶栏操作条', () => {
   })
 })
 
+describe('NoteDetail 编辑工具栏', () => {
+  it('编辑态渲染格式工具栏，按钮齐全', async () => {
+    const notes = useNotesStore()
+    const note = await notes.create()
+    notes.currentId = note.id
+
+    const wrapper = mount(NoteDetail, { attachTo: document.body })
+    await wrapper.vm.$nextTick()
+
+    expect(wrapper.find('.format-bar').exists()).toBe(true)
+    for (const action of ['bold', 'heading1', 'taskList', 'table', 'link']) {
+      expect(wrapper.find(`[data-format="${action}"]`).exists()).toBe(true)
+    }
+    wrapper.unmount()
+  })
+
+  it('点格式按钮转给编辑器，编辑器未就绪时空转不报错', async () => {
+    const notes = useNotesStore()
+    const note = await notes.create()
+    notes.currentId = note.id
+
+    const wrapper = mount(NoteDetail, { attachTo: document.body })
+    await wrapper.vm.$nextTick()
+    await flushPromises()
+
+    const exposed = wrapper.findComponent(MilkdownEditor).vm.$.exposed as {
+      format: (action: string) => void
+      insertTable: () => void
+    }
+    const format = vi.spyOn(exposed, 'format').mockImplementation(() => {})
+    const insertTable = vi.spyOn(exposed, 'insertTable').mockImplementation(() => {})
+
+    await wrapper.find('[data-format="bold"]').trigger('click')
+    await wrapper.find('[data-format="table"]').trigger('click')
+
+    expect(format).toHaveBeenCalledWith('bold')
+    expect(insertTable).toHaveBeenCalledTimes(1)
+    wrapper.unmount()
+  })
+
+  it('点链接按钮打开弹窗，填好地址后交给编辑器写入', async () => {
+    const notes = useNotesStore()
+    const note = await notes.create()
+    notes.currentId = note.id
+
+    const wrapper = mount(NoteDetail, { attachTo: document.body })
+    await wrapper.vm.$nextTick()
+    await flushPromises()
+
+    const exposed = wrapper.findComponent(MilkdownEditor).vm.$.exposed as {
+      currentLink: () => { href: string; text: string } | null
+      selectedText: () => string
+      setLinkAt: (href: string, text: string) => void
+    }
+    vi.spyOn(exposed, 'currentLink').mockReturnValue(null)
+    vi.spyOn(exposed, 'selectedText').mockReturnValue('参考资料')
+    const setLinkAt = vi.spyOn(exposed, 'setLinkAt').mockImplementation(() => {})
+
+    expect(document.querySelector('.link-dialog')).toBeNull()
+    await wrapper.find('[data-format="link"]').trigger('click')
+    await wrapper.vm.$nextTick()
+
+    const dialog = document.querySelector('.link-dialog')!
+    expect(dialog.textContent).toContain('插入链接')
+    // 选中的文字直接填进「文字」，少打一次字
+    expect((dialog.querySelector('[data-field="text"]') as HTMLInputElement).value).toBe('参考资料')
+
+    const href = dialog.querySelector('[data-field="href"]') as HTMLInputElement
+    href.value = 'example.com'
+    href.dispatchEvent(new Event('input', { bubbles: true }))
+    await wrapper.vm.$nextTick()
+    ;(dialog.querySelector('[data-op="confirm"]') as HTMLButtonElement).click()
+    await wrapper.vm.$nextTick()
+
+    expect(setLinkAt).toHaveBeenCalledWith('example.com', '参考资料')
+    expect(document.querySelector('.link-dialog')).toBeNull()
+    wrapper.unmount()
+  })
+
+  it('已有链接时弹窗预填地址并改成「编辑链接」', async () => {
+    const notes = useNotesStore()
+    const note = await notes.create()
+    notes.currentId = note.id
+
+    const wrapper = mount(NoteDetail, { attachTo: document.body })
+    await wrapper.vm.$nextTick()
+    await flushPromises()
+
+    const exposed = wrapper.findComponent(MilkdownEditor).vm.$.exposed as {
+      currentLink: () => { href: string; text: string } | null
+    }
+    vi.spyOn(exposed, 'currentLink').mockReturnValue({ href: 'https://a.cn', text: '文档' })
+
+    await wrapper.find('[data-format="link"]').trigger('click')
+    await wrapper.vm.$nextTick()
+
+    const dialog = document.querySelector('.link-dialog')!
+    expect(dialog.textContent).toContain('编辑链接')
+    expect((dialog.querySelector('[data-field="href"]') as HTMLInputElement).value).toBe('https://a.cn')
+    expect((dialog.querySelector('[data-field="text"]') as HTMLInputElement).value).toBe('文档')
+    wrapper.unmount()
+  })
+})
+
 describe('NoteDetail 回收站只读态', () => {
   async function mountTrashed() {
     const notes = useNotesStore()
@@ -337,6 +441,7 @@ describe('NoteDetail 回收站只读态', () => {
     const { wrapper } = await mountTrashed()
 
     expect(wrapper.text()).toContain('此笔记在回收站中')
+    expect(wrapper.find('.format-bar').exists()).toBe(false)
     expect(op(wrapper, 'recover').exists()).toBe(true)
     expect(op(wrapper, 'purge').exists()).toBe(true)
     expect(op(wrapper, 'top').exists()).toBe(false)
