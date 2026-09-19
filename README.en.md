@@ -34,6 +34,7 @@ The in-app update check only queries the latest **stable** GitHub release, cachi
 - **Markdown editor**: headings, numbered lists, task lists, tables, images, and undo/redo, with Markdown stored as the source.
 - **Organization**: groups, stars, pins, color markers, and search across titles and bodies.
 - **Portable data**: export every note as a Markdown zip (images and properties included) and import `.md` files or a backup zip back in; single notes can be copied, downloaded or shared to other apps.
+- **Dark mode and personalization**: follow the system theme or pick light or dark, adjust body font size and editor width; settings are saved per device.
 - **Trash**: preview and restore deleted notes; permanent deletion and emptying the trash require confirmation.
 - **Writing statistics**: word counts, writing streaks, an activity heatmap, group distribution, and opens across devices.
 - **Device sync**: properties and bodies sync separately; concurrent edits produce conflict copies for review and merging.
@@ -50,6 +51,7 @@ Desktop uses three columns for navigation, the note list, and the editor. Trash 
 | Trash | Preview, restore, or permanently delete notes; returning restores the previous filter and reading position |
 | Statistics icon | Open statistics; close with its button, Escape, the backdrop, or system Back |
 | Editor footer | View word counts, document information, and Markdown formatting hints |
+| Sidebar "Settings" | Switch theme (system / light / dark), body font size, and editor width for this device only |
 
 Mobile opens to the list and switches to the editor when a note is selected. The top-left button opens navigation; the back button or system Back returns to the list. Desktop also supports focus mode.
 

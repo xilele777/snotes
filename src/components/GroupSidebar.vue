@@ -9,6 +9,7 @@ import BackupDialog from './BackupDialog.vue'
 import ConfirmDialog from './ConfirmDialog.vue'
 import GroupDialog from './GroupDialog.vue'
 import GroupMenu from './GroupMenu.vue'
+import SettingsDialog from './SettingsDialog.vue'
 import type { Group } from '../../shared/types'
 import { useGroupsStore } from '../stores/groups'
 import { useNotesStore } from '../stores/notes'
@@ -25,6 +26,7 @@ useWorkspaceScroll(groupList, 'groups')
 
 const versionOpen = ref(false)
 const backupOpen = ref(false)
+const settingsOpen = ref(false)
 const versionButton = ref<HTMLButtonElement | null>(null)
 const versionCloseButton = ref<HTMLButtonElement | null>(null)
 const versionLabel = `v${appVersion}`
@@ -292,6 +294,19 @@ watch(() => ui.drawerOpen, (open) => { if (!open) menuGroup.value = null })
         >
           <AppIcon name="download" :size="16" />
         </button>
+
+        <button
+          type="button"
+          class="icon-button settings-button"
+          data-action="settings"
+          title="设置"
+          aria-label="设置"
+          aria-haspopup="dialog"
+          :aria-expanded="settingsOpen"
+          @click="settingsOpen = true"
+        >
+          <AppIcon name="sliders" :size="16" />
+        </button>
       </div>
     </div>
 
@@ -319,6 +334,7 @@ watch(() => ui.drawerOpen, (open) => { if (!open) menuGroup.value = null })
     </Teleport>
 
     <BackupDialog :open="backupOpen" @close="backupOpen = false" />
+    <SettingsDialog :open="settingsOpen" @close="settingsOpen = false" />
 
     <GroupDialog
       :open="dialogOpen"

@@ -7,6 +7,10 @@ import { startSyncEngine } from './sync/engine'
 import { onRemoteApplied } from './sync/signal'
 import { useNotesStore } from './stores/notes'
 import { useGroupsStore } from './stores/groups'
+import { initSettings } from './settings'
+
+// 主题、字号、宽度在挂载前就落到 <html> 上，首帧不闪白
+initSettings()
 
 const app = createApp(App)
 app.use(createPinia())

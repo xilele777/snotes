@@ -269,3 +269,19 @@
   .stats-overview { align-items: start; gap: 8px; }
   .stats-grid { grid-template-columns: 1fr; }.stats-panel { grid-column: span 1; }.stats-numbers { gap: 6px; }.heatmap-streak { width: 100%; margin-left: 0; }.hour-bars, .daily-bars, .chart-empty { height: 100px; }.chart-heading { align-items: start; flex-direction: column; gap: 0; }.heatmap-col { gap: 1px; }
 }
+
+/* 深色：热力图与状态色单独校准，保持 5 级色阶肉眼可辨 */
+[data-theme="dark"] .heatmap-cell { box-shadow: inset 0 0 0 1px rgb(255 255 255 / 6%); }
+[data-theme="dark"] .heatmap-cell[data-level='1'] { background: #33436f; }
+[data-theme="dark"] .heatmap-cell[data-level='2'] { background: #4560ab; }
+[data-theme="dark"] .heatmap-cell[data-level='4'] { background: #b3c3f8; }
+[data-theme="dark"] .hour-bar { background: #6b84d6; }
+[data-theme="dark"] .daily-bar.updated, [data-theme="dark"] .legend-updated { background: #4b5c93; }
+[data-theme="dark"] .ov-card[data-tone='up'] .ov-sub, [data-theme="dark"] .quota-hero[data-status='safe'] .hero-title { color: #62c98d; }
+[data-theme="dark"] .quota-hero[data-status='safe'] { border-left-color: #62c98d; }
+[data-theme="dark"] .quota-hero[data-status='warning'] .hero-title { color: #ffbf47; }
+[data-theme="dark"] .quota-card[data-status='warning'] { border-color: #6a5426; }
+[data-theme="dark"] .quota-card[data-status='warning'] .status-pill, [data-theme="dark"] .quota-card[data-status='warning'] .quota-percent { color: #f2b95a; }
+[data-theme="dark"] .quota-card[data-status='over'] { border-color: #6b3a37; }
+[data-theme="dark"] .quota-card[data-status='over'] .status-pill { background: var(--danger-bg); }
+[data-theme="dark"] .quota-warning-mark { background: rgb(255 255 255 / 30%); }

@@ -44,6 +44,21 @@ async function typeName(name: string) {
 }
 
 describe('GroupSidebar', () => {
+  it('侧栏底部有设置入口，点开是设置弹窗', async () => {
+    const wrapper = mount(GroupSidebar)
+    await wrapper.vm.$nextTick()
+
+    const button = wrapper.find('[data-action="settings"]')
+    expect(button.exists()).toBe(true)
+    await button.trigger('click')
+    await nextTick()
+
+    expect(document.querySelector('[role="dialog"][aria-label="设置"]')).not.toBeNull()
+    expect(button.attributes('aria-expanded')).toBe('true')
+    // 弹窗 Teleport 到 body，不卸载的话下一条用例清空 body 后这份实例再更新会崩
+    wrapper.unmount()
+  })
+
   it('渲染固定视图入口', async () => {
     const wrapper = mount(GroupSidebar)
     await wrapper.vm.$nextTick()

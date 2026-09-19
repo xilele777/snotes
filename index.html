@@ -3,11 +3,27 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-    <meta name="theme-color" content="#f5f5f0" />
+    <meta name="theme-color" content="#ffffff" />
     <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png" />
     <link rel="icon" type="image/svg+xml" sizes="any" href="/snotes.svg" />
     <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png" />
     <title>snotes</title>
+    <style>html[data-theme="dark"] { color-scheme: dark; background: #1b1c20; }</style>
+    <script>
+      // 首帧前就把主题落到 <html> 上，避免深色用户每次打开都先闪一下白。
+      // 读的是 src/settings.ts 里的 snotes_settings，两处的键名和取值要保持一致。
+      (function () {
+        var saved = {}
+        try { saved = JSON.parse(localStorage.getItem('snotes_settings') || '{}') || {} } catch (e) {}
+        var dark = saved.theme === 'dark' || (saved.theme !== 'light' && window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches)
+        var root = document.documentElement
+        root.dataset.theme = dark ? 'dark' : 'light'
+        root.dataset.fontSize = ['small', 'medium', 'large'].indexOf(saved.fontSize) >= 0 ? saved.fontSize : 'medium'
+        root.dataset.editorWidth = ['narrow', 'medium', 'wide'].indexOf(saved.editorWidth) >= 0 ? saved.editorWidth : 'medium'
+        var meta = document.querySelector('meta[name="theme-color"]')
+        if (meta) meta.content = dark ? '#232428' : '#ffffff'
+      })()
+    </script>
   </head>
   <body>
     <div id="app"></div>
