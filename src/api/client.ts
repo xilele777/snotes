@@ -68,6 +68,12 @@ export async function apiUpload<T>(path: string, form: FormData): Promise<T> {
   return res.json() as Promise<T>
 }
 
+/** 取原始二进制响应（导出时把图片打进 zip）。同样走 Bearer 鉴权与 401 处理。 */
+export async function apiBlob(path: string): Promise<Blob> {
+  const res = await request(path, { method: 'GET' })
+  return res.blob()
+}
+
 export interface MetricsResponse {
   ok: true
   data: MetricsData

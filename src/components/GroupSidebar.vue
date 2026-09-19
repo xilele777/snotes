@@ -5,7 +5,11 @@ import { RELEASES_URL, checkForUpdate, updateInfo } from '../update-check'
 import { openStats, showNotes, switchListView } from '../navigation'
 import { syncNow } from '../sync/engine'
 import AppIcon from './AppIcon.vue'
+import BackupDialog from './BackupDialog.vue'
+import ConfirmDialog from './ConfirmDialog.vue'
 import GroupDialog from './GroupDialog.vue'
+import GroupMenu from './GroupMenu.vue'
+import type { Group } from '../../shared/types'
 import { useGroupsStore } from '../stores/groups'
 import { useNotesStore } from '../stores/notes'
 import { useUiStore } from '../stores/ui'
@@ -20,6 +24,7 @@ const groupList = ref<HTMLElement | null>(null)
 useWorkspaceScroll(groupList, 'groups')
 
 const versionOpen = ref(false)
+const backupOpen = ref(false)
 const versionButton = ref<HTMLButtonElement | null>(null)
 const versionCloseButton = ref<HTMLButtonElement | null>(null)
 const versionLabel = `v${appVersion}`
@@ -113,6 +118,68 @@ async function submitDialog(name: string) {
   else await groups.rename(editingId.value, name)
   dialogOpen.value = false
 }
+
+/** 分组行「⋯」菜单：重命名、标记颜色、上移下移、删除 */
+const menuGroup = ref<Group | null>(null)
+const menuAnchor = ref<HTMLElement | null>(null)
+const menuIndex = computed(() => groups.groups.findIndex((g) => g.group_id === menuGroup.value?.group_id))
+
+function toggleMenu(group: Group, event: MouseEvent) {
+  if (menuGroup.value?.group_id === group.group_id) {
+    closeMenu()
+    return
+  }
+  menuAnchor.value = event.currentTarget as HTMLElement
+  menuGroup.value = group
+}
+
+/** 关菜单时把焦点交还给触发按钮；随后打开的弹窗会记住它，关闭后焦点仍回到这一行 */
+function closeMenu() {
+  if (!menuGroup.value) return
+  menuGroup.value = null
+  menuAnchor.value?.focus({ preventScroll: true })
+}
+
+/** 取走菜单指向的分组并收起菜单，各动作只处理自己的事 */
+function takeMenuGroup(): Group | null {
+  const group = menuGroup.value
+  closeMenu()
+  return group
+}
+
+function menuRename() {
+  const group = takeMenuGroup()
+  if (group) openRename(group.group_id)
+}
+
+async function menuColor(color: string | null) {
+  const group = takeMenuGroup()
+  if (group) await groups.setColor(group.group_id, color)
+}
+
+async function menuMove(delta: -1 | 1) {
+  const group = takeMenuGroup()
+  if (group) await groups.move(group.group_id, delta)
+}
+
+const confirmRemove = ref<Group | null>(null)
+
+function menuRemove() {
+  confirmRemove.value = takeMenuGroup()
+}
+
+/** 删除后组内笔记回到未分组；正看着这个分组时切回全部笔记，否则刷新列表里的分组标签 */
+async function runRemove() {
+  const group = confirmRemove.value
+  confirmRemove.value = null
+  if (!group) return
+  await groups.remove(group.group_id)
+  if (ui.view === 'group' && ui.activeGroupId === group.group_id) await switchListView('all')
+  else await notes.load()
+}
+
+// 抽屉收起时菜单没有锚点可贴，一并收掉
+watch(() => ui.drawerOpen, (open) => { if (!open) menuGroup.value = null })
 </script>
 
 <template>
@@ -158,14 +225,22 @@ async function submitDialog(name: string) {
           v-for="group in groups.groups"
           :key="group.group_id"
           :data-group-id="group.group_id"
-          :class="{ active: ui.activeGroupId === group.group_id }"
+          :class="{ active: ui.activeGroupId === group.group_id, 'menu-open': menuGroup?.group_id === group.group_id }"
           @click="switchListView('group', group.group_id)"
         >
           <button class="group-link" type="button" :aria-current="ui.activeGroupId === group.group_id ? 'page' : undefined">
             <AppIcon name="folder" :size="16" class="group-icon" :style="group.color ? { color: group.color } : undefined" />
             <span class="group-name">{{ group.name }}</span>
           </button>
-          <button class="rename-btn" title="重命名" aria-label="重命名" @click.stop="openRename(group.group_id)">
+          <button
+            class="group-menu-btn"
+            type="button"
+            title="分组操作"
+            :aria-label="`分组「${group.name}」操作`"
+            aria-haspopup="menu"
+            :aria-expanded="menuGroup?.group_id === group.group_id"
+            @click.stop="toggleMenu(group, $event)"
+          >
             <AppIcon name="more" :size="16" />
           </button>
         </li>
@@ -204,6 +279,19 @@ async function submitDialog(name: string) {
         >
           {{ versionLabel }}
         </button>
+
+        <button
+          type="button"
+          class="icon-button backup-button"
+          data-action="backup"
+          title="导出与导入"
+          aria-label="导出与导入"
+          aria-haspopup="dialog"
+          :aria-expanded="backupOpen"
+          @click="backupOpen = true"
+        >
+          <AppIcon name="download" :size="16" />
+        </button>
       </div>
     </div>
 
@@ -230,6 +318,8 @@ async function submitDialog(name: string) {
       </div>
     </Teleport>
 
+    <BackupDialog :open="backupOpen" @close="backupOpen = false" />
+
     <GroupDialog
       :open="dialogOpen"
       :title="dialogTitle"
@@ -237,5 +327,29 @@ async function submitDialog(name: string) {
       @submit="submitDialog"
       @close="dialogOpen = false"
     />
+
+    <GroupMenu
+      :group="menuGroup"
+      :anchor="menuAnchor"
+      :can-move-up="menuIndex > 0"
+      :can-move-down="menuIndex >= 0 && menuIndex < groups.groups.length - 1"
+      @rename="menuRename"
+      @color="menuColor"
+      @move="menuMove"
+      @remove="menuRemove"
+      @close="closeMenu"
+    />
+
+    <!-- 与 GroupDialog 同理，遮罩必须 Teleport 出侧栏，否则会被抽屉的 transform 裁掉 -->
+    <Teleport to="body">
+      <ConfirmDialog
+        :open="confirmRemove !== null"
+        :title="`删除分组「${confirmRemove?.name ?? ''}」？`"
+        message="组内笔记会回到未分组，不会被删除。"
+        confirm-text="删除"
+        @confirm="runRemove"
+        @cancel="confirmRemove = null"
+      />
+    </Teleport>
   </nav>
 </template>

@@ -9,6 +9,8 @@ import NoteInfoDialog from './NoteInfoDialog.vue'
 import WordCountDialog from './WordCountDialog.vue'
 import AppIcon from './AppIcon.vue'
 import EditorLoading from './EditorLoading.vue'
+import { SKIN_COLORS } from './palette'
+import { copyMarkdown, downloadMarkdown, shareMarkdown } from '../export/share'
 import { useUiStore } from '../stores/ui'
 import { useWorkspaceScroll } from './useWorkspaceScroll'
 
@@ -29,13 +31,10 @@ const editorReady = ref(false)
 watch(() => notes.current, note => { if (!note) editorReady.value = false })
 const currentGroup = computed(() => groups.groups.find(group => group.group_id === notes.current?.group_id)?.name ?? '未分组')
 
-/** 6 色皮肤板（UI 规格 §3.5）。null 为清除。 */
-const SKIN_COLORS = [null, '#d8b46a', '#cd956a', '#cb8585', '#86a394', '#8398ba'] as const
+/** 颜色、分组、格式提示和导出一次只展开一个。 */
+const openPop = ref<'color' | 'group' | 'help' | 'share' | null>(null)
 
-/** 颜色、分组和格式提示一次只展开一个。 */
-const openPop = ref<'color' | 'group' | 'help' | null>(null)
-
-async function toggle(pop: 'color' | 'group' | 'help') {
+async function toggle(pop: 'color' | 'group' | 'help' | 'share') {
   openPop.value = openPop.value === pop ? null : pop
   if (openPop.value) {
     await nextTick()
@@ -120,6 +119,45 @@ const showWordCount = ref(false)
 
 /** 当前笔记字数统计（实时随正文变化） */
 const wordCount = computed(() => countWords(notes.current?.body ?? ''))
+
+/** 导出与分享单条笔记：手机上优先交给系统分享面板，桌面端给复制与下载。 */
+const canShare = typeof navigator !== 'undefined' && typeof navigator.share === 'function'
+const shareNotice = ref('')
+let noticeTimer: number | undefined
+
+function flash(text: string) {
+  shareNotice.value = text
+  clearTimeout(noticeTimer)
+  noticeTimer = window.setTimeout(() => (shareNotice.value = ''), 4000)
+}
+
+function noteTitle(): string {
+  return notes.current?.title || '无标题'
+}
+
+async function runCopy() {
+  if (!notes.current) return
+  const copied = await copyMarkdown(notes.current.body)
+  openPop.value = null
+  flash(copied ? '已复制 Markdown' : '复制失败，请在正文里手动选择')
+}
+
+function runDownload() {
+  if (!notes.current) return
+  downloadMarkdown(noteTitle(), notes.current.body)
+  openPop.value = null
+  flash('已开始下载 .md')
+}
+
+async function runShare() {
+  if (!notes.current) return
+  const outcome = await shareMarkdown(noteTitle(), notes.current.body)
+  openPop.value = null
+  // 用户取消分享时不再弹提示，那是他刚做出的选择
+  if (outcome !== 'failed') flash(outcome === 'shared' ? '已分享' : '已复制 Markdown')
+}
+
+onUnmounted(() => clearTimeout(noticeTimer))
 </script>
 
 <template>
@@ -289,8 +327,28 @@ const wordCount = computed(() => countWords(notes.current?.body ?? ''))
 
     <footer v-if="notes.current" class="editor-footer">
       <span class="autosave"><AppIcon v-if="readonly" name="lock" :size="12" /><span v-else class="status-dot"></span>{{ readonly ? '只读笔记' : '自动保存' }}</span>
+      <span v-if="shareNotice" class="share-notice" role="status">{{ shareNotice }}</span>
       <button class="meta-entry" data-op="wordcount" title="字数统计" aria-label="字数统计" @click="showWordCount = true">{{ wordCount.words }} 字</button>
       <button class="meta-entry" data-op="info" title="文档信息" aria-label="文档信息" @click="showInfo = true"><AppIcon name="info" :size="14" /></button>
+      <!-- 顶栏在 320px 已经排满，放不下第二个下拉；导出单独一条笔记放在这里。 -->
+      <div v-if="!readonly" class="op-wrap">
+        <button
+          class="meta-entry"
+          data-op="share"
+          title="导出与分享"
+          aria-label="导出与分享"
+          aria-haspopup="true"
+          :aria-expanded="openPop === 'share'"
+          @click="toggle('share')"
+        >
+          <AppIcon name="share" :size="15" />
+        </button>
+        <div v-if="openPop === 'share'" class="op-popover share-popover" role="group" aria-label="导出与分享">
+          <button class="share-opt" data-action="copy" @click="runCopy"><AppIcon name="copy" :size="14" />复制 Markdown</button>
+          <button class="share-opt" data-action="download" @click="runDownload"><AppIcon name="download" :size="14" />下载 .md</button>
+          <button v-if="canShare" class="share-opt" data-action="share" @click="runShare"><AppIcon name="share" :size="14" />分享到其他应用</button>
+        </div>
+      </div>
       <div v-if="!readonly" class="op-wrap format-help">
         <button class="meta-entry" data-op="help" :aria-expanded="openPop === 'help'" @click="toggle('help')"><AppIcon name="keyboard" :size="15" /><span>格式帮助</span></button>
         <div v-if="openPop === 'help'" class="op-popover help-popover">

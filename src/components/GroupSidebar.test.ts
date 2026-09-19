@@ -5,6 +5,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { version as appVersion } from '../../package.json'
 import { db } from '../db/schema'
 import { useGroupsStore } from '../stores/groups'
+import { useNotesStore } from '../stores/notes'
 import { useUiStore } from '../stores/ui'
 import GroupSidebar from './GroupSidebar.vue'
 import { updateInfo } from '../update-check'
@@ -434,23 +435,27 @@ describe('GroupSidebar 新建分组弹窗', () => {
     wrapper.unmount()
   })
 
-  it('点 ⋯ 复用同一弹窗改标题为「重命名」，预填旧名并提交', async () => {
+  it('点 ⋯ 打开菜单选「重命名」，复用同一弹窗改标题为「重命名」，预填旧名并提交', async () => {
     const groups = useGroupsStore()
     const g = await groups.create('旧名')
 
     const wrapper = mount(GroupSidebar, { attachTo: document.body })
     await wrapper.vm.$nextTick()
-    await wrapper.find(`[data-group-id="${g.group_id}"] .rename-btn`).trigger('click')
+    await wrapper.find(`[data-group-id="${g.group_id}"] .group-menu-btn`).trigger('click')
+    document.querySelector<HTMLButtonElement>('[role="menu"] [data-action="rename"]')!.click()
+    await nextTick()
 
+    expect(document.querySelector('[role="menu"]')).toBeNull()
     expect(document.querySelector('.dialog-title')!.textContent).toBe('重命名')
     expect(dialogInput()!.value).toBe('旧名')
 
     await typeName('新名')
     dialogBtn('ok')!.click()
 
-    await vi.waitFor(async () => {
-      expect((await db.groups.get(g.group_id))!.name).toBe('新名')
-    })
+    // 弹窗在 rename 全部落库（含 outbox 与重新 load）后才关闭；等它关掉再查库，收尾时就不会留下悬挂的 IndexedDB 操作
+    await vi.waitFor(() => expect(dialog()).toBeNull())
+    expect((await db.groups.get(g.group_id))!.name).toBe('新名')
+    expect(groups.groups[0].name).toBe('新名')
     wrapper.unmount()
   })
 
@@ -461,10 +466,189 @@ describe('GroupSidebar 新建分组弹窗', () => {
 
     const wrapper = mount(GroupSidebar, { attachTo: document.body })
     await wrapper.vm.$nextTick()
-    await wrapper.find(`[data-group-id="${g.group_id}"] .rename-btn`).trigger('click')
+    await wrapper.find(`[data-group-id="${g.group_id}"] .group-menu-btn`).trigger('click')
 
+    expect(document.querySelector('[role="menu"]')).not.toBeNull()
     expect(ui.view).toBe('all')
     expect(ui.activeGroupId).toBeNull()
+    wrapper.unmount()
+  })
+})
+
+describe('GroupSidebar 分组菜单', () => {
+  const menu = () => document.querySelector<HTMLElement>('[role="menu"]')
+  const action = (name: string) => document.querySelector<HTMLButtonElement>(`[role="menu"] [data-action="${name}"]`)
+  const confirmDialog = () => document.querySelector<HTMLElement>('.confirm-dialog')
+
+  async function openMenu(wrapper: ReturnType<typeof mount>, groupId: string) {
+    const button = wrapper.find(`[data-group-id="${groupId}"] .group-menu-btn`)
+    await button.trigger('click')
+    await nextTick()
+    return button
+  }
+
+  it('菜单列出重命名、颜色、上移下移与删除，首项获得焦点；Esc 关闭并把焦点还给 ⋯', async () => {
+    const groups = useGroupsStore()
+    const g = await groups.create('工作')
+    const wrapper = mount(GroupSidebar, { attachTo: document.body })
+    await wrapper.vm.$nextTick()
+
+    const button = await openMenu(wrapper, g.group_id)
+    expect(menu()).not.toBeNull()
+    expect(button.attributes('aria-expanded')).toBe('true')
+    for (const name of ['rename', 'up', 'down', 'remove']) expect(action(name)).not.toBeNull()
+    expect(menu()!.querySelectorAll('[role="menuitemradio"]')).toHaveLength(6)
+    expect(document.activeElement).toBe(action('rename'))
+
+    const escape = new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true })
+    window.dispatchEvent(escape)
+    await nextTick()
+
+    expect(escape.defaultPrevented).toBe(true)
+    expect(menu()).toBeNull()
+    expect(document.activeElement).toBe(button.element)
+    wrapper.unmount()
+  })
+
+  it('点菜单外部关闭菜单，再点 ⋯ 可切换开关', async () => {
+    const groups = useGroupsStore()
+    const g = await groups.create('工作')
+    const wrapper = mount(GroupSidebar, { attachTo: document.body })
+    await wrapper.vm.$nextTick()
+
+    const button = await openMenu(wrapper, g.group_id)
+    document.body.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+    await nextTick()
+    expect(menu()).toBeNull()
+
+    await button.trigger('click')
+    expect(menu()).not.toBeNull()
+    await button.trigger('click')
+    expect(menu()).toBeNull()
+    wrapper.unmount()
+  })
+
+  it('选颜色写入分组 color、收起菜单，侧栏图标随之着色', async () => {
+    const groups = useGroupsStore()
+    const g = await groups.create('工作')
+    const wrapper = mount(GroupSidebar, { attachTo: document.body })
+    await wrapper.vm.$nextTick()
+
+    await openMenu(wrapper, g.group_id)
+    menu()!.querySelector<HTMLButtonElement>('[aria-label="标记颜色 #d8b46a"]')!.click()
+
+    // setColor 落库后会重新 load，等 store 更新完再看渲染结果
+    await vi.waitFor(() => expect(groups.groups[0].color).toBe('#d8b46a'))
+    expect((await db.groups.get(g.group_id))!.color).toBe('#d8b46a')
+    await nextTick()
+    expect(menu()).toBeNull()
+    expect(wrapper.find(`[data-group-id="${g.group_id}"] .group-icon`).attributes('style')).toContain('rgb(216, 180, 106)')
+
+    await openMenu(wrapper, g.group_id)
+    expect(menu()!.querySelector('[aria-label="标记颜色 #d8b46a"]')!.getAttribute('aria-checked')).toBe('true')
+    wrapper.unmount()
+  })
+
+  it('上移 / 下移交换顺序并持久化 ord，处于两端时对应项禁用', async () => {
+    const groups = useGroupsStore()
+    const a = await groups.create('甲')
+    const b = await groups.create('乙')
+    const wrapper = mount(GroupSidebar, { attachTo: document.body })
+    await wrapper.vm.$nextTick()
+
+    await openMenu(wrapper, a.group_id)
+    expect(action('up')!.disabled).toBe(true)
+    expect(action('down')!.disabled).toBe(false)
+    action('down')!.click()
+
+    await vi.waitFor(() => {
+      expect(groups.groups.map((g) => g.name)).toEqual(['乙', '甲'])
+    })
+    expect((await db.groups.get(b.group_id))!.ord).toBe(0)
+    expect((await db.groups.get(a.group_id))!.ord).toBe(1)
+    await nextTick()
+    expect(wrapper.findAll('.groups .group-name').map((el) => el.text())).toEqual(['乙', '甲'])
+
+    await openMenu(wrapper, a.group_id)
+    expect(action('down')!.disabled).toBe(true)
+    action('up')!.click()
+    await vi.waitFor(() => {
+      expect(groups.groups.map((g) => g.name)).toEqual(['甲', '乙'])
+    })
+    wrapper.unmount()
+  })
+
+  it('删除先弹确认；确认后分组消失，组内笔记回到未分组', async () => {
+    const groups = useGroupsStore()
+    const notes = useNotesStore()
+    const g = await groups.create('临时')
+    const note = await notes.create()
+    await notes.setProps(note.id, { group_id: g.group_id })
+    const wrapper = mount(GroupSidebar, { attachTo: document.body })
+    await wrapper.vm.$nextTick()
+
+    await openMenu(wrapper, g.group_id)
+    action('remove')!.click()
+    await nextTick()
+
+    expect(menu()).toBeNull()
+    expect(confirmDialog()).not.toBeNull()
+    expect(confirmDialog()!.textContent).toContain('删除分组「临时」')
+    expect(confirmDialog()!.textContent).toContain('组内笔记会回到未分组')
+    // 未确认前什么都不动
+    expect((await db.groups.get(g.group_id))!.invalid).toBe(0)
+
+    confirmDialog()!.querySelector<HTMLButtonElement>('[data-op="confirm"]')!.click()
+
+    await vi.waitFor(async () => {
+      expect((await db.groups.get(g.group_id))!.invalid).toBe(1)
+      expect(notes.notes.find((n) => n.id === note.id)?.group_id).toBeNull()
+    })
+    await nextTick()
+    expect(confirmDialog()).toBeNull()
+    expect(wrapper.text()).not.toContain('临时')
+    wrapper.unmount()
+  })
+
+  it('删除确认可取消，分组保留', async () => {
+    const groups = useGroupsStore()
+    const g = await groups.create('保留')
+    const wrapper = mount(GroupSidebar, { attachTo: document.body })
+    await wrapper.vm.$nextTick()
+
+    await openMenu(wrapper, g.group_id)
+    action('remove')!.click()
+    await nextTick()
+    confirmDialog()!.querySelector<HTMLButtonElement>('[data-op="cancel"]')!.click()
+    await nextTick()
+
+    expect(confirmDialog()).toBeNull()
+    expect((await db.groups.get(g.group_id))!.invalid).toBe(0)
+    expect(wrapper.text()).toContain('保留')
+    wrapper.unmount()
+  })
+
+  it('删除正在查看的分组后切回全部笔记', async () => {
+    const groups = useGroupsStore()
+    const notes = useNotesStore()
+    const ui = useUiStore()
+    const g = await groups.create('当前')
+    ui.view = 'group'
+    ui.activeGroupId = g.group_id
+    const wrapper = mount(GroupSidebar, { attachTo: document.body })
+    await wrapper.vm.$nextTick()
+
+    await openMenu(wrapper, g.group_id)
+    action('remove')!.click()
+    await nextTick()
+    confirmDialog()!.querySelector<HTMLButtonElement>('[data-op="confirm"]')!.click()
+
+    await vi.waitFor(() => {
+      expect(ui.view).toBe('all')
+      expect(ui.activeGroupId).toBeNull()
+      // 切视图后的 notes.load() 跑完 stale 才会变 false，等它结束再卸载
+      expect(notes.stale).toBe(false)
+    })
     wrapper.unmount()
   })
 })

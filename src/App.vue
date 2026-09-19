@@ -68,7 +68,8 @@ watch(
 
 // 全局快捷键（UI 规格 §6.2）
 function onKeydown(e: KeyboardEvent) {
-  if (!hasToken.value || ui.statsOpen || e.defaultPrevented || e.isComposing || document.querySelector('[aria-modal="true"]')) return
+  // 弹窗和菜单打开时把键盘交给它们：Esc 该关的是浮层，不是抽屉或搜索词
+  if (!hasToken.value || ui.statsOpen || e.defaultPrevented || e.isComposing || document.querySelector('[aria-modal="true"], [role="menu"]')) return
   if (e.key === 'Escape' && (ui.drawerOpen || ui.focusMode)) {
     e.preventDefault()
     e.stopPropagation()

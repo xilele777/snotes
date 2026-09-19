@@ -14,8 +14,12 @@ export interface ListFilter {
 
 export type NoteProps = Partial<Pick<NoteMeta, 'group_id' | 'star' | 'top' | 'skin_color'>>
 
-/** 新建笔记时可预先指定的属性；目前只有分组（分组视图里新建，笔记就该落在这个分组） */
-export type CreateOptions = Partial<Pick<NoteMeta, 'group_id'>>
+/**
+ * 新建笔记时可预先指定的属性。分组视图里新建，笔记就该落在这个分组；
+ * 导入备份时还要还原星标、置顶、颜色与创建时间，并允许调用方先定好 id
+ * （图片得先按 note_id 上传，正文里才有正式地址可写）。
+ */
+export type CreateOptions = Partial<Pick<NoteMeta, 'id' | 'group_id' | 'star' | 'top' | 'skin_color' | 'create_time'>>
 
 export const CONFLICT_SUFFIX = '（冲突副本）'
 
@@ -52,18 +56,18 @@ function buildNote(content: string, options: CreateOptions): LocalNote {
   const { title, summary, thumbnail } = derive(content)
 
   return {
-    id: crypto.randomUUID(),
+    id: options.id ?? crypto.randomUUID(),
     group_id: options.group_id ?? null,
     title,
     summary,
     thumbnail,
     version: 0,
     prop_version: 0,
-    star: 0,
-    top: 0,
-    skin_color: null,
+    star: options.star ?? 0,
+    top: options.top ?? 0,
+    skin_color: options.skin_color ?? null,
     invalid: 0,
-    create_time: now,
+    create_time: options.create_time ?? now,
     update_time: now,
     body: content,
     // 0 = 服务端还没确认过任何版本；create 成功后由 applyAck 写成 1
@@ -90,6 +94,9 @@ async function insertNoteIn(note: LocalNote): Promise<void> {
         summary: note.summary,
         thumbnail: note.thumbnail,
         group_id: note.group_id,
+        star: note.star,
+        top: note.top,
+        skin_color: note.skin_color,
       },
     })
   )

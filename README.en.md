@@ -33,6 +33,7 @@ The in-app update check only queries the latest **stable** GitHub release, cachi
 - **Offline editing**: read and edit notes already synced to the device, then sync when reconnected.
 - **Markdown editor**: headings, numbered lists, task lists, tables, images, and undo/redo, with Markdown stored as the source.
 - **Organization**: groups, stars, pins, color markers, and search across titles and bodies.
+- **Portable data**: export every note as a Markdown zip (images and properties included) and import `.md` files or a backup zip back in; single notes can be copied, downloaded or shared to other apps.
 - **Trash**: preview and restore deleted notes; permanent deletion and emptying the trash require confirmation.
 - **Writing statistics**: word counts, writing streaks, an activity heatmap, group distribution, and opens across devices.
 - **Device sync**: properties and bodies sync separately; concurrent edits produce conflict copies for review and merging.
@@ -345,6 +346,8 @@ Optional usage-monitoring calculations live in `worker/metrics/collect.ts` and n
 
 ## Backup and migration
 
+**In-app export / import**: the "Export & import" entry at the bottom of the sidebar downloads every note as a zip with one folder per group, one `.md` per note, images under `images/` with relative paths, and an `index.json` recording groups, stars, pins, colors and creation times. The same zip can be imported into any deployment (Cloudflare or standalone server); images are re-uploaded and importing the same package twice does not create duplicates. This is the recommended way to migrate or back up without the command line.
+
 **Standalone server / Docker**: sync clients, stop the service and back up the entire data directory or volume, including SQLite, any WAL/SHM files and images. See [backup, upgrade and recovery (Chinese)](docs/server-deployment.md#备份升级与恢复). Data is not migrated automatically between Cloudflare and standalone deployments.
 
 **Cloudflare**: D1 backup and restore commands (Bash):
@@ -389,6 +392,7 @@ docs/           design documents, operations guide
 - [Operations guide](docs/operations.md) (Chinese) — token mechanics, sync failure triage, backups, FAQ
 - [Server deployment](docs/server-deployment.md) (Chinese) — Node.js, Docker, systemd, HTTPS, backups and upgrades
 - [UI design and verification](docs/ui-refresh.md) (Chinese)
+- [Feature backlog](docs/roadmap.md) (Chinese) — planned features and operational improvements in three tiers
 - [Changelog](CHANGELOG.md)
 
 ## Security

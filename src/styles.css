@@ -92,9 +92,19 @@ kbd { font-family: inherit; font-size: 10px; line-height: 20px; white-space: now
 .group-icon { color: var(--text-tertiary); }
 .groups .group-name { font-size: 13px; text-align: left; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .groups li.active .group-name { font-weight: 500; }
-.groups .rename-btn { margin-right: 4px; width: 24px; height: 26px; display: flex; align-items: center; justify-content: center; flex: none; border: 0; border-radius: 4px; background: transparent; padding: 0; color: var(--text-secondary); opacity: 0; }
-.groups li:hover .rename-btn, .groups li:focus-within .rename-btn { opacity: 1; }
-.groups .rename-btn:hover { background: var(--border-default); }
+.groups .group-menu-btn { margin-right: 4px; width: 24px; height: 26px; display: flex; align-items: center; justify-content: center; flex: none; border: 0; border-radius: 4px; background: transparent; padding: 0; color: var(--text-secondary); opacity: 0; }
+.groups li:hover .group-menu-btn, .groups li:focus-within .group-menu-btn, .groups li.menu-open .group-menu-btn { opacity: 1; }
+.groups .group-menu-btn:hover, .groups li.menu-open .group-menu-btn { background: var(--border-default); }
+/* Group actions open in a fixed-position menu so the scrolling list and the drawer transform cannot clip it. */
+.group-menu { position: fixed; z-index: 60; min-width: 184px; max-width: calc(100vw - 16px); padding: 6px; display: flex; flex-direction: column; gap: 2px; background: var(--bg-surface); border: 1px solid var(--border-light); border-radius: 8px; box-shadow: 0 6px 24px rgb(0 0 0 / 10%); }
+.menu-item { display: flex; align-items: center; gap: 9px; width: 100%; padding: 8px 10px; border: 0; border-radius: 5px; background: transparent; color: var(--text-primary); font-size: 13px; text-align: left; }
+.menu-item .app-icon { color: var(--text-secondary); }
+.menu-item:hover:enabled, .menu-item:focus-visible { background: var(--bg-hover); }
+.menu-item:disabled { opacity: .4; cursor: default; }
+.menu-item.danger:hover:enabled { color: var(--danger); background: var(--danger-bg); }
+.menu-item.danger:hover:enabled .app-icon { color: var(--danger); }
+.menu-colors { display: flex; gap: 8px; padding: 8px 10px; }
+.menu-separator { display: block; height: 1px; margin: 4px 0; background: var(--border-light); }
 .user-area { margin-top: auto; min-height: 48px; padding: 6px 0; padding-bottom: max(6px, env(safe-area-inset-bottom)); display: flex; align-items: center; gap: 4px; border-top: 1px solid var(--border-light); flex: none; }
 .sync-idle { position: relative; display: flex; align-items: center; gap: 6px; padding: 6px; min-width: 0; border: 0; border-radius: 5px; background: transparent; color: var(--text-tertiary); }
 .sync-label { font-size: 11px; white-space: nowrap; }
@@ -108,6 +118,7 @@ kbd { font-family: inherit; font-size: 10px; line-height: 20px; white-space: now
 .version-button:hover { background: var(--bg-hover); color: var(--text-primary); }
 .version-button.has-update { position: relative; color: var(--text-secondary); padding-right: 14px; }
 .version-button.has-update::after { content: ""; position: absolute; top: 6px; right: 4px; width: 6px; height: 6px; border-radius: 50%; background: var(--accent); }
+.backup-button { width: 28px; height: 28px; color: var(--text-tertiary); }
 .update-row .info-sub { grid-column: 1 / -1; margin-top: 6px; font-size: 12px; line-height: 1.65; }
 .update-row .info-sub code { font-size: 11px; padding: 1px 4px; border-radius: 3px; background: var(--bg-press); color: var(--text-primary); overflow-wrap: anywhere; }
 .update-links { margin: -6px 0 0; font-size: 12px; }.update-links a { color: var(--accent); text-decoration: none; }.update-links a:hover { text-decoration: underline; }
@@ -181,7 +192,7 @@ kbd { font-family: inherit; font-size: 10px; line-height: 20px; white-space: now
 .op-popover.colors { display: flex; gap: 10px; }
 .more-swatch { width: 24px; height: 24px; padding: 0; border: 1px solid rgb(0 0 0 / 12%); border-radius: 50%; }
 .more-swatch:hover { outline: 2px solid var(--border-default); outline-offset: 3px; }
-.more-swatch[aria-pressed='true'] { outline: 2px solid var(--text-secondary); outline-offset: 3px; }
+.more-swatch[aria-pressed='true'], .more-swatch[aria-checked='true'] { outline: 2px solid var(--text-secondary); outline-offset: 3px; }
 .op-popover.groups-pop { display: flex; flex-direction: column; gap: 3px; min-width: 180px; max-width: min(280px, 80vw); max-height: 300px; overflow-y: auto; padding: 6px; }
 .popover-heading { display: block; padding: 8px 10px; font-size: 11px; color: var(--text-tertiary); }
 .group-opt { padding: 8px 10px; border: 0; border-radius: 5px; background: transparent; font-size: 13px; text-align: left; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -226,6 +237,19 @@ kbd { font-family: inherit; font-size: 10px; line-height: 20px; white-space: now
 .meta-entry { display: flex; align-items: center; justify-content: center; gap: 6px; min-height: 28px; border: 0; border-radius: 6px; padding: 0 7px; background: transparent; color: var(--text-tertiary); font-size: 11px; white-space: nowrap; }
 .meta-entry:hover { background: var(--bg-hover); color: var(--text-primary); }
 .format-help { margin-left: auto; }
+.share-notice { color: var(--accent); white-space: nowrap; }
+.share-popover { top: auto; bottom: calc(100% + 10px); min-width: 176px; padding: 6px; }
+.share-opt { display: flex; align-items: center; gap: 8px; width: 100%; padding: 8px 10px; border: 0; border-radius: 5px; background: transparent; color: var(--text-primary); font-size: 13px; text-align: left; white-space: nowrap; }
+.share-opt:hover { background: var(--bg-hover); }
+.backup-dialog { width: min(440px, 92vw); }
+.backup-hint { margin: 0 0 14px; font-size: 12px; line-height: 1.7; color: var(--text-secondary); }
+.backup-hint code { padding: 1px 5px; border-radius: 4px; background: var(--bg-app); font-family: inherit; font-size: 11px; color: var(--text-primary); }
+.backup-actions { display: flex; gap: 8px; margin-bottom: 12px; }
+.backup-actions .dialog-btn { flex: 1; gap: 6px; }
+.backup-progress { display: flex; flex-direction: column; gap: 6px; margin: 0 0 12px; font-size: 12px; color: var(--text-secondary); }
+.backup-progress.failed { color: var(--danger); }
+.backup-bar { height: 4px; border-radius: 2px; background: var(--bg-app); overflow: hidden; }
+.backup-bar-fill { display: block; height: 100%; background: var(--accent); transition: width 120ms ease; }
 .help-popover { top: auto; bottom: calc(100% + 10px); width: 252px; padding: 12px; }
 .help-popover .popover-heading { padding: 2px 4px 12px; color: var(--text-secondary); }
 .help-popover dl { margin: 0; padding: 0 4px; font-size: 12px; }
@@ -410,7 +434,7 @@ kbd { font-family: inherit; font-size: 10px; line-height: 20px; white-space: now
   .empty-hint { font-size: 12px; }
 }
 @media (hover: none) {
-  .groups .rename-btn { opacity: 1; }
+  .groups .group-menu-btn { opacity: 1; }
   .note-item .delete { top: 0; bottom: 0; right: 0; width: 64px; height: 100%; border: 0; border-radius: 0 5px 5px 0; background: var(--danger); color: white; transform: translateX(64px); opacity: 1; visibility: hidden; transition: transform 150ms; }
   .note-item .delete-icon { display: none; }
   .note-item .delete-label { display: block; font-size: 12px; }
