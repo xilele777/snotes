@@ -257,4 +257,4 @@
   - 回收站保留提示：pull 响应新增 `trash_retention_days`，客户端存进 `ui.trashRetentionDays` 与 meta 表 `trash_retention_days`，`TrashView.vue` 顶部提示与每条「N 天后删除」。
   - 顶栏：桌面直接放 `wordcount / info / history` 三个 `data-op`，`NoteMenu` 新增 `showDocItems`（≤720px 才进菜单）；删除 `.editor-footer`。侧栏删除 `.version-button`。
   - 快捷键：新建改 `Mod Alt N`（`Mod N` 被浏览器抢），删除 `Mod Shift 0–9`。设置页删去多段说明文字。
-
+  - 发布结果：提交 008c684、标签 v0.15.0 已推送；线上迁移 0004 已执行；Cloudflare Version ID 90b70a31-c61c-4854-afbd-f4b53e8a5e7c；GitHub Release https://github.com/xilele777/snotes/releases/tag/v0.15.0。
