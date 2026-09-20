@@ -31,6 +31,44 @@ notesRoutes.post('/api/notes', async (c) => {
 
   const now = nowMs()
 
+  // 同一 id 的墓碑（彻底删除后保留 30 天的删除标记）要能被「复活」：导入备份、
+  // 或另一台设备迟到的 create 都会带着原 id 再来一次。之前 ON CONFLICT DO NOTHING
+  // 会静默跳过并把墓碑的版本号当作成功返回，客户端以为推上去了，云端其实还是删除态。
+  // 复活时推进 version / prop_version，让所有设备都把它当成一条新的远端变更拉下来。
+  const existing = await c.env.DB.prepare('SELECT invalid, version, prop_version FROM note WHERE id = ?')
+    .bind(req.id)
+    .first<{ invalid: number; version: number; prop_version: number }>()
+
+  if (existing && existing.invalid === 2) {
+    const version = existing.version + 1
+    const propVersion = existing.prop_version + 1
+    await c.env.DB.batch([
+      c.env.DB.prepare(
+        `UPDATE note SET group_id = ?, title = ?, summary = ?, thumbnail = ?, version = ?, prop_version = ?,
+                         star = ?, top = ?, skin_color = ?, invalid = 0, create_time = ?, update_time = ?
+         WHERE id = ? AND invalid = 2`
+      ).bind(
+        req.group_id ?? null,
+        req.title,
+        req.summary,
+        req.thumbnail ?? null,
+        version,
+        propVersion,
+        req.star ?? 0,
+        req.top ?? 0,
+        req.skin_color ?? null,
+        req.create_time,
+        now,
+        req.id
+      ),
+      c.env.DB.prepare(
+        `INSERT INTO note_body (note_id, content, version) VALUES (?, ?, ?)
+         ON CONFLICT(note_id) DO UPDATE SET content = excluded.content, version = excluded.version`
+      ).bind(req.id, req.content, version),
+    ])
+    return c.json({ id: req.id, version, prop_version: propVersion, update_time: now })
+  }
+
   await c.env.DB.batch([
     c.env.DB.prepare(
       `INSERT INTO note (id, group_id, title, summary, thumbnail, version, prop_version,

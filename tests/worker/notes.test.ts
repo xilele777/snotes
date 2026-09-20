@@ -61,6 +61,38 @@ describe('POST /api/notes', () => {
   })
 })
 
+describe('POST /api/notes 复活墓碑', () => {
+  it('彻底删除后用同一 id 再创建（导入备份）会复活为正常笔记，版本号推进', async () => {
+    const req = noteReq({ content: '旧正文', title: '旧', summary: '旧' })
+    await json('/api/notes', 'POST', req)
+    await api(`/api/notes/${req.id}/purge`, { method: 'POST' })
+
+    const res = await json('/api/notes', 'POST', { ...req, content: '导入回来的正文', title: '新', summary: '新', star: 1 })
+    expect(res.status).toBe(200)
+    const ack = await res.json<{ version: number; prop_version: number }>()
+    expect(ack).toMatchObject({ id: req.id, version: 2, prop_version: 3 })
+
+    const note = await env.DB.prepare('SELECT invalid, version, prop_version, title, star FROM note WHERE id = ?').bind(req.id).first()
+    expect(note).toMatchObject({ invalid: 0, version: 2, prop_version: 3, title: '新', star: 1 })
+    const body = await env.DB.prepare('SELECT content, version FROM note_body WHERE note_id = ?').bind(req.id).first()
+    expect(body).toMatchObject({ content: '导入回来的正文', version: 2 })
+
+    // pull 会把它当作一条正常的远端变更下发，而不是墓碑
+    const pull = await json('/api/sync/pull', 'POST', { since: 0 })
+    const { notes } = await pull.json<{ notes: { id: string; invalid: number }[] }>()
+    expect(notes.find((n) => n.id === req.id)).toMatchObject({ invalid: 0 })
+  })
+
+  it('普通已存在的 id 仍然幂等：不覆盖也不推进版本', async () => {
+    const req = noteReq({ content: '原正文', title: '原', summary: '原' })
+    await json('/api/notes', 'POST', req)
+    const res = await json('/api/notes', 'POST', { ...req, content: '重放', title: '重放', summary: '重放' })
+    expect(await res.json()).toMatchObject({ version: 1, prop_version: 1 })
+    const body = await env.DB.prepare('SELECT content FROM note_body WHERE note_id = ?').bind(req.id).first()
+    expect(body).toMatchObject({ content: '原正文' })
+  })
+})
+
 describe('PATCH /api/notes/:id', () => {
   it('改正文递增 version，不动 prop_version', async () => {
     const req = noteReq()

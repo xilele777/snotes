@@ -261,3 +261,4 @@
 - 2026-09-21：v0.15.1 去掉历史版本弹窗顶部的规则说明文字。Cloudflare Version ID 6003c513-ebd4-47c6-8cfc-c0c9f858df2b；GitHub Release https://github.com/xilele777/snotes/releases/tag/v0.15.1。
 - 2026-09-21：v0.15.2 修复导入备份重名分组重复（`importBackup` 的 `ensureGroup` 按名字复用）；回收站保留期默认 30 天（`parseTrashRetentionDays` 未设置时返回 `DEFAULT_TRASH_RETENTION_DAYS`），客户端 `trashDaysLeft` 未知时也按 30 天算，详情顶栏改为「此笔记还有 N 天被删除」，删除回收站顶部提示；回收站详情去掉字数、信息、历史与 ⋯；新建快捷键改 `Alt N`（按 `code` 兼容 Mac 死键）。
   - 发布结果：标签 v0.15.2；Cloudflare Version ID a442b6af-c48b-4687-b457-b757506497eb；GitHub Release https://github.com/xilele777/snotes/releases/tag/v0.15.2。
+- 2026-09-21：v0.15.3 修复导入备份不同步：`POST /api/notes` 遇到 invalid=2 的墓碑改为复活（UPDATE 全字段、version/prop_version 各加一、note_body upsert），不再 `ON CONFLICT DO NOTHING` 后回报墓碑版本号。
