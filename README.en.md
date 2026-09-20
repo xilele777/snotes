@@ -26,20 +26,20 @@ Unpinned clone commands below follow `main`. To install a pinned version, run `g
 
 For an existing deployment, sync clients, back up data and save local configuration first. Run `git fetch origin --tags` and `git switch --detach v0.15.3`, then install, build and restart using the instructions for your deployment. A pinned tag uses detached HEAD: future upgrades require fetching and switching to the next tag instead of `git pull`. See the [Cloudflare update steps](#8-updating-to-a-new-version) for preserving configuration. Do not force a checkout over local changes.
 
-The in-app update check only queries the latest **stable** GitHub release, caching successful results for 24 hours. It does not notify about previews or update your server automatically. Select previews manually from [Releases](https://github.com/xilele777/snotes/releases). Direct Node.js operation has been tested for this preview. Docker Compose configuration was validated, but image builds and container execution have not been tested.
+The in-app update check only queries the latest **stable** GitHub release, caching successful results for 24 hours. It does not notify about previews or update your server automatically. Select previews manually from [Releases](https://github.com/xilele777/snotes/releases). Direct Node.js operation and the Playwright end-to-end suite have been verified. Docker Compose configuration was validated, but image builds and container execution have not been tested.
 
 ## Features
 
 - **Offline editing**: read and edit notes already synced to the device, then sync when reconnected.
 - **Markdown editor**: headings, numbered lists, task lists, tables, images, and undo/redo, with Markdown stored as the source.
-- **Organization**: groups, stars, pins, color markers, and search across titles and bodies.
-- **Portable data**: export every note as a Markdown zip (images and properties included) and import `.md` files or a backup zip back in; single notes can be copied, downloaded or shared to other apps.
+- **Organization**: groups (rename, color, reorder, delete), stars, pins, color markers; search takes several space-separated keywords and shows the matching excerpt when the hit is in the body.
+- **Portable data**: export every note as a Markdown zip (images and properties included) and import `.md` files or a backup zip back in; re-importing never duplicates notes and reuses groups with the same name. Single notes can be copied, downloaded, shared to other apps or printed / saved as PDF.
 - **Dark mode and personalization**: follow the system theme or pick light or dark, adjust body font size and editor width; settings are saved per device.
 - **Trash**: preview and restore deleted notes, each showing how many days remain before automatic deletion (30 by default); permanent deletion and emptying the trash require confirmation.
 - **Writing statistics**: word counts, writing streaks, an activity heatmap, group distribution, and opens across devices.
 - **Device sync**: properties and bodies sync separately; concurrent edits produce conflict copies for review and merging.
 - **Body history**: older versions are kept automatically when edits are 5 minutes apart or large, both in the browser and on the server (20 entries, 30 days each); "History" in the editor top bar merges both and restores with one click.
-- **Images and PWA**: paste images to upload to your server, view cached images offline, and install the app on desktop or mobile.
+- **Images and PWA**: paste images to upload to your server, double-click or long-press to zoom, flip and download in a lightbox, view cached images offline, and install the app on desktop or mobile; once installed it accepts shared text and links and offers a "New note" shortcut on the icon.
 - **Lightweight UI**: system fonts, shared SVG icons, and lazy loading for the editor and statistics.
 
 ## Interface and controls
@@ -53,7 +53,7 @@ Desktop uses three columns for navigation, the note list, and the editor. Trash 
 | Statistics icon | Open statistics; close with its button, Escape, the backdrop, or system Back |
 | "Settings" at the bottom of the icon rail | A tabbed dialog: **Appearance** (theme, font size, editor width, per device), **Data** (export all, import a backup), **Shortcuts** (including a Markdown cheat sheet), **About** (version, upgrade steps, sign out). Shortcut `Ctrl / Cmd + ,` |
 | Editor top bar | On desktop the word count, document info and history sit directly in the bar; "⋯" holds copy Markdown, download .md, share to other apps (browsers with system share), print / save as PDF. On phones word count, info, history and "Delete" all live in "⋯" |
-| Editor footer | Desktop shows only the save state and word count; hidden on phones. Action feedback appears as a short message at the top of the screen |
+| Action feedback | Copy, download, restore and similar results appear as a short message at the top of the screen and fade after 3.5 seconds |
 
 Mobile opens to the list and switches to the editor when a note is selected. The top-left button opens navigation; the back button or system Back returns to the list. Desktop also supports focus mode.
 
@@ -62,8 +62,15 @@ Mobile opens to the list and switches to the editor when a note is selected. The
 | `Alt / Option + N` | Create a note (`Ctrl + N` opens a browser window and cannot be intercepted) |
 | `Ctrl / Cmd + ,` | Open settings |
 | `Ctrl / Cmd + K` or `Ctrl / Cmd + F` | Focus note search |
-| `Ctrl / Cmd + Z` | Undo in the editor |
+| `Ctrl / Cmd + Shift + S` / `P` / `D` | Star / pin / delete the current note (delete asks for confirmation) |
+| `Ctrl / Cmd + Alt + ↑` / `↓` | Previous / next note in the list |
+| `Ctrl / Cmd + Shift + F` | Focus mode |
+| `Ctrl / Cmd + Shift + U` | Sync now |
+| `Ctrl / Cmd + Z` / `Y` | Undo / redo in the editor |
+| `Ctrl / Cmd + P` | Print the current note |
 | `Esc` | Close the current dialog or sidebar, exit focus mode, or clear search |
+
+The full list, including editor shortcuts and the Markdown cheat sheet, is on the Shortcuts tab in Settings.
 
 ## Stack
 
@@ -202,7 +209,7 @@ On mobile, use "Add to Home Screen" in Safari or Chrome to run it as a standalon
 
 ### 8. Updating to a new version
 
-Manually deployed Workers do **not** update themselves when a release is published; pull the code and redeploy. At app startup, the app checks the latest stable GitHub Release and caches successful results for 24 hours. A blue dot on the version label and on the "Settings" rail button indicates a newer release; the About tab in Settings links to release notes and shows upgrade steps. For release notifications, choose **Watch → Custom → Releases** on GitHub and enable email in your notification settings. The `git pull` instructions below apply to a tracked branch; pinned deployments should use the [tag upgrade steps](#choose-a-deployment-and-version) above.
+Manually deployed Workers do **not** update themselves when a release is published; pull the code and redeploy. At app startup, the app checks the latest stable GitHub Release and caches successful results for 24 hours. A blue dot on the "Settings" rail button indicates a newer release; the About tab in Settings links to release notes and shows upgrade steps. For release notifications, choose **Watch → Custom → Releases** on GitHub and enable email in your notification settings. The `git pull` instructions below apply to a tracked branch; pinned deployments should use the [tag upgrade steps](#choose-a-deployment-and-version) above.
 
 Read the [CHANGELOG](CHANGELOG.md), back up your data following the [operations guide](docs/operations.md), enter the project directory and check `git status`. **If `wrangler.jsonc` has uncommitted deployment settings**, back it up outside the repository, then stash those changes:
 
@@ -224,7 +231,7 @@ npx wrangler d1 migrations apply snotes --remote    # only does work when there 
 npm run deploy                                      # build and deploy
 ```
 
-Replace `snotes` in the migration command if you renamed the database. Secrets such as `ACCESS_TOKEN` stay on Cloudflare and do not need to be re-entered. After deployment, stay online while the browser downloads the new Service Worker and cache, then reload or close all app windows and reopen. Check the version dialog to verify the new build; offline clients or clients still using the old cache do not update immediately.
+Replace `snotes` in the migration command if you renamed the database. Secrets such as `ACCESS_TOKEN` stay on Cloudflare and do not need to be re-entered. After deployment, stay online while the browser downloads the new Service Worker and cache, then reload or close all app windows and reopen. Check the About tab in Settings to verify the new build; offline clients or clients still using the old cache do not update immediately.
 
 ### Optional: configure the usage-monitoring API
 
@@ -397,7 +404,7 @@ docs/           design documents, operations guide
 - [Operations guide](docs/operations.md) (Chinese) — token mechanics, sync failure triage, backups, FAQ
 - [Server deployment](docs/server-deployment.md) (Chinese) — Node.js, Docker, systemd, HTTPS, backups and upgrades
 - [UI design and verification](docs/ui-refresh.md) (Chinese)
-- [Feature backlog](docs/roadmap.md) (Chinese) — planned features and operational improvements in three tiers
+- [Feature backlog](docs/roadmap.md) (Chinese) — evaluation, decisions and per-release implementation log; all four tiers are complete
 - [Changelog](CHANGELOG.md)
 
 ## Security
