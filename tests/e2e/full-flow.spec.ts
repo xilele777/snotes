@@ -231,9 +231,12 @@ test('搜索多个关键词取交集，分组视图搜不到时可跳到全部�
   await page.keyboard.type('讨论了预算')
   await expect(page.locator('.note-item').first()).toContainText('周会记录')
 
-  await createNote(page)
+  // 新建后要等编辑器真的切到新笔记再输入，否则标题会丢字（见 docs/进度.md）
+  await createNoteAndWait(page, page.locator('.ProseMirror'))
   await page.locator('.milkdown').click()
   await page.keyboard.type('# 周会记录 二')
+  // 等第二条的标题真的落库并出现在列表里，再切视图；否则 debounce 还没存盘就切走，正文会空
+  await expect(page.locator('.note-item').first()).toContainText('周会记录 二')
   await expect(page.locator('.note-item')).toHaveCount(2)
 
   await page.getByPlaceholder('搜索笔记').fill('周会 预算')
