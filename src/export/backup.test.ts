@@ -193,6 +193,11 @@ describe('导入', () => {
     expect(note).toMatchObject({ star: 1, top: 1, skin_color: '#cb8585', create_time: 1234, body: '# 会议\n\n正文' })
     const group = (await db.groups.toArray())[0]
     expect(group).toMatchObject({ name: '工作', color: '#86a394' })
+
+    // 再导一次同一个包：分组按名字复用，不会多出第二个「工作」
+    const again = await importBackup([new File([new Uint8Array(zip)], 'backup.zip', { type: 'application/zip' })])
+    expect(again).toMatchObject({ notes: 0, skipped: 1, groups: 0 })
+    expect((await db.groups.toArray()).filter((g) => g.name === '工作')).toHaveLength(1)
     // 分组 id 是新建的，笔记要落在新 id 上
     expect(note.group_id).toBe(group.group_id)
   })

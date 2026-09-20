@@ -18,7 +18,7 @@ import { SKIN_COLORS } from './palette'
 import { EMPTY_FORMAT_STATE, type FormatState } from '../editor/format'
 import { copyMarkdown, downloadMarkdown, shareMarkdown } from '../export/share'
 import { notify } from '../notify'
-import { useUiStore } from '../stores/ui'
+import { trashDaysLeft, useUiStore } from '../stores/ui'
 import { useMediaQuery } from './useMediaQuery'
 import { useWorkspaceScroll } from './useWorkspaceScroll'
 
@@ -78,7 +78,7 @@ onUnmounted(() => {
   window.removeEventListener('keydown', onPopoverKeydown, true)
 })
 
-/** 顶栏「⋯」菜单：收拢复制、下载、分享、打印，手机上还有文档信息、历史、字数与删除 */
+/** 顶栏「⋯」菜单（回收站里没有）：收拢复制、下载、分享、打印，手机上还有文档信息、历史、字数与删除 */
 const moreButton = ref<HTMLButtonElement | null>(null)
 const menuOpen = ref(false)
 
@@ -225,6 +225,14 @@ function closeLightbox() {
   lightboxOpen.value = false
 }
 
+/** 回收站详情顶栏的说明：按服务端保留天数算还剩几天，关闭了自动清理就只说在回收站中 */
+const trashNotice = computed(() => {
+  const note = notes.current
+  if (!note) return ''
+  const left = trashDaysLeft(note.update_time, ui.trashRetentionDays)
+  return left === null ? '此笔记在回收站中' : `此笔记还有 ${left} 天被删除`
+})
+
 /** 当前笔记字数统计（实时随正文变化） */
 const wordCount = computed(() => countWords(notes.current?.body ?? ''))
 
@@ -299,21 +307,12 @@ async function runShare() {
         </div>
       </div>
 
-      <!-- 回收站详情：只读，动作换成恢复 / 彻底删除；「更多」只留信息、历史、字数、复制、下载、打印 -->
+      <!-- 回收站详情：只读，只剩恢复 / 彻底删除两个动作，顶栏说明还有几天被自动删除 -->
       <template v-if="readonly">
-        <span v-if="notes.current" class="trash-notice">此笔记在回收站中</span>
+        <span v-if="notes.current" class="trash-notice">{{ trashNotice }}</span>
         <div v-if="notes.current" class="op-bar">
           <button class="trash-op recover" data-op="recover" @click="notes.recover(notes.current.id)">恢复</button>
           <button class="trash-op purge" data-op="purge" @click="confirmAction = 'purge'">彻底删除</button>
-          <template v-if="!compact">
-            <span class="op-separator" aria-hidden="true"></span>
-            <button class="op-btn op-words" data-op="wordcount" title="字数统计" aria-label="字数统计" @click="showWordCount = true">{{ wordCount.words }} 字</button>
-            <button class="op-btn" data-op="info" title="文档信息" aria-label="文档信息" @click="showInfo = true"><AppIcon name="info" /></button>
-            <button class="op-btn" data-op="history" title="历史版本" aria-label="历史版本" @click="showHistory = true"><AppIcon name="clock" /></button>
-          </template>
-          <button ref="moreButton" class="op-btn" data-op="more" :class="{ open: menuOpen }" title="更多操作" aria-label="更多操作" aria-haspopup="menu" :aria-expanded="menuOpen" @click="toggleMenu">
-            <AppIcon name="more" />
-          </button>
         </div>
       </template>
 
@@ -447,9 +446,9 @@ async function runShare() {
     </div>
 
     <NoteMenu
+      v-if="!readonly"
       :open="menuOpen"
       :anchor="moreButton"
-      :readonly="readonly"
       :can-share="canShare"
       :show-delete="compact"
       :show-doc-items="compact"

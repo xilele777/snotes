@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { onMounted, ref } from 'vue'
 import { isMobile, openDrawer, pushNav } from '../navigation'
 import EmptyState from './EmptyState.vue'
 import ListSkeleton from './ListSkeleton.vue'
@@ -12,6 +12,7 @@ import AppIcon from './AppIcon.vue'
 import { useWorkspaceScroll } from './useWorkspaceScroll'
 import { getMeta } from '../db/repo'
 import { TRASH_RETENTION_KEY } from '../sync/pull'
+import { trashDaysLeft } from '../stores/ui'
 
 const notes = useNotesStore()
 const ui = useUiStore()
@@ -33,21 +34,8 @@ onMounted(async () => {
   }
 })
 
-/** 回收站页顶部的保留期提示：服务端开启自动清理时说明几天后删除，否则说明会一直保留 */
-const retentionHint = computed(() => {
-  const days = ui.trashRetentionDays
-  if (days === undefined) return null
-  if (days === null) return '回收站里的笔记会一直保留，直到手动彻底删除或清空。'
-  return `笔记移入回收站 ${days} 天后会自动彻底删除，届时无法恢复。`
-})
-
 /** 某条笔记还剩几天被自动删除；进回收站的时间就是它的 update_time */
-function daysLeft(updateTime: number): number | null {
-  const days = ui.trashRetentionDays
-  if (!days) return null
-  const left = Math.ceil((updateTime + days * 86_400_000 - Date.now()) / 86_400_000)
-  return Math.max(0, left)
-}
+const daysLeft = (updateTime: number) => trashDaysLeft(updateTime, ui.trashRetentionDays)
 
 /** 确认弹窗：null 关闭；{ kind: 'single' } 是某条笔记的彻底删除，'clean' 是清空回收站 */
 const confirm = ref<{ kind: 'single'; id: string } | { kind: 'clean' } | null>(null)
@@ -74,8 +62,6 @@ async function runConfirm() {
         清空
       </button>
     </div>
-
-    <p v-if="retentionHint && notes.notes.length > 0" class="trash-hint" role="note">{{ retentionHint }}</p>
 
     <NoteSearch v-if="notes.notes.length > 0 || ui.query.trim()" @first="notes.visible[0] && selectNote(notes.visible[0].id)" />
 

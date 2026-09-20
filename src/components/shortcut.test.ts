@@ -5,9 +5,12 @@ const mod = (key: string) => ({ metaKey: true, ctrlKey: false, key })
 const ctrl = (key: string) => ({ metaKey: false, ctrlKey: true, key })
 
 describe('resolveShortcut', () => {
-  it('Cmd/Ctrl + Alt + N → create；不带 Alt 的 Mod+N 是浏览器新窗口，不抢', () => {
-    expect(resolveShortcut({ ...mod('n'), altKey: true }, { hasQuery: false })).toEqual({ type: 'create' })
-    expect(resolveShortcut({ ...ctrl('n'), altKey: true }, { hasQuery: false })).toEqual({ type: 'create' })
+  it('Alt + N → create；Mod+N 与 Mod+Alt+N 都不抢（浏览器新窗口 / AltGr）', () => {
+    expect(resolveShortcut({ metaKey: false, ctrlKey: false, altKey: true, key: 'n' }, { hasQuery: false })).toEqual({ type: 'create' })
+    // Mac 上 Option+N 是死键，key 为 Dead，按物理键位识别
+    expect(resolveShortcut({ metaKey: false, ctrlKey: false, altKey: true, key: 'Dead', code: 'KeyN' }, { hasQuery: false })).toEqual({ type: 'create' })
+    expect(resolveShortcut({ ...mod('n'), altKey: true }, { hasQuery: false })).toBeNull()
+    expect(resolveShortcut({ ...ctrl('n'), altKey: true }, { hasQuery: false })).toBeNull()
     expect(resolveShortcut(mod('n'), { hasQuery: false })).toBeNull()
     expect(resolveShortcut(ctrl('n'), { hasQuery: false })).toBeNull()
   })
@@ -47,8 +50,8 @@ describe('resolveShortcut', () => {
     expect(resolveShortcut({ metaKey: false, ctrlKey: false, key: 'N' }, { hasQuery: false })).toBeNull()
   })
 
-  it('大小写不敏感：Cmd+Alt+N 的 key 为大写 N 仍匹配', () => {
-    expect(resolveShortcut({ metaKey: true, ctrlKey: false, altKey: true, key: 'N' }, { hasQuery: false }))
+  it('大小写不敏感：Alt+N 的 key 为大写 N 仍匹配', () => {
+    expect(resolveShortcut({ metaKey: false, ctrlKey: false, altKey: true, key: 'N' }, { hasQuery: false }))
       .toEqual({ type: 'create' })
   })
 })

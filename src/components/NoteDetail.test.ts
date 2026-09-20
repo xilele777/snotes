@@ -618,32 +618,32 @@ describe('NoteDetail 回收站只读态', () => {
     return { notes, note, wrapper }
   }
 
-  it('渲染回收站提示与恢复 / 彻底删除，不渲染编辑动作；没有底栏', async () => {
+  it('渲染剩余天数提示与恢复 / 彻底删除，不渲染编辑动作、字数、信息、历史与「⋯」', async () => {
     const { wrapper } = await mountTrashed()
 
-    expect(wrapper.text()).toContain('此笔记在回收站中')
+    expect(wrapper.text()).toContain('此笔记还有 30 天被删除')
     expect(wrapper.find('.format-bar').exists()).toBe(false)
     expect(op(wrapper, 'recover').exists()).toBe(true)
     expect(op(wrapper, 'purge').exists()).toBe(true)
-    expect(op(wrapper, 'more').exists()).toBe(true)
+    for (const name of ['more', 'wordcount', 'info', 'history']) expect(op(wrapper, name).exists()).toBe(false)
+    expect(menu()).toBeNull()
     expect(op(wrapper, 'top').exists()).toBe(false)
     expect(op(wrapper, 'trash').exists()).toBe(false)
     expect(op(wrapper, 'undo').exists()).toBe(false)
     expect(op(wrapper, 'redo').exists()).toBe(false)
     expect(op(wrapper, 'image').exists()).toBe(false)
     expect(wrapper.find('.editor-footer').exists()).toBe(false)
-    expect(op(wrapper, 'history').exists()).toBe(true)
     wrapper.unmount()
   })
 
-  it('只读态的「⋯」菜单没有分享与删除，仍有信息、历史、字数、复制、下载、打印', async () => {
+  it('服务端关闭自动清理时只说在回收站中；手机上同样没有「⋯」', async () => {
     const restore = mockCompact()
     try {
+      const ui = useUiStore()
+      ui.trashRetentionDays = null
       const { wrapper } = await mountTrashed()
-      await openMore(wrapper)
-      for (const name of ['info', 'history', 'wordcount', 'copy', 'download', 'print']) expect(menuAction(name)).not.toBeNull()
-      expect(menuAction('share')).toBeNull()
-      expect(menuAction('trash')).toBeNull()
+      expect(wrapper.text()).toContain('此笔记在回收站中')
+      expect(op(wrapper, 'more').exists()).toBe(false)
       wrapper.unmount()
     } finally {
       restore()
@@ -741,27 +741,6 @@ describe('顶栏的历史版本', () => {
     await vi.waitFor(() => expect(notes.current?.body).toBe('# 第一版'))
     await vi.waitFor(() => expect(document.querySelectorAll('.history-item')).toHaveLength(2))
     expect(notice.value).toContain('已恢复')
-    wrapper.unmount()
-  })
-
-  it('回收站里只读：没有恢复按钮', async () => {
-    const notes = useNotesStore()
-    const ui = useUiStore()
-    const note = await notes.create()
-    await notes.saveBody(note.id, '# 第一版')
-    await notes.saveBody(note.id, '# 第二版')
-    await notes.trash(note.id)
-    ui.view = 'trash'
-    await notes.load()
-    notes.currentId = note.id
-
-    const wrapper = mount(NoteDetail, { props: { readonly: true }, attachTo: document.body })
-    await wrapper.vm.$nextTick()
-    await op(wrapper, 'history').trigger('click')
-    await flushPromises()
-
-    expect(document.querySelectorAll('.history-item')).toHaveLength(1)
-    expect(document.querySelector('[data-op="restore"]')).toBeNull()
     wrapper.unmount()
   })
 })

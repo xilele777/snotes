@@ -98,7 +98,7 @@ describe('云端正文历史', () => {
 })
 
 describe('pull 下发回收站保留天数', () => {
-  it('未配置时为 null，配置了则为整数天数，非法值按未知（null）处理', async () => {
+  it('未配置时为默认 30，配置了则为整数天数，关闭为 null，非法值按未知（null）处理', async () => {
     const { createApp } = await import('../../worker/app')
     const app = createApp()
     const pull = (over: Record<string, unknown>) =>
@@ -108,7 +108,8 @@ describe('pull 下发回收站保留天数', () => {
         body: JSON.stringify({ since: 0 }),
       }, { ...env, ...over })
 
-    expect((await (await pull({ TRASH_RETENTION_DAYS: undefined })).json<{ trash_retention_days: unknown }>()).trash_retention_days).toBeNull()
+    expect((await (await pull({ TRASH_RETENTION_DAYS: undefined })).json<{ trash_retention_days: unknown }>()).trash_retention_days).toBe(30)
+    expect((await (await pull({ TRASH_RETENTION_DAYS: 'off' })).json<{ trash_retention_days: unknown }>()).trash_retention_days).toBeNull()
     expect((await (await pull({ TRASH_RETENTION_DAYS: '30' })).json<{ trash_retention_days: unknown }>()).trash_retention_days).toBe(30)
     expect((await (await pull({ TRASH_RETENTION_DAYS: 'abc' })).json<{ trash_retention_days: unknown }>()).trash_retention_days).toBeNull()
   })

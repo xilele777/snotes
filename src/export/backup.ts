@@ -345,18 +345,24 @@ export async function importBackup(
   const metaByFile = new Map((index?.notes ?? []).map((n) => [n.file, n]))
   const groups = useGroupsStore()
 
-  // 分组：index.json 里有记录的分组先建好，剩下的按文件夹名现建。
-  const groupIdByOldId = new Map<string, string>()
-  if (index) {
-    for (const g of index.groups) {
-      const created = await groups.create(g.name, { color: g.color })
-      groupIdByOldId.set(g.group_id, created.group_id)
-      result.groups++
-    }
-  }
-
+  // 分组按名字对齐：本机已有同名分组就直接复用，没有才新建。
+  // 重复导入同一个备份、或备份里的分组与本机重名，都不该再多出一个同名分组。
   const groupIdByName = new Map<string, string>()
   for (const g of groups.groups) groupIdByName.set(g.name, g.group_id)
+  async function ensureGroup(name: string, color?: string | null): Promise<string> {
+    const existing = groupIdByName.get(name)
+    if (existing) return existing
+    const created = await groups.create(name, { color })
+    groupIdByName.set(name, created.group_id)
+    result.groups++
+    return created.group_id
+  }
+
+  // index.json 里有记录的分组先对齐好，剩下的按文件夹名现建。
+  const groupIdByOldId = new Map<string, string>()
+  if (index) {
+    for (const g of index.groups) groupIdByOldId.set(g.group_id, await ensureGroup(g.name, g.color))
+  }
 
   const urlByImagePath = new Map<string, string>()
   const total = staged.length
@@ -372,13 +378,7 @@ export async function importBackup(
     if (meta?.group_id) {
       groupId = groupIdByOldId.get(meta.group_id) ?? null
     } else if (dir && dir !== UNGROUPED_DIR) {
-      const name = safeName(dir, UNGROUPED_DIR)
-      if (!groupIdByName.has(name)) {
-        const created = await groups.create(name)
-        groupIdByName.set(name, created.group_id)
-        result.groups++
-      }
-      groupId = groupIdByName.get(name) ?? null
+      groupId = await ensureGroup(safeName(dir, UNGROUPED_DIR))
     }
 
     // 已经导入过（或本来就是本机的笔记）就跳过，重复导入不会翻倍。

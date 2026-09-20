@@ -23,7 +23,7 @@ export interface ShortcutEvent {
 
 /** 设置「快捷键」页展示用的全局快捷键清单；Mod 由界面按平台替换成 Ctrl 或 ⌘ */
 export const SHORTCUT_LIST: { keys: string; label: string }[] = [
-  { keys: 'Mod Alt N', label: '新建笔记' },
+  { keys: 'Alt N', label: '新建笔记' },
   { keys: 'Mod K', label: '搜索' },
   { keys: 'Mod ,', label: '打开设置' },
   { keys: 'Mod Shift S', label: '星标 / 取消星标' },
@@ -55,7 +55,8 @@ export const MARKDOWN_HINTS: { keys: string; label: string }[] = [
 
 /**
  * 解析键盘快捷键（UI 规格 §6.2）。
- * - Cmd/Ctrl + Alt + N → 新建笔记（不带 Alt 的 Mod+N 是浏览器新窗口，页面拦不住）
+ * - Alt + N → 新建笔记。Mod+N 是浏览器新窗口，页面拦不住；Ctrl+Alt 在 Windows 上等同 AltGr，
+ *   常被输入法与键盘布局吃掉。Mac 上 Option+N 是死键，key 变成 Dead，靠 code 辨认。
  * - Cmd/Ctrl + K / F → 聚焦搜索框
  * - Cmd/Ctrl + , → 打开设置
  * - Esc → 仅在有活动查询时清空（无查询时不劫持，交给浏览器关闭弹层等默认行为）
@@ -85,7 +86,7 @@ export function resolveShortcut(
     if (key === 'u') return { type: 'syncNow' }
   }
 
-  if (mod && e.altKey && !e.shiftKey && key === 'n') return { type: 'create' }
+  if (!mod && e.altKey && !e.shiftKey && (key === 'n' || e.code === 'KeyN')) return { type: 'create' }
   if (mod && (key === 'f' || key === 'k')) return { type: 'focusSearch' }
   if (mod && !e.shiftKey && !e.altKey && (key === ',' || e.code === 'Comma')) return { type: 'openSettings' }
   if (key === 'escape' && ctx.hasQuery) return { type: 'clearQuery' }

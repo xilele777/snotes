@@ -259,3 +259,4 @@
   - 快捷键：新建改 `Mod Alt N`（`Mod N` 被浏览器抢），删除 `Mod Shift 0–9`。设置页删去多段说明文字。
   - 发布结果：提交 008c684、标签 v0.15.0 已推送；线上迁移 0004 已执行；Cloudflare Version ID 90b70a31-c61c-4854-afbd-f4b53e8a5e7c；GitHub Release https://github.com/xilele777/snotes/releases/tag/v0.15.0。
 - 2026-09-21：v0.15.1 去掉历史版本弹窗顶部的规则说明文字。Cloudflare Version ID 6003c513-ebd4-47c6-8cfc-c0c9f858df2b；GitHub Release https://github.com/xilele777/snotes/releases/tag/v0.15.1。
+- 2026-09-21：v0.15.2 修复导入备份重名分组重复（`importBackup` 的 `ensureGroup` 按名字复用）；回收站保留期默认 30 天（`parseTrashRetentionDays` 未设置时返回 `DEFAULT_TRASH_RETENTION_DAYS`），客户端 `trashDaysLeft` 未知时也按 30 天算，详情顶栏改为「此笔记还有 N 天被删除」，删除回收站顶部提示；回收站详情去掉字数、信息、历史与 ⋯；新建快捷键改 `Alt N`（按 `code` 兼容 Mac 死键）。

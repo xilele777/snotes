@@ -308,7 +308,7 @@ test('删除后进回收站，能看详情，可恢复', async ({ page }) => {
 
   // 回收站里点条目也能看详情，且是只读的
   await page.locator('.note-item').first().click()
-  await expect(page.locator('.editor-top-bar')).toContainText('此笔记在回收站中')
+  await expect(page.locator('.editor-top-bar')).toContainText(/此笔记还有 \d+ 天被删除/)
   await expect(page.locator('.milkdown .ProseMirror')).toContainText('待删除')
   await expect(page.locator('.milkdown .ProseMirror')).toHaveAttribute('contenteditable', 'false')
 

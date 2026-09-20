@@ -4,7 +4,7 @@ import AppIcon from './AppIcon.vue'
 
 /**
  * 笔记顶栏「⋯」打开的菜单：收拢低频的笔记级操作。
- * 只读态（回收站）去掉分享与删除；文档信息、历史版本、字数统计和删除只在 ≤720px 出现，
+ * 回收站详情不渲染这个菜单；文档信息、历史版本、字数统计和删除只在 ≤720px 出现，
  * 桌面顶栏放得下，它们直接摆在顶栏；手机顶栏没有余量，⋯ 顶替的正是删除按钮的位置。
  */
 export type NoteMenuAction = 'info' | 'history' | 'wordcount' | 'copy' | 'download' | 'share' | 'print' | 'trash'
@@ -12,7 +12,6 @@ export type NoteMenuAction = 'info' | 'history' | 'wordcount' | 'copy' | 'downlo
 defineProps<{
   open: boolean
   anchor: HTMLElement | null
-  readonly: boolean
   canShare: boolean
   showDelete: boolean
   /** 文档信息 / 历史版本 / 字数统计是否进菜单（桌面在顶栏直接可见） */
@@ -42,13 +41,13 @@ const emit = defineEmits<{ action: [NoteMenuAction]; close: [] }>()
     <button type="button" role="menuitem" class="menu-item" data-action="download" @click="emit('action', 'download')">
       <AppIcon name="download" :size="15" /><span>下载 .md</span>
     </button>
-    <button v-if="!readonly && canShare" type="button" role="menuitem" class="menu-item" data-action="share" @click="emit('action', 'share')">
+    <button v-if="canShare" type="button" role="menuitem" class="menu-item" data-action="share" @click="emit('action', 'share')">
       <AppIcon name="share" :size="15" /><span>分享到其他应用</span>
     </button>
     <button type="button" role="menuitem" class="menu-item" data-action="print" @click="emit('action', 'print')">
       <AppIcon name="printer" :size="15" /><span>打印 / 存为 PDF</span>
     </button>
-    <template v-if="!readonly && showDelete">
+    <template v-if="showDelete">
       <span class="menu-separator" aria-hidden="true"></span>
       <button type="button" role="menuitem" class="menu-item danger" data-action="trash" @click="emit('action', 'trash')">
         <AppIcon name="trash" :size="15" /><span>删除</span>

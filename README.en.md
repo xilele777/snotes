@@ -59,7 +59,7 @@ Mobile opens to the list and switches to the editor when a note is selected. The
 
 | Shortcut | Action |
 | --- | --- |
-| `Ctrl / Cmd + Alt + N` | Create a note (`Ctrl + N` opens a browser window and cannot be intercepted) |
+| `Alt / Option + N` | Create a note (`Ctrl + N` opens a browser window and cannot be intercepted) |
 | `Ctrl / Cmd + ,` | Open settings |
 | `Ctrl / Cmd + K` or `Ctrl / Cmd + F` | Focus note search |
 | `Ctrl / Cmd + Z` | Undo in the editor |

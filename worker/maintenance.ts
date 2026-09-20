@@ -8,7 +8,7 @@ import type { Env } from './types'
  * 三件事按顺序执行：
  * 1. 回收孤儿图片：`image` 表里的对象已不再被所属笔记正文引用，且上传超过宽限期。
  * 2. 清理过期回收站：`invalid = 1` 且进入回收站超过保留期的笔记走 purgeNotes 墓碑化。
- *    保留期是部署级配置（TRASH_RETENTION_DAYS），默认关闭。
+ *    保留期是部署级配置（TRASH_RETENTION_DAYS），默认 30 天，设为 0 / off 关闭。
  * 3. 回收超过保留期的墓碑行，不再依赖用户手动「清空回收站」。
  */
 
@@ -29,15 +29,19 @@ export interface MaintenanceReport {
   reaped_tombstones: number
 }
 
+/** 未配置 TRASH_RETENTION_DAYS 时的回收站保留天数 */
+export const DEFAULT_TRASH_RETENTION_DAYS = 30
+
 /**
- * 解析回收站保留天数。未设置、空串、`0`、`off` 都表示关闭；其余必须是正整数。
+ * 解析回收站保留天数。未设置或空串按默认 30 天；`0`、`off` 表示关闭；其余必须是正整数。
  * 非法值直接抛错：服务器版在启动时读取即可快速失败，Worker 则让本次 cron 报错，
  * 而不是悄悄按「关闭」或某个猜测值清理用户数据。
  */
 export function parseTrashRetentionDays(value: unknown): number | null {
-  if (value === undefined || value === null) return null
+  if (value === undefined || value === null) return DEFAULT_TRASH_RETENTION_DAYS
   const text = String(value).trim().toLowerCase()
-  if (text === '' || text === '0' || text === 'off' || text === 'false') return null
+  if (text === '') return DEFAULT_TRASH_RETENTION_DAYS
+  if (text === '0' || text === 'off' || text === 'false') return null
   if (!/^\d+$/.test(text)) throw new Error('TRASH_RETENTION_DAYS must be a positive integer number of days, or empty to disable')
   const days = Number(text)
   if (!Number.isSafeInteger(days) || days < 1) throw new Error('TRASH_RETENTION_DAYS must be a positive integer number of days, or empty to disable')

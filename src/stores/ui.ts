@@ -23,6 +23,19 @@ export interface WorkspacePosition {
   scroll: { list: number; editor: number; groups: number }
 }
 
+/** 服务端未告知时按默认 30 天计算回收站剩余天数 */
+export const DEFAULT_TRASH_RETENTION_DAYS = 30
+
+/**
+ * 回收站里的笔记还剩几天被自动删除。进回收站的时间就是它的 update_time；
+ * retention 为 null 表示服务端关闭了自动清理，返回 null；未知时按默认 30 天。
+ */
+export function trashDaysLeft(updateTime: number, retention: number | null | undefined, now = Date.now()): number | null {
+  const days = retention === undefined ? DEFAULT_TRASH_RETENTION_DAYS : retention
+  if (!days) return null
+  return Math.max(0, Math.ceil((updateTime + days * 86_400_000 - now) / 86_400_000))
+}
+
 export const useUiStore = defineStore('ui', () => {
   const view = ref<UiView>('all')
   const activeGroupId = ref<string | null>(null)

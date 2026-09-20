@@ -23,8 +23,11 @@ async function imageRows() {
 }
 
 describe('parseTrashRetentionDays', () => {
-  it('未设置、空串、0、off 都表示关闭', () => {
-    for (const value of [undefined, null, '', ' ', '0', 'off', 'OFF', 'false']) {
+  it('未设置或空串按默认 30 天；0、off 表示关闭', () => {
+    for (const value of [undefined, null, '', ' ']) {
+      expect(parseTrashRetentionDays(value)).toBe(30)
+    }
+    for (const value of ['0', 'off', 'OFF', 'false']) {
       expect(parseTrashRetentionDays(value)).toBeNull()
     }
   })
@@ -132,7 +135,7 @@ describe('purgeExpiredTrash', () => {
 })
 
 describe('runMaintenance', () => {
-  it('三项任务一起跑并返回统计，未配置保留期时不清回收站', async () => {
+  it('三项任务一起跑并返回统计，保留期关闭时不清回收站', async () => {
     const trashed = noteReq()
     await json('/api/notes', 'POST', trashed)
     await api(`/api/notes/${trashed.id}/trash`, { method: 'POST' })
@@ -141,7 +144,7 @@ describe('runMaintenance', () => {
     await env.DB.prepare('INSERT INTO note (id, invalid, create_time, update_time) VALUES (?, 2, 1, ?)')
       .bind('tomb', Date.now() - TOMBSTONE_RETENTION_MS - 1).run()
 
-    const report = await runMaintenance({ ...env, TRASH_RETENTION_DAYS: undefined }, Date.now())
+    const report = await runMaintenance({ ...env, TRASH_RETENTION_DAYS: 'off' }, Date.now())
 
     expect(report).toEqual({ orphan_images: 1, expired_trash: 0, reaped_tombstones: 1 })
     expect(await env.DB.prepare('SELECT id FROM note WHERE id = ?').bind('tomb').first()).toBeNull()

@@ -126,11 +126,11 @@ describe('App 新建入口', () => {
     const wrapper = mount(App, { attachTo: document.body })
     await flushPromises()
 
-    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'n', ctrlKey: true, altKey: true, isComposing: true }))
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'n', altKey: true, isComposing: true }))
     expect(create).not.toHaveBeenCalled()
 
     await wrapper.get('.group-add').trigger('click')
-    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'n', ctrlKey: true, altKey: true }))
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'n', altKey: true }))
     expect(create).not.toHaveBeenCalled()
     wrapper.unmount()
   })
@@ -164,7 +164,7 @@ describe('App 回收站详情', () => {
 
     expect(notes.currentId).toBe(note.id)
     expect(wrapper.findComponent(NoteDetail).props('readonly')).toBe(true)
-    expect(wrapper.find('.editor-top-bar').text()).toContain('此笔记在回收站中')
+    expect(wrapper.find('.editor-top-bar').text()).toContain('此笔记还有 30 天被删除')
     wrapper.unmount()
   })
 
@@ -227,7 +227,7 @@ describe('App 统计弹窗', () => {
     const close = dialog.querySelector<HTMLButtonElement>('[aria-label="关闭统计"]')!
     expect(document.activeElement).toBe(close)
     const create = vi.spyOn(notes, 'create')
-    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'n', ctrlKey: true, altKey: true, cancelable: true }))
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'n', altKey: true, cancelable: true }))
     expect(create).not.toHaveBeenCalled()
 
     window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', cancelable: true }))

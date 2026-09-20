@@ -64,7 +64,7 @@ Windows PowerShell 可以用 `Copy-Item server.env.example .env.server` 代替 `
 | `HOST` | `127.0.0.1` | HTTP 监听地址 |
 | `PORT` | `3000` | HTTP 监听端口 |
 | `SNOTES_DATA_DIR` | `./data` | 数据目录，相对路径基于启动进程的工作目录；生产环境建议用绝对路径 |
-| `TRASH_RETENTION_DAYS` | 无，关闭 | 回收站保留天数，超期笔记由每日维护任务自动彻底删除；留空或 `0` 关闭，非法值拒绝启动 |
+| `TRASH_RETENTION_DAYS` | `30` | 回收站保留天数，超期笔记由每日维护任务自动彻底删除；`0` 或 `off` 关闭，非法值拒绝启动 |
 
 `npm start` 自动读取当前目录的 `.env.server`，现有进程环境变量优先。直接执行 `node dist-server/index.mjs` 时，应由 systemd、Docker 或 shell 注入环境变量。首次启动创建数据库并执行 `migrations/`；后续启动只执行尚未应用的迁移，失败的迁移会回滚并阻止启动。启动 5 秒后执行一次维护任务（孤儿图片回收、回收站过期清理、墓碑回收），之后每 24 小时一次，结果以 `maintenance:` 开头写入标准输出。
 
