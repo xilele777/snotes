@@ -357,6 +357,23 @@ kbd { font-family: inherit; font-size: 10px; line-height: 20px; white-space: now
 .info-label { font-size: 11px; color: var(--text-tertiary); grid-row: 1; }
 .info-value { font-size: 13px; font-weight: 500; grid-column: 2; overflow-wrap: anywhere; }
 .info-sub { font-size: 11px; color: var(--text-tertiary); grid-column: 2; grid-row: 2; }
+.info-dialog { width: 420px; }
+/* 文档信息里的本地正文历史 */
+.history { margin: 0 0 4px; padding-top: 16px; border-top: 1px solid var(--border-light); }
+.history-title { display: flex; align-items: baseline; gap: 8px; margin: 0 0 10px; font-size: 12px; font-weight: 600; color: var(--text-secondary); }
+.history-count { font-weight: 400; color: var(--text-tertiary); }
+.history-empty { margin: 0; font-size: 12px; line-height: 1.7; color: var(--text-tertiary); }
+.history-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; max-height: 260px; overflow-y: auto; overscroll-behavior: contain; }
+.history-item { border-radius: 6px; }
+.history-item.open { background: var(--bg-app); }
+.history-row { display: flex; align-items: center; gap: 8px; min-height: 32px; padding: 0 6px; font-size: 12px; }
+.history-time { color: var(--text-primary); font-weight: 500; }
+.history-words { color: var(--text-tertiary); margin-right: auto; }
+.history-btn { min-height: 26px; padding: 0 8px; border: 0; border-radius: 5px; background: transparent; color: var(--text-secondary); font-size: 12px; }
+.history-btn:hover { background: var(--bg-hover); color: var(--text-primary); }
+.history-btn.restore { color: var(--accent); }
+.history-btn.restore:hover { background: var(--accent-soft); }
+.history-preview { margin: 0 6px 8px; padding: 10px 12px; max-height: 200px; overflow: auto; border: 1px solid var(--border-light); border-radius: 6px; background: var(--bg-surface); font: inherit; font-size: 12px; line-height: 1.7; white-space: pre-wrap; overflow-wrap: anywhere; color: var(--text-secondary); }
 .wordcount-dialog { max-width: 340px; text-align: center; }
 .wordcount-dialog .dialog-footer { justify-content: center; }
 .wordcount-list { list-style: none; margin: 24px 0; padding: 0; display: flex; justify-content: space-around; gap: 8px; }

@@ -556,3 +556,53 @@ describe('NoteDetail 把编辑器的基线交给 store', () => {
     wrapper.unmount()
   })
 })
+
+describe('文档信息弹窗的历史版本', () => {
+  it('列出快照，点恢复后正文回到那一版且当前正文进入历史', async () => {
+    const notes = useNotesStore()
+    const note = await notes.create()
+    await notes.saveBody(note.id, '# 第一版')
+    await notes.saveBody(note.id, '# 第二版')
+    notes.currentId = note.id
+
+    const wrapper = mount(NoteDetail, { attachTo: document.body })
+    await wrapper.vm.$nextTick()
+    await op(wrapper, 'info').trigger('click')
+    await flushPromises()
+
+    const items = document.querySelectorAll('.history-item')
+    expect(items).toHaveLength(1)
+    expect(items[0].querySelector('.history-words')!.textContent).toContain('字')
+    ;(items[0].querySelector('button[aria-expanded]') as HTMLButtonElement).click()
+    await flushPromises()
+    expect(document.querySelector('.history-preview')!.textContent).toBe('# 第一版')
+
+    ;(document.querySelector('[data-op="restore"]') as HTMLButtonElement).click()
+    await flushPromises()
+    await vi.waitFor(() => expect(notes.current?.body).toBe('# 第一版'))
+    await vi.waitFor(() => expect(document.querySelectorAll('.history-item')).toHaveLength(2))
+    expect(wrapper.find('.share-notice').text()).toContain('已恢复')
+    wrapper.unmount()
+  })
+
+  it('回收站里只读：没有恢复按钮', async () => {
+    const notes = useNotesStore()
+    const ui = useUiStore()
+    const note = await notes.create()
+    await notes.saveBody(note.id, '# 第一版')
+    await notes.saveBody(note.id, '# 第二版')
+    await notes.trash(note.id)
+    ui.view = 'trash'
+    await notes.load()
+    notes.currentId = note.id
+
+    const wrapper = mount(NoteDetail, { props: { readonly: true }, attachTo: document.body })
+    await wrapper.vm.$nextTick()
+    await op(wrapper, 'info').trigger('click')
+    await flushPromises()
+
+    expect(document.querySelectorAll('.history-item')).toHaveLength(1)
+    expect(document.querySelector('[data-op="restore"]')).toBeNull()
+    wrapper.unmount()
+  })
+})

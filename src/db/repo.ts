@@ -4,6 +4,7 @@ import type { LocalNote, NoteMeta, OutboxTask } from '../../shared/types'
 import { emitLocalWrite } from '../sync/signal'
 import { scheduleOpensSync } from '../sync/opens'
 import { db } from './schema'
+import { deleteHistoryIn, getHistoryEntry, maybeSnapshotIn, recordSnapshotIn } from './history'
 
 export type ListView = 'all' | 'trash' | 'star' | 'group'
 
@@ -145,13 +146,17 @@ export async function createConflictCopy(
 export async function updateBody(id: string, content: string, base?: string): Promise<void> {
   const { title, summary, thumbnail } = derive(content)
 
-  await db.transaction('rw', db.notes, db.outbox, async () => {
+  await db.transaction('rw', db.notes, db.outbox, db.history, async () => {
     const note = await db.notes.get(id)
     if (!note) return
 
     if (base !== undefined && note.body !== base && note.body !== content) {
       await insertNoteIn(buildNote(conflictContent(note.body), { group_id: note.group_id }))
     }
+
+    const now = Date.now()
+    // 本地正文历史：被替换的旧正文按间隔或改动量留快照，快照时间记旧正文最后落库的时刻
+    await maybeSnapshotIn(id, note.body, content, note.update_time, now)
 
     await db.notes.update(id, {
       body: content,
@@ -160,7 +165,7 @@ export async function updateBody(id: string, content: string, base?: string): Pr
       title,
       summary,
       thumbnail,
-      update_time: Date.now(),
+      update_time: now,
       dirty: bumpDirty(note.dirty, 'body'),
     })
 
@@ -237,8 +242,9 @@ export const recoverNote = (id: string) => setInvalid(id, 0, 'recover')
  * 笔记行都没了，applyAck 里 db.notes.get 会返回 undefined 而提前返回，清脏位那套逻辑不参与。
  */
 export async function purgeNote(id: string): Promise<void> {
-  await db.transaction('rw', db.notes, db.outbox, async () => {
+  await db.transaction('rw', db.notes, db.outbox, db.history, async () => {
     await db.notes.delete(id)
+    await deleteHistoryIn([id])
     // 笔记行都要物理删了，它名下还没推出去的 create/body/prop 任务已无意义，
     // 留着会让 push 多发一次注定 404 的请求。先清掉，再入队唯一的 purge。
     await db.outbox.where('note_id').equals(id).delete()
@@ -254,14 +260,31 @@ export async function purgeNote(id: string): Promise<void> {
  * 多次调用会合并成同一行（payload 都是 { scope: 'trash' }，幂等）。
  */
 export async function purgeTrash(): Promise<void> {
-  await db.transaction('rw', db.notes, db.outbox, async () => {
+  await db.transaction('rw', db.notes, db.outbox, db.history, async () => {
     const trashed = await db.notes.where('invalid').equals(1).toArray()
     if (trashed.length === 0) return
 
     await db.notes.bulkDelete(trashed.map((n) => n.id))
+    await deleteHistoryIn(trashed.map((n) => n.id))
     await enqueueIn(newTask({ note_id: '__trash__', kind: 'purge', payload: { scope: 'trash' } }))
   })
   emitLocalWrite()
+}
+
+/**
+ * 把某条历史快照恢复为当前正文。恢复前先把此刻的正文无条件存一条快照（恢复错了还能再恢复回来），
+ * 然后走与编辑器保存相同的 updateBody，正常入队推送。
+ */
+export async function restoreFromHistory(id: string, historyId: number): Promise<boolean> {
+  const entry = await getHistoryEntry(historyId)
+  if (!entry || entry.note_id !== id) return false
+  await db.transaction('rw', db.notes, db.history, async () => {
+    const note = await db.notes.get(id)
+    if (!note || note.body === entry.body || !note.body.trim()) return
+    await recordSnapshotIn(id, note.body, note.update_time)
+  })
+  await updateBody(id, entry.body)
+  return true
 }
 
 export function getNote(id: string): Promise<LocalNote | undefined> {

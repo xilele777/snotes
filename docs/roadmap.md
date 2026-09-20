@@ -2,7 +2,7 @@
 
 - 日期：2026-09-19
 - 基线：v0.7.1，main 分支 a98e911
-- 状态：实施中。第一档 1 与第二档 1 已完成，第二档 2、第一档 2、第一档 3、第一档 4 已于 v0.9.0 发布，第二档 3、第二档 5、第一档 5 已于 v0.10.0 发布，第三档 0、1、2 已于 v0.11.0 发布，第三档 3、4 已于 v0.12.0 发布，第三档 5 待做。
+- 状态：实施中。第一档 1 与第二档 1 已完成，第二档 2、第一档 2、第一档 3、第一档 4 已于 v0.9.0 发布，第二档 3、第二档 5、第一档 5 已于 v0.10.0 发布，第三档 0、1、2 已于 v0.11.0 发布，第三档 3、4 已于 v0.12.0 发布，第三档 5 已于 v0.13.0 发布。实施顺序第 1 到第 6 步全部完成。
 - 来源：对 `src/`、`shared/`、`worker/`、`server/` 的代码审阅。各项「现状」均为代码中确认的事实，不是推测
 
 ## 第一档：补齐半成品
@@ -195,3 +195,6 @@
 - 2026-09-20：v0.12.0 完成实施顺序第 6 步的前两项：
   - 第三档 3「登录限流」：新增 `server/rate-limit.ts`（`LoginLimiter` 按来源计数、封锁翻倍封顶；`clientAddress` 只信任本机与私网对端的 `X-Forwarded-For`），`server/app.ts` 在 `/api/*` 前置中间件，`server/index.ts` 把 socket 对端地址放进 `Env.REMOTE_ADDRESS`。客户端 `api/client.ts` 识别 `error: 'too_many_attempts'` 的 429，清令牌并由 `markTooManyAttempts` 提示等待时长。Cloudflare 版按建议只在 README 引导配置 WAF 速率限制规则。
   - 第三档 4「打印样式」：`styles.css` 末尾新增 `@media print`，只保留 `.editor-body`，深色主题也按浅色打印，代码块换行、块级元素避免跨页，待办以 ☐ ☑ 呈现。
+- 2026-09-20：v0.13.0 完成实施顺序第 6 步最后一项，roadmap 全部实施项到此做完：
+  - 第三档 5「本地正文历史」：`src/db/schema.ts` 升 `version(2)` 新增 `history` 表（`++id, note_id, time`）；新增 `src/db/history.ts`（`shouldSnapshot` 纯函数判定、`maybeSnapshotIn` / `recordSnapshotIn` / `deleteHistoryIn` 事务内工具、`listHistory`），`repo.updateBody` 落库前按 5 分钟或 100 可见字符阈值把旧正文存快照，`purgeNote`、`purgeTrash` 与 pull 的墓碑删除连带清理；`repo.restoreFromHistory` 恢复前先把当前正文无条件存快照再走 `updateBody`。`NoteInfoDialog.vue` 加「历史版本」列表（预览、恢复，只读态无恢复按钮）。
+  - 未做的可选项保持不变：存储用量汇总、图片分享目标、`GET /api/export`。

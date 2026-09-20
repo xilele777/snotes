@@ -164,6 +164,13 @@ function runDelete() {
 const showInfo = ref(false)
 const showWordCount = ref(false)
 
+/** 文档信息弹窗里的「恢复」：当前正文先存为快照再被替换，编辑器随 modelValue 刷新 */
+async function onRestoreHistory(historyId: number) {
+  if (props.readonly || !notes.current) return
+  const ok = await notes.restoreHistory(notes.current.id, historyId)
+  flash(ok ? '已恢复到所选版本，之前的正文已存入历史' : '这条历史版本已不存在')
+}
+
 /** 图片灯箱状态 */
 const lightboxOpen = ref(false)
 const lightboxImages = ref<string[]>([])
@@ -440,7 +447,7 @@ onUnmounted(() => clearTimeout(noticeTimer))
       @cancel="confirmAction = null"
     />
 
-    <NoteInfoDialog :open="showInfo" :note="notes.current" @close="showInfo = false" />
+    <NoteInfoDialog :open="showInfo" :note="notes.current" :readonly="readonly" @close="showInfo = false" @restore="onRestoreHistory" />
     <WordCountDialog :open="showWordCount" :count="wordCount" @close="showWordCount = false" />
     <LinkDialog
       :open="linkDialog"

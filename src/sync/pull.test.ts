@@ -257,6 +257,7 @@ describe('pullOnce', () => {
       failed: 0,
     })
     mockPull(page({ notes: [meta({ invalid: 2 as 0 | 1 | 2, prop_version: 5 })] }))
+    await db.history.add({ note_id: 'r1', time: 1, body: '旧正文' })
 
     await pullOnce()
 
@@ -264,6 +265,8 @@ describe('pullOnce', () => {
     expect(await db.notes.get('r1')).toBeUndefined()
     // 名下未推送任务一并清掉，避免推到已不存在的笔记
     expect(await db.outbox.where('note_id').equals('r1').count()).toBe(0)
+    // 本地正文历史也连带清掉
+    expect(await db.history.where('note_id').equals('r1').count()).toBe(0)
   })
 
   it('远端墓碑不会无谓删掉本地不存在的笔记', async () => {

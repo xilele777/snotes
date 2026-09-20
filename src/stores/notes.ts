@@ -137,6 +137,13 @@ ${note.body}`, terms)
     await load()
   }
 
+  /** 从本地正文历史恢复某一版；repo 会先把当前正文存为快照再覆盖 */
+  async function restoreHistory(id: string, historyId: number) {
+    const ok = await repo.restoreFromHistory(id, historyId)
+    if (ok) await load()
+    return ok
+  }
+
   async function trash(id: string) {
     await repo.trashNote(id)
     const wasCurrent = currentId.value === id
@@ -168,5 +175,5 @@ ${note.body}`, terms)
     await load()
   }
 
-  return { notes, currentId, current, visible, stale, load, create, saveBody, setProps, trash, recover, purge, purgeAll }
+  return { notes, currentId, current, visible, stale, load, create, saveBody, setProps, restoreHistory, trash, recover, purge, purgeAll }
 })
