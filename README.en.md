@@ -8,7 +8,7 @@ A lightweight personal Markdown notebook with offline editing, device sync, and 
 
 [中文](README.md) | English
 
-Current stable release: **[v0.7.1](https://github.com/xilele777/snotes/releases/tag/v0.7.1)** ([all releases](https://github.com/xilele777/snotes/releases)). Standalone server support starts with `v0.7.0`.
+Current stable release: **[v0.15.3](https://github.com/xilele777/snotes/releases/tag/v0.15.3)** ([all releases](https://github.com/xilele777/snotes/releases)). Standalone server support starts with `v0.7.0`.
 
 [Interface and controls](#interface-and-controls) · [Cloudflare](#deploy-to-your-own-cloudflare-account) · [Server deployment](#can-i-host-this-on-my-own-server) · [Local development](#local-development) · [Changelog](CHANGELOG.md)
 
@@ -22,9 +22,9 @@ Notes are saved to the browser's IndexedDB before syncing in the background. Cho
 | Direct Node.js | Node.js 24 LTS and persistent disk | SQLite and local images | [Quick start](#can-i-host-this-on-my-own-server) |
 | Docker Compose | Docker Engine and Compose plugin | `snotes-data` named volume | [Detailed guide (Chinese)](docs/server-deployment.md#docker-compose) |
 
-Unpinned clone commands below follow `main`. To install a pinned version, run `git switch --detach v0.7.1` after cloning and before installing or building. `main` may contain subsequent unreleased changes; use a release tag to pin a version.
+Unpinned clone commands below follow `main`. To install a pinned version, run `git switch --detach v0.15.3` after cloning and before installing or building. `main` may contain subsequent unreleased changes; use a release tag to pin a version.
 
-For an existing deployment, sync clients, back up data and save local configuration first. Run `git fetch origin --tags` and `git switch --detach v0.7.1`, then install, build and restart using the instructions for your deployment. A pinned tag uses detached HEAD: future upgrades require fetching and switching to the next tag instead of `git pull`. See the [Cloudflare update steps](#8-updating-to-a-new-version) for preserving configuration. Do not force a checkout over local changes.
+For an existing deployment, sync clients, back up data and save local configuration first. Run `git fetch origin --tags` and `git switch --detach v0.15.3`, then install, build and restart using the instructions for your deployment. A pinned tag uses detached HEAD: future upgrades require fetching and switching to the next tag instead of `git pull`. See the [Cloudflare update steps](#8-updating-to-a-new-version) for preserving configuration. Do not force a checkout over local changes.
 
 The in-app update check only queries the latest **stable** GitHub release, caching successful results for 24 hours. It does not notify about previews or update your server automatically. Select previews manually from [Releases](https://github.com/xilele777/snotes/releases). Direct Node.js operation has been tested for this preview. Docker Compose configuration was validated, but image builds and container execution have not been tested.
 
@@ -35,7 +35,7 @@ The in-app update check only queries the latest **stable** GitHub release, cachi
 - **Organization**: groups, stars, pins, color markers, and search across titles and bodies.
 - **Portable data**: export every note as a Markdown zip (images and properties included) and import `.md` files or a backup zip back in; single notes can be copied, downloaded or shared to other apps.
 - **Dark mode and personalization**: follow the system theme or pick light or dark, adjust body font size and editor width; settings are saved per device.
-- **Trash**: preview and restore deleted notes; permanent deletion and emptying the trash require confirmation.
+- **Trash**: preview and restore deleted notes, each showing how many days remain before automatic deletion (30 by default); permanent deletion and emptying the trash require confirmation.
 - **Writing statistics**: word counts, writing streaks, an activity heatmap, group distribution, and opens across devices.
 - **Device sync**: properties and bodies sync separately; concurrent edits produce conflict copies for review and merging.
 - **Body history**: older versions are kept automatically when edits are 5 minutes apart or large, both in the browser and on the server (20 entries, 30 days each); "History" in the editor top bar merges both and restores with one click.
@@ -49,7 +49,7 @@ Desktop uses three columns for navigation, the note list, and the editor. Trash 
 | Entry | Behavior |
 | --- | --- |
 | All Notes / Starred / Groups | Filter notes, then select a row to read or edit |
-| Trash | Preview, restore, or permanently delete notes; returning restores the previous filter and reading position |
+| Trash | Preview, restore, or permanently delete notes; the detail header shows days left before deletion; returning restores the previous filter and reading position |
 | Statistics icon | Open statistics; close with its button, Escape, the backdrop, or system Back |
 | "Settings" at the bottom of the icon rail | A tabbed dialog: **Appearance** (theme, font size, editor width, per device), **Data** (export all, import a backup), **Shortcuts** (including a Markdown cheat sheet), **About** (version, upgrade steps, sign out). Shortcut `Ctrl / Cmd + ,` |
 | Editor top bar | On desktop the word count, document info and history sit directly in the bar; "⋯" holds copy Markdown, download .md, share to other apps (browsers with system share), print / save as PDF. On phones word count, info, history and "Delete" all live in "⋯" |
@@ -277,7 +277,7 @@ Yes. Use **Docker Compose** or **Node.js 24 LTS** directly. The server serves bo
 Direct Node.js:
 
 ```bash
-git clone --branch v0.7.1 https://github.com/xilele777/snotes.git
+git clone --branch v0.15.3 https://github.com/xilele777/snotes.git
 cd snotes
 npm ci
 npm run build:server
@@ -291,7 +291,7 @@ The default address is `http://127.0.0.1:3000`. Startup automatically applies pe
 Alternatively, install with Docker Compose:
 
 ```bash
-git clone --branch v0.7.1 https://github.com/xilele777/snotes.git
+git clone --branch v0.15.3 https://github.com/xilele777/snotes.git
 cd snotes
 cp server.env.example .env
 # Set a random ACCESS_TOKEN in .env before starting

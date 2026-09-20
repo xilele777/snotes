@@ -8,7 +8,7 @@
 
 中文 | [English](README.en.md)
 
-当前稳定版：**[v0.7.1](https://github.com/xilele777/snotes/releases/tag/v0.7.1)**（[全部发布](https://github.com/xilele777/snotes/releases)）。服务器部署从 `v0.7.0` 开始提供。
+当前稳定版：**[v0.15.3](https://github.com/xilele777/snotes/releases/tag/v0.15.3)**（[全部发布](https://github.com/xilele777/snotes/releases)）。服务器部署从 `v0.7.0` 开始提供。
 
 [界面与操作](#界面与操作) · [Cloudflare 部署](#部署到你自己的-cloudflare-账号) · [服务器部署](docs/server-deployment.md) · [本地开发](#本地开发) · [更新记录](CHANGELOG.md)
 
@@ -22,9 +22,9 @@
 | 直接运行 Node.js | Node.js 24 LTS、持久化磁盘 | SQLite、本地图片目录 | [快速开始](#能否部署到自己的服务器) |
 | Docker Compose | Docker Engine、Compose 插件 | `snotes-data` 持久化卷 | [完整指引](docs/server-deployment.md#docker-compose) |
 
-未指定标签的克隆命令默认跟踪 `main`。要安装固定版本，在克隆后、安装或构建前执行 `git switch --detach v0.7.1`；下方服务器快速开始已在克隆命令中指定此标签。`main` 可能包含尚未发布的后续改动；需要固定版本时请选择明确的发布标签。
+未指定标签的克隆命令默认跟踪 `main`。要安装固定版本，在克隆后、安装或构建前执行 `git switch --detach v0.15.3`；下方服务器快速开始已在克隆命令中指定此标签。`main` 可能包含尚未发布的后续改动；需要固定版本时请选择明确的发布标签。
 
-已有部署先完成同步、备份数据并保存本地配置，再执行 `git fetch origin --tags` 和 `git switch --detach v0.7.1`，随后按对应部署方式重新安装、构建和启动。固定标签处于 detached HEAD 状态，后续升级需获取并切换到新标签，不能直接 `git pull`；Cloudflare 配置的保存与恢复见下方[更新步骤](#8-更新到新版本)。不要使用强制切换覆盖本地改动。
+已有部署先完成同步、备份数据并保存本地配置，再执行 `git fetch origin --tags` 和 `git switch --detach v0.15.3`，随后按对应部署方式重新安装、构建和启动。固定标签处于 detached HEAD 状态，后续升级需获取并切换到新标签，不能直接 `git pull`；Cloudflare 配置的保存与恢复见下方[更新步骤](#8-更新到新版本)。不要使用强制切换覆盖本地改动。
 
 应用内更新提醒只查询 GitHub 最新**稳定版**，成功结果缓存 24 小时，不自动提示预览版，也不会自动更新服务端。预览版需在 [Releases](https://github.com/xilele777/snotes/releases) 手动选择。此预览版已验证直接运行 Node.js；Docker Compose 配置检查已通过，镜像构建与容器运行尚未实测。
 
@@ -35,7 +35,7 @@
 - **日常整理**：分组、星标、置顶、颜色标记及标题/正文搜索。
 - **数据可携带**：一键把全部笔记导出为 Markdown 压缩包（含图片与属性），也能把 `.md` 或备份包导入回来；单条笔记可复制、下载或分享到其他应用。
 - **深色模式与个性化**：主题跟随系统或手动选择浅色、深色，正文字号与编辑区宽度可调，设置按设备保存。
-- **回收站**：删除后可预览并恢复；彻底删除和清空需要确认。
+- **回收站**：删除后可预览并恢复，每条笔记显示还剩几天被自动删除（默认 30 天）；彻底删除和清空需要确认。
 - **写作统计**：查看字数、连续写作、更新热力图、分组分布和跨设备打开记录。
 - **多设备同步**：属性与正文分开同步；并发编辑时保存冲突副本，供后续合并。
 - **正文历史**：正文改动间隔满 5 分钟或一次改动较大时自动留存旧版本，本机浏览器和服务端各存一份，每条笔记各保留最近 20 条、最长 30 天；顶栏「历史版本」把两边合并显示，可预览并一键恢复，恢复前会把当前正文也存进历史。换设备也能找回其他设备上留存的版本。
@@ -49,7 +49,7 @@
 | 入口 | 操作 |
 | --- | --- |
 | 全部笔记 / 星标 / 分组 | 筛选笔记，点击列表条目阅读或编辑 |
-| 回收站 | 查看已删除笔记，恢复或彻底删除；返回笔记时恢复之前的筛选与阅读位置 |
+| 回收站 | 查看已删除笔记，恢复或彻底删除，详情顶栏显示还剩几天被删除；返回笔记时恢复之前的筛选与阅读位置 |
 | 左侧统计图标 | 打开统计弹窗，支持关闭按钮、Esc、点击遮罩和系统返回 |
 | 左侧图标栏底部「设置」 | 分页大弹窗：**外观**（主题、字号、编辑区宽度，只对当前设备生效）、**数据**（导出全部、导入备份）、**快捷键**（含 Markdown 速查）、**关于**（版本、升级步骤、退出登录）；快捷键 `Ctrl / Cmd + ,` |
 | 正文顶栏 | 桌面直接显示字数（点开看详细统计）、文档信息、历史版本；「⋯」收拢复制 Markdown、下载 .md、分享到其他应用（支持系统分享的浏览器）、打印 / 存为 PDF。手机上字数、信息、历史和「删除」都在「⋯」里 |
@@ -279,7 +279,7 @@ npx wrangler secret put CF_API_TOKEN    # 需要 Account > Analytics > Read 权�
 直接运行 Node.js：
 
 ```bash
-git clone --branch v0.7.1 https://github.com/xilele777/snotes.git
+git clone --branch v0.15.3 https://github.com/xilele777/snotes.git
 cd snotes
 npm ci
 npm run build:server
@@ -291,7 +291,7 @@ npm start
 或使用 Docker Compose（独立安装，二选一）：
 
 ```bash
-git clone --branch v0.7.1 https://github.com/xilele777/snotes.git
+git clone --branch v0.15.3 https://github.com/xilele777/snotes.git
 cd snotes
 cp server.env.example .env
 # 编辑 .env，设置自己的随机 ACCESS_TOKEN
