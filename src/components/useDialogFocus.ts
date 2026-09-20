@@ -1,13 +1,24 @@
 import { nextTick, onUnmounted, watch, type Ref } from 'vue'
 
-/** Keep keyboard actions in the open dialog and return focus to its trigger. */
-export function useDialogFocus(open: () => boolean, panel: Ref<HTMLElement | null>, close: () => void, returnFocus?: () => HTMLElement | null) {
+/**
+ * 把键盘操作留在打开的弹窗里，关闭后把焦点还给触发它的元素。
+ * `returnFocus` 收到打开前的焦点元素，可以在它已经不可见（例如抽屉收起后）时换一个可见入口。
+ * 同时开着两层弹窗（设置里的退出确认）时，只有最上面那层处理 Esc 与 Tab。
+ */
+export function useDialogFocus(open: () => boolean, panel: Ref<HTMLElement | null>, close: () => void, returnFocus?: (previous: HTMLElement | null) => HTMLElement | null) {
   let previousFocus: HTMLElement | null = null
   const focusable = () => Array.from(panel.value?.querySelectorAll<HTMLElement>(
-    'button:not(:disabled), input:not(:disabled), a[href], [tabindex]:not([tabindex="-1"])',
+    'button:not(:disabled):not([tabindex="-1"]), input:not(:disabled):not([tabindex="-1"]), a[href], [tabindex]:not([tabindex="-1"])',
   ) ?? [])
 
+  /** 后打开的弹窗 Teleport 到 body 末尾，文档顺序最后的那个就是最上层 */
+  function topmost(): boolean {
+    const modals = document.querySelectorAll<HTMLElement>('[aria-modal="true"]')
+    return modals.length === 0 || modals[modals.length - 1] === panel.value
+  }
+
   function onKeydown(event: KeyboardEvent) {
+    if (!topmost()) return
     if (event.key === 'Escape') {
       event.preventDefault()
       event.stopPropagation()
@@ -44,7 +55,7 @@ export function useDialogFocus(open: () => boolean, panel: Ref<HTMLElement | nul
       window.removeEventListener('keydown', onKeydown, true)
       await nextTick()
       if (open() || !previousFocus) return
-      const target = returnFocus?.() ?? previousFocus
+      const target = returnFocus?.(previousFocus) ?? previousFocus
       if (target?.isConnected) target.focus({ preventScroll: true })
       previousFocus = null
     }

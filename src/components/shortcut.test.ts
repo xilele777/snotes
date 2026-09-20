@@ -14,6 +14,13 @@ describe('resolveShortcut', () => {
     expect(resolveShortcut(mod('f'), { hasQuery: false })).toEqual({ type: 'focusSearch' })
   })
 
+  it('Cmd/Ctrl + , → openSettings；带 Shift 或 Alt 不算', () => {
+    expect(resolveShortcut(mod(','), { hasQuery: false })).toEqual({ type: 'openSettings' })
+    expect(resolveShortcut({ ...ctrl(','), code: 'Comma' }, { hasQuery: false })).toEqual({ type: 'openSettings' })
+    expect(resolveShortcut({ ...ctrl('<'), code: 'Comma', shiftKey: true }, { hasQuery: false })).toBeNull()
+    expect(resolveShortcut({ ...ctrl(','), altKey: true }, { hasQuery: false })).toBeNull()
+  })
+
   it('Cmd/Ctrl + K → focusSearch', () => {
     expect(resolveShortcut(mod('k'), { hasQuery: false })).toEqual({ type: 'focusSearch' })
     expect(resolveShortcut(ctrl('k'), { hasQuery: false })).toEqual({ type: 'focusSearch' })

@@ -8,6 +8,12 @@ export type UiView = ListView | 'metrics'
 /** <720px 时列表与编辑器互斥，这里是当前显示哪一格 */
 export type MobilePane = 'list' | 'editor'
 
+/** 覆盖在工作区之上的大弹窗：统计与设置各占一层导航历史，同一时刻只开一个 */
+export type Overlay = 'stats' | 'settings'
+
+/** 设置弹窗的分页 */
+export type SettingsTab = 'appearance' | 'data' | 'shortcuts' | 'about'
+
 export interface WorkspacePosition {
   view: UiView
   activeGroupId: string | null
@@ -31,10 +37,17 @@ export const useUiStore = defineStore('ui', () => {
   const mobilePane = ref<MobilePane>('list')
   /** 只影响布局，不销毁编辑器，避免切换专注模式打断输入。 */
   const focusMode = ref(false)
-  const statsOpen = ref(false)
+  /** 当前打开的大弹窗；null = 没有 */
+  const overlay = ref<Overlay | null>(null)
+  const settingsTab = ref<SettingsTab>('appearance')
+  /**
+   * 删除当前笔记的请求计数。快捷键只把它加一，NoteDetail 监听到变化就弹确认；
+   * 手机上删除按钮收进了「更多」菜单，快捷键不能再靠点 DOM 上的按钮。
+   */
+  const trashRequest = ref(0)
   /** 离开笔记时仅保存位置，不缓存第二份列表或编辑器。 */
   const lastNotesPosition = ref<WorkspacePosition | null>(null)
   const restorePosition = ref<WorkspacePosition | null>(null)
 
-  return { view, activeGroupId, query, syncing, lastSyncError, failedCount, drawerOpen, mobilePane, focusMode, statsOpen, lastNotesPosition, restorePosition }
+  return { view, activeGroupId, query, syncing, lastSyncError, failedCount, drawerOpen, mobilePane, focusMode, overlay, settingsTab, trashRequest, lastNotesPosition, restorePosition }
 })

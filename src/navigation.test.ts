@@ -1,7 +1,7 @@
 import { createPinia, setActivePinia } from 'pinia'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { db } from './db/schema'
-import { backToList, closeStats, initNavigation, isMobile, openDrawer, openStats, openStatsNote, popNav, pushNav, showNotes, switchListView } from './navigation'
+import { backToList, closeOverlay, initNavigation, isMobile, openDrawer, openOverlay, openStatsNote, popNav, pushNav, showNotes, switchListView } from './navigation'
 import { useNotesStore } from './stores/notes'
 import { useUiStore } from './stores/ui'
 import { useGroupsStore } from './stores/groups'
@@ -26,7 +26,7 @@ describe('navigation 导航栈', () => {
       query: '',
       mobilePane: 'list',
       drawerOpen: false,
-      statsOpen: false,
+      overlay: null,
       scroll: { list: 0, editor: 0, groups: 0 },
     })
   })
@@ -139,19 +139,19 @@ describe('navigation 导航栈', () => {
     const ui = useUiStore()
     ui.query = '保留查询'
     initNavigation()
-    openStats()
+    openOverlay('stats')
 
-    expect(ui.statsOpen).toBe(true)
+    expect(ui.overlay).toBe('stats')
     expect(ui.view).toBe('all')
     expect(notes.currentId).toBe(note.id)
-    closeStats()
-    await vi.waitFor(() => expect(history.state.statsOpen).toBe(false))
+    closeOverlay()
+    await vi.waitFor(() => expect(history.state.overlay).toBeNull())
     expect(ui.query).toBe('保留查询')
     expect(notes.currentId).toBe(note.id)
 
-    openStats()
+    openOverlay('stats')
     history.back()
-    await vi.waitFor(() => expect(ui.statsOpen).toBe(false))
+    await vi.waitFor(() => expect(ui.overlay).toBeNull())
     expect(notes.currentId).toBe(note.id)
     expect(ui.query).toBe('保留查询')
   })
@@ -164,16 +164,75 @@ describe('navigation 导航栈', () => {
     notes.currentId = first.id
     ui.query = '原筛选'
     initNavigation()
-    openStats()
+    openOverlay('stats')
 
     await openStatsNote(second.id)
-    expect(ui.statsOpen).toBe(false)
+    expect(ui.overlay).toBeNull()
     expect(notes.currentId).toBe(second.id)
     expect(ui.query).toBe('')
 
     history.back()
     await vi.waitFor(() => expect(notes.currentId).toBe(first.id))
     expect(ui.query).toBe('原筛选')
-    expect(ui.statsOpen).toBe(false)
+    expect(ui.overlay).toBeNull()
+  })
+
+  it('设置弹窗独占一层历史，可指定分页打开，系统返回关闭并回到原工作区', async () => {
+    const ui = useUiStore()
+    ui.drawerOpen = true
+    initNavigation()
+    // jsdom 的 history.length 会被前面用例的 back() 截断，这里数 pushState 的次数
+    const push = vi.spyOn(history, 'pushState')
+    openOverlay('settings', 'about')
+
+    expect(ui.overlay).toBe('settings')
+    expect(ui.settingsTab).toBe('about')
+    expect(ui.drawerOpen).toBe(false)
+    expect(push).toHaveBeenCalledTimes(1)
+    expect(history.state.overlay).toBe('settings')
+
+    // 已经开着时再开只切分页，不多压一层
+    openOverlay('settings', 'data')
+    expect(ui.settingsTab).toBe('data')
+    expect(push).toHaveBeenCalledTimes(1)
+    push.mockRestore()
+
+    history.back()
+    await vi.waitFor(() => expect(ui.overlay).toBeNull())
+    // 打开前抽屉已收起，返回后也不应重新弹出
+    expect(ui.drawerOpen).toBe(false)
+  })
+
+  it('不带分页打开设置时回到「外观」，不记忆上次停留的分页', () => {
+    const ui = useUiStore()
+    initNavigation()
+    openOverlay('settings', 'shortcuts')
+    closeOverlay()
+    ui.overlay = null
+    openOverlay('settings')
+    expect(ui.settingsTab).toBe('appearance')
+  })
+
+  it('开着统计时打开设置原地替换，不再多压一层历史', () => {
+    const ui = useUiStore()
+    initNavigation()
+    openOverlay('stats')
+    const push = vi.spyOn(history, 'pushState')
+    openOverlay('settings')
+    expect(ui.overlay).toBe('settings')
+    expect(push).not.toHaveBeenCalled()
+    expect(history.state.overlay).toBe('settings')
+    push.mockRestore()
+  })
+
+  it('恢复 v0.13 的旧快照时 statsOpen 仍能映射成统计弹窗', async () => {
+    const ui = useUiStore()
+    initNavigation()
+    window.dispatchEvent(new PopStateEvent('popstate', { state: { ...window.history.state, overlay: undefined, statsOpen: true } }))
+    expect(ui.overlay).toBe('stats')
+    // popstate 有同一任务内的防重入守卫，第二次派发要等一个微任务
+    await Promise.resolve()
+    window.dispatchEvent(new PopStateEvent('popstate', { state: { ...window.history.state, overlay: undefined, statsOpen: false } }))
+    expect(ui.overlay).toBeNull()
   })
 })

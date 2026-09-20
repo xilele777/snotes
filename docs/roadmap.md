@@ -2,7 +2,7 @@
 
 - 日期：2026-09-19
 - 基线：v0.7.1，main 分支 a98e911
-- 状态：实施中。第一档 1 与第二档 1 已完成，第二档 2、第一档 2、第一档 3、第一档 4 已于 v0.9.0 发布，第二档 3、第二档 5、第一档 5 已于 v0.10.0 发布，第三档 0、1、2 已于 v0.11.0 发布，第三档 3、4 已于 v0.12.0 发布，第三档 5 已于 v0.13.0 发布。实施顺序第 1 到第 6 步全部完成。
+- 状态：实施中。第一档 1 与第二档 1 已完成，第二档 2、第一档 2、第一档 3、第一档 4 已于 v0.9.0 发布，第二档 3、第二档 5、第一档 5 已于 v0.10.0 发布，第三档 0、1、2 已于 v0.11.0 发布，第三档 3、4 已于 v0.12.0 发布，第三档 5 已于 v0.13.0 发布，第四档 1 到 5 已于 v0.14.0 发布。实施顺序第 1 到第 7 步全部完成。
 - 来源：对 `src/`、`shared/`、`worker/`、`server/` 的代码审阅。各项「现状」均为代码中确认的事实，不是推测
 
 ## 第一档：补齐半成品
@@ -146,6 +146,51 @@
 - 涉及：`schema.ts`、`repo.ts`、`NoteInfoDialog.vue`。
 - 成本：中。
 
+## 第四档：入口与呈现方式整理
+
+前三档把功能补齐了，但入口是「哪里有空放哪里」长出来的。这一档不加功能，只调整已有功能的入口、承载容器和提示方式，让它们贴合「手机随手记、电脑整理」的使用方式。完整设计见 `docs/superpowers/specs/2026-09-20-entry-points-design.md`，下面是摘要。
+
+### 0. 问题
+
+- 侧栏底部一行挤着同步状态、版本号、导出导入、设置四样，后两个是 28px 无文字图标，手机上要先开抽屉再到角落找。
+- 编辑器底栏放了字数、文档信息、导出分享、格式帮助四个入口。底栏贴着屏幕底边，手机浏览器工具栏、系统手势区和软键盘都在这一带，经常点不到；11px 文字、28px 按钮也低于触控目标下限。
+- 本地正文历史藏在「文档信息」里，刚误删内容的人想不到去点 ⓘ。
+- 快捷键清单与 Markdown 速查放在手机也会看到的底栏弹层里，但那是桌面用户的事。
+- 打印只有 Ctrl/⌘ P，手机没有快捷键；令牌没有退出入口。
+
+### 1. 设置中心
+
+- 建议：图标栏「统计」下方新增「设置」（桌面图标、抽屉里带文字标签），打开与统计同款的分页大弹窗：**外观**（主题、字号、宽度）、**数据**（导出全部、导入备份）、**快捷键**（全局快捷键、编辑器内快捷键、Markdown 速查）、**关于**（版本、更新与升级步骤、发布链接、退出登录）。侧栏底部只留同步状态与版本号，版本号直达「关于」页。有新版本时图标栏「设置」与版本号同时显示蓝点。新增快捷键 `Mod ,`。
+- 涉及：`SettingsDialog.vue` 改为分页壳 + `src/components/settings/` 四个 pane、`GroupSidebar.vue`、`App.vue`、`stores/ui.ts`（`statsOpen` 泛化为 `overlay`）、`navigation.ts`（`openOverlay / closeOverlay`）、删除 `BackupDialog.vue`。
+- 成本：中。
+
+### 2. 笔记「更多」菜单
+
+- 建议：顶栏最右加 ⋯，条目为文档信息、历史版本、字数统计 | 复制 Markdown、下载 .md、分享到其他应用、打印 / 存为 PDF | 删除（仅 ≤720px 显示）。手机 320px 顶栏没有余量，⋯ 顶替删除按钮的位置；删除仍可从菜单或列表左滑到达。只读态（回收站）条目减去分享与删除，恢复与彻底删除保持顶栏可见。从 `GroupMenu.vue` 抽出通用的 `ActionMenu.vue`（定位、键盘、外点关闭、焦点归还），两处共用。`Mod Shift D` 改为经 store 里的 `trashRequest` 触发确认弹窗，不再依赖 DOM 上有删除按钮。
+- 涉及：新增 `ActionMenu.vue`、`NoteMenu.vue`、`useMediaQuery.ts`；`NoteDetail.vue`、`GroupMenu.vue`、`App.vue`、`stores/ui.ts`。
+- 成本：中。
+
+### 3. 底栏只做状态，提示改 Toast
+
+- 建议：底栏不再有任何按钮。桌面显示「自动保存 · N 字」（只读态「只读 · N 字」），≤720px 整条隐藏，把空间还给正文。复制、下载、分享、恢复历史、链接气泡的提示统一改为顶部居中的 Toast（`src/notify.ts` + `Toast.vue`，`role="status"`，3.5 秒自动消失，只保留一条），顶部不受浏览器工具栏和键盘遮挡。
+- 涉及：新增 `notify.ts`、`Toast.vue`；`NoteDetail.vue` 删除 `flash` 与 `.share-notice`；`styles.css`。
+- 成本：小。
+
+### 4. 历史版本独立弹窗
+
+- 建议：把 `NoteInfoDialog.vue` 里的历史区块拆成 `HistoryDialog.vue`，作为 ⋯ 菜单的独立条目「历史版本」。加载时机、空态文案、只读态无恢复按钮都不变。
+- 涉及：新增 `HistoryDialog.vue`；`NoteInfoDialog.vue` 只留元数据。
+- 成本：小。
+
+### 5. 两处小补
+
+- 打印：⋯ 菜单加「打印 / 存为 PDF」，调用 `window.print()`。与第三档 4「不加打印按钮」的说法不同，理由是手机没有快捷键，而菜单项不占顶栏空间。
+- 退出登录：设置「关于」页尾加按钮，确认后只清令牌（`clearToken`），不动 IndexedDB，界面回到令牌页。
+
+### 已定的决策点
+
+2026-09-20 按推荐项实施：手机底栏整条隐藏；手机顶栏给 ⋯ 让位的是删除；打印与退出登录随本次一起做；设置入口放图标栏底部。
+
 ## 考虑过但暂不建议
 
 | 项目 | 暂不做的理由 |
@@ -171,6 +216,7 @@
 4. 第二档 3、5 搜索多关键词、分享目标，以及第一档 5 快捷键。
 5. 第三档 0、1、2 定时任务与两项清理，可以合成一个版本发布。
 6. 第三档 3、4、5 限流、打印、本地历史。
+7. 第四档 1 到 5 入口与呈现方式整理，一次发布 v0.14.0。实施顺序见设计文档第 10 节：先做无依赖的 `useMediaQuery`、Toast、`ActionMenu`，再拆历史弹窗，再做顶栏 ⋯ 与底栏，再改 `overlay` 导航，最后做设置分页与图标栏入口。已完成。
 
 每完成一档中的一项，按 `CLAUDE.md` 的发布流程升 MINOR 版本；只改样式和文案的可以合并到下一次发布。
 
@@ -198,3 +244,11 @@
 - 2026-09-20：v0.13.0 完成实施顺序第 6 步最后一项，roadmap 全部实施项到此做完：
   - 第三档 5「本地正文历史」：`src/db/schema.ts` 升 `version(2)` 新增 `history` 表（`++id, note_id, time`）；新增 `src/db/history.ts`（`shouldSnapshot` 纯函数判定、`maybeSnapshotIn` / `recordSnapshotIn` / `deleteHistoryIn` 事务内工具、`listHistory`），`repo.updateBody` 落库前按 5 分钟或 100 可见字符阈值把旧正文存快照，`purgeNote`、`purgeTrash` 与 pull 的墓碑删除连带清理；`repo.restoreFromHistory` 恢复前先把当前正文无条件存快照再走 `updateBody`。`NoteInfoDialog.vue` 加「历史版本」列表（预览、恢复，只读态无恢复按钮）。
   - 未做的可选项保持不变：存储用量汇总、图片分享目标、`GET /api/export`。
+- 2026-09-20：新增第四档「入口与呈现方式整理」与实施顺序第 7 步。起因是前三档功能齐了之后入口散落：侧栏底部四个入口挤一行、编辑器底栏被手机浏览器工具栏和键盘遮挡、历史版本藏在文档信息里。方案是图标栏「设置」分页大弹窗收拢应用级入口、顶栏 ⋯ 菜单收拢笔记级入口、底栏只留状态且手机隐藏、提示改顶部 Toast。设计文档 `docs/superpowers/specs/2026-09-20-entry-points-design.md`，四个决策点待确认后实施。
+- 2026-09-20：v0.14.0 完成实施顺序第 7 步，第四档 1 到 5 全部按推荐项落地，roadmap 所有实施项到此做完：
+  - 第四档 1「设置中心」：图标栏底部新增「设置」（`data-view="settings"`），`SettingsDialog.vue` 改为分页大弹窗，四个分页拆成 `src/components/settings/AppearancePane.vue`、`DataPane.vue`（原 `BackupDialog.vue`，已删除）、`ShortcutsPane.vue`（原底栏「格式帮助」）、`AboutPane.vue`（原侧栏版本弹窗，页尾新增退出登录）。`stores/ui.ts` 的 `statsOpen` 泛化为 `overlay: 'stats' | 'settings' | null` 并新增 `settingsTab`、`trashRequest`；`navigation.ts` 的 `openStats / closeStats` 改为 `openOverlay(kind, tab?) / closeOverlay()`，旧快照的 `statsOpen` 字段兼容读取。快捷键 `Mod ,`。
+  - 第四档 2「笔记『更多』菜单」：抽出 `ActionMenu.vue`（`GroupMenu.vue` 改为基于它），新增 `NoteMenu.vue` 与 `useMediaQuery.ts`；顶栏 `[data-op="more"]`，≤720px 时删除按钮让位并进菜单；`Mod Shift D` 改为 `ui.trashRequest` 计数由 `NoteDetail` 监听。
+  - 第四档 3「底栏只做状态，提示改 Toast」：新增 `src/notify.ts` 与 `Toast.vue`；底栏桌面只显示状态与字数、≤720px 隐藏；`NoteDetail.vue` 删除 `flash` 与 `.share-notice`。
+  - 第四档 4「历史版本独立弹窗」：新增 `HistoryDialog.vue`，`NoteInfoDialog.vue` 只留元数据。
+  - 第四档 5「两处小补」：⋯ 菜单「打印 / 存为 PDF」；「关于」页「退出登录」。
+  - `useDialogFocus` 增加最上层弹窗判断，两层弹窗叠加时 Esc 只关最上面那层。

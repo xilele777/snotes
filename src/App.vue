@@ -1,14 +1,17 @@
 <script setup lang="ts">
-import { defineAsyncComponent, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
+import { defineAsyncComponent, nextTick, onMounted, onUnmounted, watch } from 'vue'
 import { hasToken } from './api/token'
 import GroupSidebar from './components/GroupSidebar.vue'
 import NoteDetail from './components/NoteDetail.vue'
 import NoteList from './components/NoteList.vue'
+import SettingsDialog from './components/SettingsDialog.vue'
+import StatsDialog from './components/StatsDialog.vue'
+import Toast from './components/Toast.vue'
 import TokenGate from './components/TokenGate.vue'
 import TrashView from './components/TrashView.vue'
-import StatsDialog from './components/StatsDialog.vue'
 import { resolveShortcut, type ShortcutAction } from './components/shortcut'
-import { backToList, initNavigation, isMobile, pushNav, switchListView } from './navigation'
+import { useMediaQuery } from './components/useMediaQuery'
+import { backToList, initNavigation, isMobile, openOverlay, pushNav, switchListView } from './navigation'
 import { useGroupsStore } from './stores/groups'
 import { useNotesStore } from './stores/notes'
 import { useUiStore } from './stores/ui'
@@ -18,22 +21,21 @@ const notes = useNotesStore()
 const groups = useGroupsStore()
 const ui = useUiStore()
 const MetricsView = defineAsyncComponent(() => import('./components/MetricsView.vue'))
-const drawerLayout = window.matchMedia('(max-width: 1020px)')
-const compact = ref(drawerLayout.matches)
-function updateLayout() { compact.value = drawerLayout.matches }
+/** ≤1020px 侧栏是抽屉 */
+const compact = useMediaQuery('(max-width: 1020px)')
 let drawerTrigger: HTMLElement | null = null
 
 watch(() => ui.drawerOpen, async (open) => {
-  if (!compact.value || ui.statsOpen) return
+  if (!compact.value || ui.overlay) return
   if (open) {
     drawerTrigger = document.activeElement as HTMLElement
     await nextTick()
-    if (!ui.statsOpen) document.querySelector<HTMLButtonElement>('.sidebar-close')?.focus()
+    if (!ui.overlay) document.querySelector<HTMLButtonElement>('.sidebar-close')?.focus()
   } else {
     await nextTick()
     const targets = [drawerTrigger, ...document.querySelectorAll<HTMLElement>('.drawer-btn, .back-btn')]
     const target = targets.find(element => element?.isConnected && element.getClientRects().length && !element.closest('[inert]'))
-    if (!ui.statsOpen) target?.focus({ preventScroll: true })
+    if (!ui.overlay) target?.focus({ preventScroll: true })
   }
 })
 
@@ -72,7 +74,7 @@ watch(
 // 全局快捷键（UI 规格 §6.2）
 function onKeydown(e: KeyboardEvent) {
   // 弹窗和菜单打开时把键盘交给它们：Esc 该关的是浮层，不是抽屉或搜索词
-  if (!hasToken.value || ui.statsOpen || e.defaultPrevented || e.isComposing || document.querySelector('[aria-modal="true"], [role="menu"]')) return
+  if (!hasToken.value || ui.overlay || e.defaultPrevented || e.isComposing || document.querySelector('[aria-modal="true"], [role="menu"]')) return
   if (e.key === 'Escape' && (ui.drawerOpen || ui.focusMode)) {
     e.preventDefault()
     e.stopPropagation()
@@ -116,8 +118,8 @@ async function runShortcut(action: ShortcutAction) {
     case 'clearQuery': ui.query = ''; return
     case 'toggleStar': if (editable) await notes.setProps(current.id, { star: current.star === 1 ? 0 : 1 }); return
     case 'togglePin': if (editable) await notes.setProps(current.id, { top: current.top === 1 ? 0 : 1 }); return
-    // 删除仍要走确认弹窗：直接按顶栏的删除按钮，和鼠标路径完全一致
-    case 'trash': if (editable) document.querySelector<HTMLButtonElement>('[data-op="trash"]')?.click(); return
+    // 删除仍要走确认弹窗：计数加一，NoteDetail 监听到就弹出与鼠标路径相同的确认框
+    case 'trash': if (editable) ui.trashRequest += 1; return
     case 'nextNote': stepNote(1); return
     case 'prevNote': stepNote(-1); return
     case 'toggleFocus': if (editable) ui.focusMode = !ui.focusMode; return
@@ -128,26 +130,25 @@ async function runShortcut(action: ShortcutAction) {
       if (group) await switchListView('group', group.group_id)
       return
     }
+    case 'openSettings': openOverlay('settings'); return
   }
 }
 
 onMounted(() => {
   // 先处理界面快捷键，避免编辑器的 Escape / Mod-K 抢走专注与搜索操作。
   window.addEventListener('keydown', onKeydown, true)
-  drawerLayout.addEventListener?.('change', updateLayout)
   // Bug 2：启动时 replaceState 根快照，根界面按返回不退出应用
   initNavigation()
 })
 onUnmounted(() => {
   window.removeEventListener('keydown', onKeydown, true)
-  drawerLayout.removeEventListener?.('change', updateLayout)
 })
 </script>
 
 <template>
   <TokenGate v-if="!hasToken" />
 
-  <div v-else class="layout" :class="{ 'is-focused': ui.focusMode }" :data-mobile-pane="ui.mobilePane" :data-view="ui.view" :inert="ui.statsOpen">
+  <div v-else class="layout" :class="{ 'is-focused': ui.focusMode }" :data-mobile-pane="ui.mobilePane" :data-view="ui.view" :inert="ui.overlay !== null">
     <!-- 窄屏将分组导航收进抽屉，搜索仍留在笔记列表上方。 -->
     <aside class="sidebar-pane" :class="{ 'is-open': ui.drawerOpen }" :inert="compact && !ui.drawerOpen">
       <GroupSidebar />
@@ -163,7 +164,7 @@ onUnmounted(() => {
     <!--
       回收站详情与编辑详情用同一个组件，只是 readonly 不同。
       key 区分两者：ProseMirror 的 editable 在建实例时读一次，不重挂就切不干净。
-      监控页没有笔记详情；统计弹窗不卸载当前工作区。
+      监控页没有笔记详情；统计与设置弹窗都不卸载当前工作区。
     -->
     <NoteDetail
       v-if="ui.view !== 'metrics'"
@@ -173,5 +174,7 @@ onUnmounted(() => {
       @back="backToList"
     />
   </div>
-  <StatsDialog v-if="hasToken" :open="ui.statsOpen" />
+  <StatsDialog v-if="hasToken" :open="ui.overlay === 'stats'" />
+  <SettingsDialog v-if="hasToken" :open="ui.overlay === 'settings'" />
+  <Toast />
 </template>

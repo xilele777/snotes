@@ -5,7 +5,9 @@ import type MilkdownEditorComponent from '../editor/MilkdownEditor.vue'
 import { useGroupsStore } from '../stores/groups'
 import { useNotesStore } from '../stores/notes'
 import ConfirmDialog from './ConfirmDialog.vue'
+import HistoryDialog from './HistoryDialog.vue'
 import NoteInfoDialog from './NoteInfoDialog.vue'
+import NoteMenu, { type NoteMenuAction } from './NoteMenu.vue'
 import WordCountDialog from './WordCountDialog.vue'
 import AppIcon from './AppIcon.vue'
 import EditorLoading from './EditorLoading.vue'
@@ -13,10 +15,11 @@ import FormatToolbar, { type ToolbarAction } from './FormatToolbar.vue'
 import LinkDialog from './LinkDialog.vue'
 import ImageLightbox from './ImageLightbox.vue'
 import { SKIN_COLORS } from './palette'
-import { SHORTCUT_LIST } from './shortcut'
 import { EMPTY_FORMAT_STATE, type FormatState } from '../editor/format'
 import { copyMarkdown, downloadMarkdown, shareMarkdown } from '../export/share'
+import { notify } from '../notify'
 import { useUiStore } from '../stores/ui'
+import { useMediaQuery } from './useMediaQuery'
 import { useWorkspaceScroll } from './useWorkspaceScroll'
 
 const MilkdownEditor = defineAsyncComponent({
@@ -34,16 +37,17 @@ const ui = useUiStore()
 const editorBody = ref<HTMLElement | null>(null)
 const editorReady = ref(false)
 watch(() => notes.current, note => { if (!note) editorReady.value = false })
-/** 快捷键清单：Mod 按平台显示为 ⌘ 或 Ctrl */
-const modKey = /Mac|iPhone|iPad/.test(navigator.platform) ? '⌘' : 'Ctrl'
-const shortcutList = SHORTCUT_LIST.map(item => ({ ...item, keys: item.keys.replace('Mod', modKey) }))
 
 const currentGroup = computed(() => groups.groups.find(group => group.group_id === notes.current?.group_id)?.name ?? '未分组')
 
-/** 颜色、分组、格式提示和导出一次只展开一个。 */
-const openPop = ref<'color' | 'group' | 'help' | 'share' | null>(null)
+/** ≤720px 的顶栏放不下删除按钮，删除挪进「更多」菜单 */
+const compact = useMediaQuery('(max-width: 720px)')
 
-async function toggle(pop: 'color' | 'group' | 'help' | 'share') {
+/** 颜色和分组浮层一次只展开一个。 */
+const openPop = ref<'color' | 'group' | null>(null)
+
+async function toggle(pop: 'color' | 'group') {
+  menuOpen.value = false
   openPop.value = openPop.value === pop ? null : pop
   if (openPop.value) {
     await nextTick()
@@ -74,6 +78,34 @@ onUnmounted(() => {
   window.removeEventListener('keydown', onPopoverKeydown, true)
 })
 
+/** 顶栏「⋯」菜单：收拢文档信息、历史、字数、复制、下载、分享、打印，手机上还有删除 */
+const moreButton = ref<HTMLButtonElement | null>(null)
+const menuOpen = ref(false)
+
+function toggleMenu() {
+  openPop.value = null
+  menuOpen.value = !menuOpen.value
+}
+
+/** 系统分享面板只在支持的浏览器里给入口，不支持时复制与下载已经够用 */
+const canShare = typeof navigator !== 'undefined' && typeof navigator.share === 'function'
+
+async function onMenuAction(action: NoteMenuAction) {
+  menuOpen.value = false
+  // 先把焦点交还给 ⋯，随后打开的弹窗会记住它，关闭后焦点仍回到顶栏
+  moreButton.value?.focus({ preventScroll: true })
+  switch (action) {
+    case 'info': showInfo.value = true; return
+    case 'history': showHistory.value = true; return
+    case 'wordcount': showWordCount.value = true; return
+    case 'copy': await runCopy(); return
+    case 'download': runDownload(); return
+    case 'share': await runShare(); return
+    case 'print': window.print(); return
+    case 'trash': if (!props.readonly) confirmAction.value = 'trash'; return
+  }
+}
+
 /** 光标处的格式，由编辑器在选区或文档变化时上报，驱动工具栏点亮 */
 const formatState = ref<FormatState>(EMPTY_FORMAT_STATE)
 
@@ -83,6 +115,7 @@ const linkDraft = ref({ href: '', text: '', editing: false })
 
 watch(() => notes.currentId, () => {
   openPop.value = null
+  menuOpen.value = false
   formatState.value = EMPTY_FORMAT_STATE
   if (editorBody.value) editorBody.value.scrollTop = 0
 }, { flush: 'post' })
@@ -151,6 +184,11 @@ function onImagePicked(event: Event) {
 /** 删除动作统一定点到这个弹窗；null = 未打开 */
 const confirmAction = ref<'trash' | 'purge' | null>(null)
 
+/** 快捷键 Mod Shift D 走 store 里的计数，不依赖顶栏有没有渲染删除按钮 */
+watch(() => ui.trashRequest, () => {
+  if (!props.readonly && notes.current) confirmAction.value = 'trash'
+})
+
 function runDelete() {
   if (confirmAction.value === 'trash' && notes.current) {
     notes.trash(notes.current.id)
@@ -160,15 +198,16 @@ function runDelete() {
   confirmAction.value = null
 }
 
-/** 文档信息 / 字数统计弹窗开关 */
+/** 文档信息 / 历史版本 / 字数统计弹窗开关 */
 const showInfo = ref(false)
+const showHistory = ref(false)
 const showWordCount = ref(false)
 
-/** 文档信息弹窗里的「恢复」：当前正文先存为快照再被替换，编辑器随 modelValue 刷新 */
+/** 历史弹窗里的「恢复」：当前正文先存为快照再被替换，编辑器随 modelValue 刷新 */
 async function onRestoreHistory(historyId: number) {
   if (props.readonly || !notes.current) return
   const ok = await notes.restoreHistory(notes.current.id, historyId)
-  flash(ok ? '已恢复到所选版本，之前的正文已存入历史' : '这条历史版本已不存在')
+  notify(ok ? '已恢复到所选版本，之前的正文已存入历史' : '这条历史版本已不存在')
 }
 
 /** 图片灯箱状态 */
@@ -189,17 +228,6 @@ function closeLightbox() {
 /** 当前笔记字数统计（实时随正文变化） */
 const wordCount = computed(() => countWords(notes.current?.body ?? ''))
 
-/** 导出与分享单条笔记：手机上优先交给系统分享面板，桌面端给复制与下载。 */
-const canShare = typeof navigator !== 'undefined' && typeof navigator.share === 'function'
-const shareNotice = ref('')
-let noticeTimer: number | undefined
-
-function flash(text: string) {
-  shareNotice.value = text
-  clearTimeout(noticeTimer)
-  noticeTimer = window.setTimeout(() => (shareNotice.value = ''), 4000)
-}
-
 function noteTitle(): string {
   return notes.current?.title || '无标题'
 }
@@ -207,26 +235,21 @@ function noteTitle(): string {
 async function runCopy() {
   if (!notes.current) return
   const copied = await copyMarkdown(notes.current.body)
-  openPop.value = null
-  flash(copied ? '已复制 Markdown' : '复制失败，请在正文里手动选择')
+  notify(copied ? '已复制 Markdown' : '复制失败，请在正文里手动选择')
 }
 
 function runDownload() {
   if (!notes.current) return
   downloadMarkdown(noteTitle(), notes.current.body)
-  openPop.value = null
-  flash('已开始下载 .md')
+  notify('已开始下载 .md')
 }
 
 async function runShare() {
   if (!notes.current) return
   const outcome = await shareMarkdown(noteTitle(), notes.current.body)
-  openPop.value = null
   // 用户取消分享时不再弹提示，那是他刚做出的选择
-  if (outcome !== 'failed') flash(outcome === 'shared' ? '已分享' : '已复制 Markdown')
+  if (outcome !== 'failed') notify(outcome === 'shared' ? '已分享' : '已复制 Markdown')
 }
-
-onUnmounted(() => clearTimeout(noticeTimer))
 </script>
 
 <template>
@@ -276,16 +299,19 @@ onUnmounted(() => clearTimeout(noticeTimer))
         </div>
       </div>
 
-      <!-- 回收站详情：只读，动作换成恢复 / 彻底删除 -->
+      <!-- 回收站详情：只读，动作换成恢复 / 彻底删除；「更多」只留信息、历史、字数、复制、下载、打印 -->
       <template v-if="readonly">
         <span v-if="notes.current" class="trash-notice">此笔记在回收站中</span>
         <div v-if="notes.current" class="op-bar">
           <button class="trash-op recover" data-op="recover" @click="notes.recover(notes.current.id)">恢复</button>
           <button class="trash-op purge" data-op="purge" @click="confirmAction = 'purge'">彻底删除</button>
+          <button ref="moreButton" class="op-btn" data-op="more" :class="{ open: menuOpen }" title="更多操作" aria-label="更多操作" aria-haspopup="menu" :aria-expanded="menuOpen" @click="toggleMenu">
+            <AppIcon name="more" />
+          </button>
         </div>
       </template>
 
-      <!-- 常用操作直接可见，分组入口同时显示当前位置。 -->
+      <!-- 常用操作直接可见，分组入口同时显示当前位置；低频操作收进最右的「⋯」。 -->
       <div v-else-if="notes.current" class="op-bar">
         <button class="op-btn" data-op="undo" title="撤销 (Ctrl+Z)" aria-label="撤销" @click="editorRef?.undo?.()">
           <AppIcon name="undo" />
@@ -364,7 +390,9 @@ onUnmounted(() => clearTimeout(noticeTimer))
           <AppIcon :name="ui.focusMode ? 'collapse' : 'focus'" />
         </button>
 
+        <!-- 320px 顶栏没有余量：手机上删除让位给 ⋯，从菜单或列表左滑删除 -->
         <button
+          v-if="!compact"
           class="op-btn danger"
           data-op="trash"
           title="删除"
@@ -372,6 +400,10 @@ onUnmounted(() => clearTimeout(noticeTimer))
           @click="confirmAction = 'trash'"
         >
           <AppIcon name="trash" />
+        </button>
+
+        <button ref="moreButton" class="op-btn" data-op="more" :class="{ open: menuOpen }" title="更多操作" aria-label="更多操作" aria-haspopup="menu" :aria-expanded="menuOpen" @click="toggleMenu">
+          <AppIcon name="more" />
         </button>
       </div>
     </div>
@@ -396,46 +428,27 @@ onUnmounted(() => clearTimeout(noticeTimer))
         @format-state="formatState = $event"
         @edit-link="onEditLink"
         @open-lightbox="openLightbox"
-        @notice="flash"
+        @notice="notify"
         @ready="editorReady = true"
       />
     </div>
 
+    <!-- 底栏只做状态，没有任何按钮：手机浏览器工具栏和键盘都压在这一带，≤720px 整条隐藏 -->
     <footer v-if="notes.current" class="editor-footer">
-      <span class="autosave"><AppIcon v-if="readonly" name="lock" :size="12" /><span v-else class="status-dot"></span>{{ readonly ? '只读笔记' : '自动保存' }}</span>
-      <span v-if="shareNotice" class="share-notice" role="status">{{ shareNotice }}</span>
-      <button class="meta-entry" data-op="wordcount" title="字数统计" aria-label="字数统计" @click="showWordCount = true">{{ wordCount.words }} 字</button>
-      <button class="meta-entry" data-op="info" title="文档信息" aria-label="文档信息" @click="showInfo = true"><AppIcon name="info" :size="14" /></button>
-      <!-- 顶栏在 320px 已经排满，放不下第二个下拉；导出单独一条笔记放在这里。 -->
-      <div v-if="!readonly" class="op-wrap">
-        <button
-          class="meta-entry"
-          data-op="share"
-          title="导出与分享"
-          aria-label="导出与分享"
-          aria-haspopup="true"
-          :aria-expanded="openPop === 'share'"
-          @click="toggle('share')"
-        >
-          <AppIcon name="share" :size="15" />
-        </button>
-        <div v-if="openPop === 'share'" class="op-popover share-popover" role="group" aria-label="导出与分享">
-          <button class="share-opt" data-action="copy" @click="runCopy"><AppIcon name="copy" :size="14" />复制 Markdown</button>
-          <button class="share-opt" data-action="download" @click="runDownload"><AppIcon name="download" :size="14" />下载 .md</button>
-          <button v-if="canShare" class="share-opt" data-action="share" @click="runShare"><AppIcon name="share" :size="14" />分享到其他应用</button>
-        </div>
-      </div>
-      <div v-if="!readonly" class="op-wrap format-help">
-        <button class="meta-entry" data-op="help" :aria-expanded="openPop === 'help'" @click="toggle('help')"><AppIcon name="keyboard" :size="15" /><span>格式帮助</span></button>
-        <div v-if="openPop === 'help'" class="op-popover help-popover">
-          <span class="popover-heading">用简单符号，轻松排版</span>
-          <dl><div><dt><code># 空格</code></dt><dd>标题</dd></div><div><dt><code>- 空格</code></dt><dd>无序列表</dd></div><div><dt><code>1. 空格</code></dt><dd>有序列表</dd></div><div><dt><code>&gt; 空格</code></dt><dd>引用</dd></div><div><dt><code>**文字**</code></dt><dd>加粗</dd></div></dl>
-          <p>也可以直接粘贴文字或图片；手机上请用顶栏的「插入图片」按钮。</p>
-          <span class="popover-heading shortcut-heading">键盘快捷键</span>
-          <dl class="shortcut-list"><div v-for="item in shortcutList" :key="item.keys"><dt><code>{{ item.keys }}</code></dt><dd>{{ item.label }}</dd></div></dl>
-        </div>
-      </div>
+      <span class="autosave"><AppIcon v-if="readonly" name="lock" :size="12" /><span v-else class="status-dot"></span>{{ readonly ? '只读' : '自动保存' }}</span>
+      <span class="footer-sep" aria-hidden="true">·</span>
+      <span class="footer-words">{{ wordCount.words }} 字</span>
     </footer>
+
+    <NoteMenu
+      :open="menuOpen"
+      :anchor="moreButton"
+      :readonly="readonly"
+      :can-share="canShare"
+      :show-delete="compact"
+      @action="onMenuAction"
+      @close="menuOpen = false"
+    />
 
     <!-- 删除统一先确认：移入回收站可恢复，彻底删除不可恢复 -->
     <ConfirmDialog
@@ -447,7 +460,8 @@ onUnmounted(() => clearTimeout(noticeTimer))
       @cancel="confirmAction = null"
     />
 
-    <NoteInfoDialog :open="showInfo" :note="notes.current" :readonly="readonly" @close="showInfo = false" @restore="onRestoreHistory" />
+    <NoteInfoDialog :open="showInfo" :note="notes.current" @close="showInfo = false" />
+    <HistoryDialog :open="showHistory" :note="notes.current" :readonly="readonly" @close="showHistory = false" @restore="onRestoreHistory" />
     <WordCountDialog :open="showWordCount" :count="wordCount" @close="showWordCount = false" />
     <LinkDialog
       :open="linkDialog"

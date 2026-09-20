@@ -231,7 +231,7 @@ describe('App 统计弹窗', () => {
     expect(create).not.toHaveBeenCalled()
 
     window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', cancelable: true }))
-    await vi.waitFor(() => expect(history.state.statsOpen).toBe(false))
+    await vi.waitFor(() => expect(history.state.overlay).toBeNull())
     await flushPromises()
     expect(document.querySelector('[role="dialog"][aria-label="记录统计"]')).toBeNull()
     expect(document.activeElement).toBe(trigger.element)
@@ -272,15 +272,52 @@ describe('App 扩展快捷键', () => {
     wrapper.unmount()
   })
 
-  it('Ctrl+Shift+D 打开删除确认弹窗而不是直接删', async () => {
+  it('Ctrl+Shift+D 经 ui.trashRequest 打开删除确认弹窗而不是直接删', async () => {
     const notes = useNotesStore()
+    const ui = useUiStore()
     await notes.create()
     const wrapper = mount(App, { attachTo: document.body })
     await flushPromises()
 
     window.dispatchEvent(new KeyboardEvent('keydown', { key: 'D', ctrlKey: true, shiftKey: true, cancelable: true }))
+    expect(ui.trashRequest).toBe(1)
     await vi.waitFor(() => expect(document.body.textContent).toContain('删除这条笔记？'))
     expect(notes.notes).toHaveLength(1)
+    wrapper.unmount()
+  })
+
+  it('Ctrl+, 打开设置弹窗，工作区 inert，Esc 关闭后焦点回到原处', async () => {
+    const ui = useUiStore()
+    await useNotesStore().create()
+    const wrapper = mount(App, { attachTo: document.body })
+    await flushPromises()
+    const trigger = wrapper.get<HTMLButtonElement>('[data-view="settings"]')
+    trigger.element.focus()
+
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: ',', ctrlKey: true, cancelable: true }))
+    await flushPromises()
+
+    expect(ui.overlay).toBe('settings')
+    expect(wrapper.get('.layout').attributes('inert')).toBeDefined()
+    expect(document.querySelector('[role="dialog"][aria-label="设置"]')).not.toBeNull()
+
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', cancelable: true }))
+    await vi.waitFor(() => expect(ui.overlay).toBeNull())
+    await flushPromises()
+    expect(document.querySelector('[role="dialog"][aria-label="设置"]')).toBeNull()
+    expect(document.activeElement).toBe(trigger.element)
+    wrapper.unmount()
+  })
+
+  it('Toast 挂在 App 上，提示文字渲染在顶部状态区', async () => {
+    const { notify } = await import('./notify')
+    const wrapper = mount(App, { attachTo: document.body })
+    await flushPromises()
+    notify('已复制 Markdown')
+    await flushPromises()
+    const host = document.querySelector('.toast-host')!
+    expect(host.getAttribute('role')).toBe('status')
+    expect(host.querySelector('.toast')!.textContent).toBe('已复制 Markdown')
     wrapper.unmount()
   })
 

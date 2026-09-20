@@ -55,6 +55,8 @@ export const iconPaths = {
   zoomIn: ['M11 4a7 7 0 1 0 0 14 7 7 0 0 0 0-14Z', 'M20 20l-3.6-3.6', 'M11 8.5v5M8.5 11h5'],
   zoomOut: ['M11 4a7 7 0 1 0 0 14 7 7 0 0 0 0-14Z', 'M20 20l-3.6-3.6', 'M8.5 11h5'],
   fit: ['M9 4v5H4', 'M15 4v5h5', 'M9 20v-5H4', 'M15 20v-5h5'],
+  printer: ['M6 9V3h12v6', 'M6 17H4a2 2 0 0 1-2-2v-4a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v4a2 2 0 0 1-2 2h-2', 'M6 13h12v8H6Z'],
+  logout: ['M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4', 'm16 17 5-5-5-5', 'M21 12H9'],
 } as const
 
 export type IconName = keyof typeof iconPaths

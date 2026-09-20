@@ -44,18 +44,28 @@ async function typeName(name: string) {
 }
 
 describe('GroupSidebar', () => {
-  it('侧栏底部有设置入口，点开是设置弹窗', async () => {
+  it('图标栏底部有「设置」入口，点开走 overlay 并落在外观页；底部不再有备份与设置图标钮', async () => {
+    const ui = useUiStore()
+    ui.drawerOpen = true
     const wrapper = mount(GroupSidebar)
     await wrapper.vm.$nextTick()
 
-    const button = wrapper.find('[data-action="settings"]')
+    const button = wrapper.find('.app-rail [data-view="settings"]')
     expect(button.exists()).toBe(true)
+    expect(button.text()).toBe('设置')
+    expect(button.attributes('aria-haspopup')).toBe('dialog')
+    expect(wrapper.find('[data-action="settings"]').exists()).toBe(false)
+    expect(wrapper.find('[data-action="backup"]').exists()).toBe(false)
+    expect(wrapper.find('.user-area .icon-button').exists()).toBe(false)
+
     await button.trigger('click')
     await nextTick()
 
-    expect(document.querySelector('[role="dialog"][aria-label="设置"]')).not.toBeNull()
+    expect(ui.overlay).toBe('settings')
+    expect(ui.settingsTab).toBe('appearance')
+    expect(ui.drawerOpen).toBe(false)
     expect(button.attributes('aria-expanded')).toBe('true')
-    // 弹窗 Teleport 到 body，不卸载的话下一条用例清空 body 后这份实例再更新会崩
+    expect(button.classes()).toContain('active')
     wrapper.unmount()
   })
 
@@ -137,7 +147,7 @@ describe('GroupSidebar', () => {
     await wrapper.vm.$nextTick()
     await wrapper.find('[data-view="stats"]').trigger('click')
 
-    expect(ui.statsOpen).toBe(true)
+    expect(ui.overlay).toBe('stats')
     expect(ui.view).toBe('group')
     expect(ui.activeGroupId).toBe('work')
     expect(ui.drawerOpen).toBe(false)
@@ -210,87 +220,42 @@ describe('GroupSidebar', () => {
 })
 
 describe('GroupSidebar 底部版本与同步入口', () => {
-  it('版本按钮读取 package.json，点击打开版本信息并支持关闭', async () => {
+  it('版本按钮读取 package.json，点击打开设置的「关于」页', async () => {
+    const ui = useUiStore()
     const wrapper = mount(GroupSidebar, { attachTo: document.body })
     const button = wrapper.get('.user-area .version-button')
 
     expect(button.element.tagName).toBe('BUTTON')
     expect(button.text()).toBe(`v${appVersion}`)
+    expect(button.attributes('aria-haspopup')).toBe('dialog')
     await button.trigger('click')
-    await nextTick()
 
-    const versionDialog = document.querySelector<HTMLElement>('[aria-label="版本信息"]')!
-    expect(versionDialog.textContent).toContain(`v${appVersion}`)
-    const closeButton = versionDialog.querySelector<HTMLButtonElement>('button')!
-    expect(document.activeElement).toBe(closeButton)
-
-    closeButton.click()
-    await nextTick()
-
-    expect(document.querySelector('[aria-label="版本信息"]')).toBeNull()
-    expect(document.activeElement).toBe(button.element)
-    wrapper.unmount()
-  })
-
-  it('版本弹窗限制 Tab 焦点，Esc 关闭并阻止外层快捷键', async () => {
-    const wrapper = mount(GroupSidebar, { attachTo: document.body })
-    await wrapper.get('.version-button').trigger('click')
-    await nextTick()
-    const closeButton = document.querySelector<HTMLButtonElement>('[aria-label="版本信息"] button')!
-    document.querySelector<HTMLAnchorElement>('[aria-label="版本信息"] a')!.focus()
-    const tab = new KeyboardEvent('keydown', { key: 'Tab', shiftKey: true, cancelable: true })
-    window.dispatchEvent(tab)
-    expect(tab.defaultPrevented).toBe(true)
-    expect(document.activeElement).toBe(closeButton)
-
-    const escape = new KeyboardEvent('keydown', { key: 'Escape', cancelable: true })
-    window.dispatchEvent(escape)
-    await nextTick()
-
-    expect(escape.defaultPrevented).toBe(true)
+    expect(ui.overlay).toBe('settings')
+    expect(ui.settingsTab).toBe('about')
+    expect(button.attributes('aria-expanded')).toBe('true')
+    // 侧栏自己不再渲染版本弹窗
     expect(document.querySelector('[aria-label="版本信息"]')).toBeNull()
     wrapper.unmount()
   })
 
-  it('挂载时触发一次版本检查；没有新版本时不显示提示点', async () => {
+  it('挂载时触发一次版本检查；没有新版本时版本号与「设置」都不显示提示点', async () => {
     const wrapper = mount(GroupSidebar)
     await wrapper.vm.$nextTick()
     expect(checkForUpdate).toHaveBeenCalledTimes(1)
     expect(wrapper.get('.version-button').classes()).not.toContain('has-update')
+    expect(wrapper.get('[data-view="settings"]').classes()).not.toContain('has-update')
     wrapper.unmount()
   })
 
-  it('检测到新版本时版本按钮带提示点，弹窗给出更新命令与发布页链接', async () => {
+  it('检测到新版本时版本按钮与图标栏「设置」同时带提示点', async () => {
     updateInfo.value = { latest: '9.9.9', url: 'https://github.com/xilele777/snotes/releases/tag/v9.9.9', hasUpdate: true }
     const wrapper = mount(GroupSidebar, { attachTo: document.body })
     const button = wrapper.get('.version-button')
     expect(button.classes()).toContain('has-update')
     expect(button.attributes('title')).toContain('v9.9.9')
-
-    await button.trigger('click')
-    await nextTick()
-    const versionDialog = document.querySelector<HTMLElement>('[aria-label="版本信息"]')!
-    expect(versionDialog.textContent).toContain('v9.9.9')
-    expect(versionDialog.textContent).toContain('npm run deploy')
-    const link = versionDialog.querySelector<HTMLAnchorElement>('a')!
-    expect(link.href).toBe('https://github.com/xilele777/snotes/releases/tag/v9.9.9')
-    expect(link.target).toBe('_blank')
-    const close = versionDialog.querySelector<HTMLButtonElement>('.dialog-btn')!
-    close.focus()
-    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Tab', bubbles: true, cancelable: true }))
-    expect(document.activeElement).toBe(link)
-    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Tab', shiftKey: true, bubbles: true, cancelable: true }))
-    expect(document.activeElement).toBe(close)
-    wrapper.unmount()
-  })
-
-  it('点击版本弹窗遮罩可以关闭', async () => {
-    const wrapper = mount(GroupSidebar, { attachTo: document.body })
-    await wrapper.get('.version-button').trigger('click')
-    document.querySelector<HTMLElement>('.dialog-mask')!.click()
-    await nextTick()
-
-    expect(document.querySelector('[aria-label="版本信息"]')).toBeNull()
+    const settings = wrapper.get('[data-view="settings"]')
+    expect(settings.classes()).toContain('has-update')
+    expect(settings.attributes('title')).toContain('v9.9.9')
     wrapper.unmount()
   })
 

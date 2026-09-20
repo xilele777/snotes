@@ -1,6 +1,6 @@
 import { useNotesStore } from './stores/notes'
 import { useUiStore } from './stores/ui'
-import type { UiView, WorkspacePosition } from './stores/ui'
+import type { Overlay, SettingsTab, UiView, WorkspacePosition } from './stores/ui'
 import type { ListView } from './db/repo'
 
 /**
@@ -14,7 +14,9 @@ import type { ListView } from './db/repo'
  */
 export interface NavSnapshot extends WorkspacePosition {
   drawerOpen: boolean
-  statsOpen: boolean
+  overlay: Overlay | null
+  /** v0.13 及之前的快照字段；只在恢复旧条目时读取 */
+  statsOpen?: boolean
 }
 
 /** 取当前界面完整状态。必须每次现取：快照是「进入下一步之前」的那份。 */
@@ -28,7 +30,7 @@ function snapshot(): NavSnapshot {
     query: ui.query,
     mobilePane: ui.mobilePane,
     drawerOpen: ui.drawerOpen,
-    statsOpen: ui.statsOpen,
+    overlay: ui.overlay,
     scroll: {
       list: document.querySelector('.note-list')?.scrollTop ?? 0,
       editor: document.querySelector('.editor-body')?.scrollTop ?? 0,
@@ -70,33 +72,48 @@ export async function showNotes() {
   restore({
     ...(saved ?? { view: 'all', activeGroupId: null, currentId: null, query: '', mobilePane: 'list', scroll: { list: 0, editor: 0, groups: 0 } }),
     drawerOpen: false,
-    statsOpen: false,
+    overlay: null,
   })
   await useNotesStore().load()
 }
 
-/** 弹窗独占一层历史；关闭或系统返回都回到原工作区。 */
-export function openStats() {
+/**
+ * 大弹窗（统计、设置）独占一层历史；关闭或系统返回都回到原工作区。
+ * 已经开着同一个时只切分页；开着另一个时先原地替换，不再多压一层。
+ */
+export function openOverlay(kind: Overlay, tab?: SettingsTab) {
   const ui = useUiStore()
-  if (ui.statsOpen) return
+  if (tab) ui.settingsTab = tab
+  else if (kind === 'settings') ui.settingsTab = 'appearance'
+  if (ui.overlay === kind) return
   ui.drawerOpen = false
-  pushNav()
-  ui.statsOpen = true
+  if (!ui.overlay) pushNav()
+  ui.overlay = kind
   history.replaceState(snapshot(), '')
 }
 
-export function closeStats() {
+export function closeOverlay() {
   const ui = useUiStore()
-  if (!ui.statsOpen) return
-  if (history.state?.statsOpen) popNav()
-  else ui.statsOpen = false
+  if (!ui.overlay) return
+  if (history.state?.overlay) popNav()
+  else ui.overlay = null
+}
+
+/** @deprecated 保留给旧调用点；等同于 openOverlay('stats') */
+export function openStats() {
+  openOverlay('stats')
+}
+
+/** @deprecated 等同于 closeOverlay() */
+export function closeStats() {
+  closeOverlay()
 }
 
 /** 榜单中的笔记是一次明确跳转，用目标笔记替换弹窗这层历史。 */
 export async function openStatsNote(id: string) {
   const ui = useUiStore()
   const notes = useNotesStore()
-  ui.statsOpen = false
+  ui.overlay = null
   ui.focusMode = false
   ui.drawerOpen = false
   ui.restorePosition = null
@@ -161,7 +178,7 @@ function restore(s: NavSnapshot) {
   ui.query = s.query ?? ''
   ui.mobilePane = s.mobilePane
   ui.drawerOpen = s.drawerOpen
-  ui.statsOpen = s.statsOpen ?? false
+  ui.overlay = s.overlay ?? (s.statsOpen ? 'stats' : null)
   ui.restorePosition = { ...s, query: ui.query, scroll: s.scroll ?? { list: 0, editor: 0, groups: 0 } }
 }
 

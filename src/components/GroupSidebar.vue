@@ -1,15 +1,13 @@
 <script setup lang="ts">
-import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { version as appVersion } from '../../package.json'
-import { RELEASES_URL, checkForUpdate, updateInfo } from '../update-check'
-import { openStats, showNotes, switchListView } from '../navigation'
+import { checkForUpdate, updateInfo } from '../update-check'
+import { openOverlay, showNotes, switchListView } from '../navigation'
 import { syncNow } from '../sync/engine'
 import AppIcon from './AppIcon.vue'
-import BackupDialog from './BackupDialog.vue'
 import ConfirmDialog from './ConfirmDialog.vue'
 import GroupDialog from './GroupDialog.vue'
 import GroupMenu from './GroupMenu.vue'
-import SettingsDialog from './SettingsDialog.vue'
 import type { Group } from '../../shared/types'
 import { useGroupsStore } from '../stores/groups'
 import { useNotesStore } from '../stores/notes'
@@ -24,18 +22,13 @@ const inNotes = computed(() => ui.view !== 'metrics')
 const groupList = ref<HTMLElement | null>(null)
 useWorkspaceScroll(groupList, 'groups')
 
-const versionOpen = ref(false)
-const backupOpen = ref(false)
-const settingsOpen = ref(false)
-const versionButton = ref<HTMLButtonElement | null>(null)
-const versionCloseButton = ref<HTMLButtonElement | null>(null)
+/** 版本号与图标栏「设置」共用一个更新提示点；点版本号直达设置的「关于」页 */
 const versionLabel = `v${appVersion}`
-const isServerDeployment = import.meta.env.VITE_DEPLOY_TARGET === 'server'
 const hasUpdate = computed(() => updateInfo.value?.hasUpdate === true)
 const latestLabel = computed(() => (updateInfo.value ? `v${updateInfo.value.latest}` : null))
-const releaseUrl = computed(() => hasUpdate.value ? updateInfo.value!.url : RELEASES_URL)
-const versionDialog = ref<HTMLElement | null>(null)
 const versionTitle = computed(() => (hasUpdate.value ? `有新版本 ${latestLabel.value} 可用，当前 ${versionLabel}` : `当前网页版本：${versionLabel}`))
+const settingsOpen = computed(() => ui.overlay === 'settings')
+const statsOpen = computed(() => ui.overlay === 'stats')
 
 const syncTitle = computed(() => {
   if (ui.syncing) return '正在同步…'
@@ -61,38 +54,6 @@ const syncLabel = computed(() => {
   if (ui.failedCount > 0 || ui.lastSyncError) return '同步待重试'
   return '自动同步'
 })
-
-function onVersionKeydown(event: KeyboardEvent) {
-  if (event.key === 'Escape') {
-    event.stopPropagation()
-    event.preventDefault()
-    versionOpen.value = false
-  } else if (event.key === 'Tab') {
-    const controls = versionDialog.value?.querySelectorAll<HTMLElement>('a[href], button')
-    const first = controls?.[0]
-    const last = controls?.[controls.length - 1]
-    if (event.shiftKey && document.activeElement === first) {
-      event.preventDefault()
-      last?.focus()
-    } else if (!event.shiftKey && document.activeElement === last) {
-      event.preventDefault()
-      first?.focus()
-    }
-  }
-}
-
-watch(versionOpen, async (open) => {
-  if (open) {
-    window.addEventListener('keydown', onVersionKeydown, true)
-    await nextTick()
-    if (versionOpen.value) versionCloseButton.value?.focus()
-  } else {
-    window.removeEventListener('keydown', onVersionKeydown, true)
-    versionButton.value?.focus()
-  }
-})
-
-onUnmounted(() => window.removeEventListener('keydown', onVersionKeydown, true))
 
 /** null = 新建，字符串 = 正在重命名的 group_id；两种模式复用同一个弹窗 */
 const editingId = ref<string | null>(null)
@@ -135,7 +96,7 @@ function toggleMenu(group: Group, event: MouseEvent) {
   menuGroup.value = group
 }
 
-/** 关菜单时把焦点交还给触发按钮；随后打开的弹窗会记住它，关闭后焦点仍回到这一行 */
+/** 关菜单时同步把焦点交还给触发按钮；随后打开的弹窗会记住它，关闭后焦点仍回到这一行 */
 function closeMenu() {
   if (!menuGroup.value) return
   menuGroup.value = null
@@ -192,8 +153,22 @@ watch(() => ui.drawerOpen, (open) => { if (!open) menuGroup.value = null })
       <button class="rail-button" type="button" :class="{ active: inNotes }" :aria-pressed="inNotes" title="笔记" aria-label="笔记" @click="showNotes">
         <AppIcon name="notes" :size="20" /><span class="rail-label">笔记</span>
       </button>
-      <button class="rail-button" type="button" data-view="stats" :class="{ active: ui.statsOpen }" aria-haspopup="dialog" :aria-expanded="ui.statsOpen" title="记录统计" aria-label="记录统计" @click="openStats">
+      <button class="rail-button" type="button" data-view="stats" :class="{ active: statsOpen }" aria-haspopup="dialog" :aria-expanded="statsOpen" title="记录统计" aria-label="记录统计" @click="openOverlay('stats')">
         <AppIcon name="chart" :size="20" /><span class="rail-label">统计</span>
+      </button>
+      <!-- 应用级入口放在栏底：与「统计」同级，不混进上面的笔记筛选项；抽屉里带文字标签 -->
+      <button
+        class="rail-button rail-settings"
+        type="button"
+        data-view="settings"
+        :class="{ active: settingsOpen, 'has-update': hasUpdate }"
+        aria-haspopup="dialog"
+        :aria-expanded="settingsOpen"
+        :title="hasUpdate ? `设置（有新版本 ${latestLabel} 可用）` : '设置'"
+        aria-label="设置"
+        @click="openOverlay('settings')"
+      >
+        <AppIcon name="sliders" :size="20" /><span class="rail-label">设置</span>
       </button>
     </div>
 
@@ -248,6 +223,7 @@ watch(() => ui.drawerOpen, (open) => { if (!open) menuGroup.value = null })
         </li>
       </ul>
 
+      <!-- 底部只留同步状态与版本号；导出导入、外观等都进了图标栏的「设置」 -->
       <div class="user-area">
         <button
           type="button"
@@ -269,72 +245,19 @@ watch(() => ui.drawerOpen, (open) => { if (!open) menuGroup.value = null })
         </button>
 
         <button
-          ref="versionButton"
           type="button"
           class="version-button"
           :title="versionTitle"
           :aria-label="hasUpdate ? `查看版本信息，有新版本 ${latestLabel} 可用` : `查看版本信息，当前版本 ${versionLabel}`"
           :class="{ 'has-update': hasUpdate }"
           aria-haspopup="dialog"
-          :aria-expanded="versionOpen"
-          @click="versionOpen = true"
+          :aria-expanded="settingsOpen"
+          @click="openOverlay('settings', 'about')"
         >
           {{ versionLabel }}
         </button>
-
-        <button
-          type="button"
-          class="icon-button backup-button"
-          data-action="backup"
-          title="导出与导入"
-          aria-label="导出与导入"
-          aria-haspopup="dialog"
-          :aria-expanded="backupOpen"
-          @click="backupOpen = true"
-        >
-          <AppIcon name="download" :size="16" />
-        </button>
-
-        <button
-          type="button"
-          class="icon-button settings-button"
-          data-action="settings"
-          title="设置"
-          aria-label="设置"
-          aria-haspopup="dialog"
-          :aria-expanded="settingsOpen"
-          @click="settingsOpen = true"
-        >
-          <AppIcon name="sliders" :size="16" />
-        </button>
       </div>
     </div>
-
-    <Teleport to="body">
-      <div v-if="versionOpen" class="dialog-mask" @click.self="versionOpen = false">
-        <div ref="versionDialog" class="dialog info-dialog" role="dialog" aria-modal="true" aria-label="版本信息">
-          <h3 class="dialog-title">版本信息</h3>
-          <ul class="info-list">
-            <li><span class="info-label">应用名称</span><span class="info-value">snotes</span></li>
-            <li><span class="info-label">网页版本</span><span class="info-value">{{ versionLabel }}</span></li>
-            <li v-if="hasUpdate" class="update-row">
-              <span class="info-label">最新版本</span>
-              <span class="info-value">{{ latestLabel }}</span>
-              <span v-if="isServerDeployment" class="info-sub">备份数据后执行 <code>git pull --ff-only</code>。Docker 部署运行 <code>docker compose up -d --build</code>；直接使用 Node.js 时运行 <code>npm ci</code>、<code>npm run build:server</code>，再重启服务。数据库迁移在启动时自动执行。</span>
-              <span v-else class="info-sub">先按 README 的升级步骤保留自己的部署配置，再依次执行 <code>git pull --ff-only</code>、<code>npm ci</code>、<code>npx wrangler d1 migrations apply snotes --remote</code>、<code>npm run deploy</code>。数据库改过名时替换 <code>snotes</code>。</span>
-            </li>
-            <li v-else-if="latestLabel"><span class="info-label">最新版本</span><span class="info-value">{{ latestLabel }}</span><span class="info-sub">已是最新</span></li>
-          </ul>
-          <p class="update-links"><a :href="releaseUrl" target="_blank" rel="noopener noreferrer">{{ hasUpdate ? '查看发布说明' : '查看全部版本' }}</a></p>
-          <div class="dialog-footer">
-            <button ref="versionCloseButton" type="button" class="dialog-btn ok" @click="versionOpen = false">关闭</button>
-          </div>
-        </div>
-      </div>
-    </Teleport>
-
-    <BackupDialog :open="backupOpen" @close="backupOpen = false" />
-    <SettingsDialog :open="settingsOpen" @close="settingsOpen = false" />
 
     <GroupDialog
       :open="dialogOpen"

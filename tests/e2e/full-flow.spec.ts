@@ -753,7 +753,8 @@ test('链接气泡：打开、复制、编辑地址与移除，外链带 noopene
   await expect(tooltip).toBeVisible()
 
   await tooltip.locator('[data-link-action="copy"]').click()
-  await expect(page.locator('.share-notice')).toHaveText('已复制链接')
+  // 提示走顶部 Toast，不再放在会被手机浏览器工具栏挡住的底栏
+  await expect(page.locator('.toast')).toHaveText('已复制链接')
   expect(await page.evaluate(() => navigator.clipboard.readText())).toBe('https://example.com')
   // 气泡里的按钮同样不能把编辑器的选区抢走，否则按完一下气泡就自己没了
   await expect(tooltip).toBeVisible()
@@ -1037,7 +1038,19 @@ test.describe('手机操作', () => {
     expect(formatBar!.x + formatBar!.width).toBeLessThanOrEqual(320)
     expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(320)
     await expect(page.locator('.format-bar [data-format="bold"]')).toBeVisible()
-    await expect(page.locator('[data-op="trash"]')).toBeVisible()
+    // 手机顶栏没有余量：删除让位给「⋯」，从菜单里删；底栏整条隐藏
+    await expect(page.locator('[data-op="trash"]')).toHaveCount(0)
+    await expect(page.locator('.editor-footer')).toBeHidden()
+    await page.locator('[data-op="more"]').click()
+    const menu = page.getByRole('menu', { name: '更多操作' })
+    await expect(menu.locator('[data-action="trash"]')).toBeVisible()
+    await expect(menu.locator('[data-action="history"]')).toBeVisible()
+    const menuBox = await menu.boundingBox()
+    expect(menuBox!.x).toBeGreaterThanOrEqual(0)
+    expect(menuBox!.x + menuBox!.width).toBeLessThanOrEqual(320)
+    await page.keyboard.press('Escape')
+    await expect(menu).toHaveCount(0)
+    await expect(page.locator('[data-op="more"]')).toBeFocused()
     await page.locator('[data-op="group"]').click()
     const groups = await page.getByRole('group', { name: '选择分组' }).boundingBox()
     expect(groups!.x).toBeGreaterThanOrEqual(0)

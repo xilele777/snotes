@@ -50,14 +50,16 @@ Desktop uses three columns for navigation, the note list, and the editor. Trash 
 | All Notes / Starred / Groups | Filter notes, then select a row to read or edit |
 | Trash | Preview, restore, or permanently delete notes; returning restores the previous filter and reading position |
 | Statistics icon | Open statistics; close with its button, Escape, the backdrop, or system Back |
-| Editor footer | View word counts, document information, and Markdown formatting hints |
-| Sidebar "Settings" | Switch theme (system / light / dark), body font size, and editor width for this device only |
+| "Settings" at the bottom of the icon rail | A tabbed dialog: **Appearance** (theme, font size, editor width, per device), **Data** (export all, import a backup), **Shortcuts** (including a Markdown cheat sheet), **About** (version, upgrade steps, sign out). The version label at the bottom of the sidebar jumps straight to About; shortcut `Ctrl / Cmd + ,` |
+| "⋯" in the editor top bar | Document info, version history, word count, copy Markdown, download .md, share to other apps (browsers with system share), print / save as PDF; on phones "Delete" lives here too |
+| Editor footer | Desktop shows only the save state and word count; hidden on phones. Action feedback appears as a short message at the top of the screen |
 
 Mobile opens to the list and switches to the editor when a note is selected. The top-left button opens navigation; the back button or system Back returns to the list. Desktop also supports focus mode.
 
 | Shortcut | Action |
 | --- | --- |
 | `Ctrl / Cmd + N` | Create a note |
+| `Ctrl / Cmd + ,` | Open settings |
 | `Ctrl / Cmd + K` or `Ctrl / Cmd + F` | Focus note search |
 | `Ctrl / Cmd + Z` | Undo in the editor |
 | `Esc` | Close the current dialog or sidebar, exit focus mode, or clear search |
@@ -199,7 +201,7 @@ On mobile, use "Add to Home Screen" in Safari or Chrome to run it as a standalon
 
 ### 8. Updating to a new version
 
-Manually deployed Workers do **not** update themselves when a release is published; pull the code and redeploy. At app startup, the bottom-left version button checks the latest stable GitHub Release and caches successful results for 24 hours. A blue dot indicates a newer release; the dialog links to release notes and shows upgrade steps. For release notifications, choose **Watch → Custom → Releases** on GitHub and enable email in your notification settings. The `git pull` instructions below apply to a tracked branch; pinned deployments should use the [tag upgrade steps](#choose-a-deployment-and-version) above.
+Manually deployed Workers do **not** update themselves when a release is published; pull the code and redeploy. At app startup, the app checks the latest stable GitHub Release and caches successful results for 24 hours. A blue dot on the version label and on the "Settings" rail button indicates a newer release; the About tab in Settings links to release notes and shows upgrade steps. For release notifications, choose **Watch → Custom → Releases** on GitHub and enable email in your notification settings. The `git pull` instructions below apply to a tracked branch; pinned deployments should use the [tag upgrade steps](#choose-a-deployment-and-version) above.
 
 Read the [CHANGELOG](CHANGELOG.md), back up your data following the [operations guide](docs/operations.md), enter the project directory and check `git status`. **If `wrangler.jsonc` has uncommitted deployment settings**, back it up outside the repository, then stash those changes:
 
@@ -348,7 +350,7 @@ Optional usage-monitoring calculations live in `worker/metrics/collect.ts` and n
 
 ## Backup and migration
 
-**In-app export / import**: the "Export & import" entry at the bottom of the sidebar downloads every note as a zip with one folder per group, one `.md` per note, images under `images/` with relative paths, and an `index.json` recording groups, stars, pins, colors and creation times. The same zip can be imported into any deployment (Cloudflare or standalone server); images are re-uploaded and importing the same package twice does not create duplicates. This is the recommended way to migrate or back up without the command line.
+**In-app export / import**: the "Data" tab in Settings (icon rail) downloads every note as a zip with one folder per group, one `.md` per note, images under `images/` with relative paths, and an `index.json` recording groups, stars, pins, colors and creation times. The same zip can be imported into any deployment (Cloudflare or standalone server); images are re-uploaded and importing the same package twice does not create duplicates. This is the recommended way to migrate or back up without the command line.
 
 **Standalone server / Docker**: sync clients, stop the service and back up the entire data directory or volume, including SQLite, any WAL/SHM files and images. See [backup, upgrade and recovery (Chinese)](docs/server-deployment.md#备份升级与恢复). Data is not migrated automatically between Cloudflare and standalone deployments.
 

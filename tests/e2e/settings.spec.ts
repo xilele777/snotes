@@ -16,9 +16,11 @@ for (const width of [1440, 320]) {
     const lightBg = await page.evaluate(() => getComputedStyle(document.body).backgroundColor)
 
     if (width < 1020) await page.getByRole('button', { name: '打开侧栏' }).click()
-    const entry = page.getByRole('button', { name: '设置', exact: true })
+    // 入口在图标栏底部，抽屉里带文字标签
+    const entry = page.locator('.app-rail').getByRole('button', { name: '设置', exact: true })
     await entry.click()
     const dialog = page.getByRole('dialog', { name: '设置', exact: true })
+    await expect(dialog.getByRole('tab', { name: '外观' })).toHaveAttribute('aria-selected', 'true')
     await dialog.getByRole('radio', { name: '深色', exact: true }).click()
     await expect(html).toHaveAttribute('data-theme', 'dark')
     expect(await page.evaluate(() => getComputedStyle(document.body).backgroundColor)).not.toBe(lightBg)
@@ -28,9 +30,19 @@ for (const width of [1440, 320]) {
     await dialog.getByRole('radio', { name: '宽', exact: true }).click()
     expect(await dialog.evaluate((el) => el.scrollWidth <= el.clientWidth)).toBe(true)
     await page.screenshot({ path: `tmp/update-review/settings-dark-${width}.png` })
+
+    // 「数据」页：导出全部得到 zip 下载
+    await dialog.getByRole('tab', { name: '数据' }).click()
+    const download = page.waitForEvent('download')
+    await dialog.locator('[data-action="export"]').click()
+    expect((await download).suggestedFilename()).toMatch(/^snotes-backup-\d{8}\.zip$/)
+    await expect(dialog.locator('.backup-progress')).toContainText('已导出')
+    expect(await dialog.evaluate((el) => el.scrollWidth <= el.clientWidth)).toBe(true)
     await page.keyboard.press('Escape')
     await expect(dialog).toHaveCount(0)
-    await expect(entry).toBeFocused()
+    // 打开大弹窗时抽屉已收起：窄屏焦点回到可见的抽屉按钮，桌面回到图标栏入口
+    if (width < 1020) await expect(page.getByRole('button', { name: '打开侧栏' })).toBeFocused()
+    else await expect(entry).toBeFocused()
 
     // 刷新后由 index.html 的首帧脚本直接落主题，不等应用脚本加载
     await page.reload()
