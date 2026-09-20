@@ -2,7 +2,7 @@
 
 - 日期：2026-09-19
 - 基线：v0.7.1，main 分支 a98e911
-- 状态：实施中。第一档 1 与第二档 1 已完成，第二档 2、第一档 2、第一档 3、第一档 4 已于 v0.9.0 发布，第二档 3、第二档 5、第一档 5 已于 v0.10.0 发布，其余待排期。
+- 状态：实施中。第一档 1 与第二档 1 已完成，第二档 2、第一档 2、第一档 3、第一档 4 已于 v0.9.0 发布，第二档 3、第二档 5、第一档 5 已于 v0.10.0 发布，第三档 0、1、2 已于 v0.11.0 发布，其余待排期。
 - 来源：对 `src/`、`shared/`、`worker/`、`server/` 的代码审阅。各项「现状」均为代码中确认的事实，不是推测
 
 ## 第一档：补齐半成品
@@ -188,3 +188,7 @@
   - 第二档 3「搜索多关键词」：`src/components/SearchBar.ts` 新增 `splitTerms` 与 `matchesAll`，`highlight` 支持多词并合并重叠区间；`stores/notes.ts` 的 `visible` 改为交集匹配；`shared/derive.ts` 的 `extractSearchExcerpt` 以最靠前的命中为中心截取；`NoteList.vue` 分组 / 星标视图搜索空态提供「在全部笔记中搜索」。
   - 第二档 5「PWA 分享目标与快捷入口」：`pwa.config.ts` 增加 GET 方式的 `share_target`（`/?share`）与 `shortcuts`（`/?new`）；新增 `src/launch.ts` 解析启动参数并在 `main.ts` 挂载前消费、擦除地址栏。图片分享（POST + injectManifest）未做。
   - 第一档 5「快捷键扩展」：`shortcut.ts` 新增星标、置顶、删除、上下条、专注、立即同步、全部笔记、第 N 个分组；数字键按 `event.code` 识别以兼容 Shift 变符号；`App.vue` 的 `runShortcut` 统一执行；「格式帮助」弹层列出 `SHORTCUT_LIST`。
+- 2026-09-20：v0.11.0 完成实施顺序第 5 步，新增 `worker/maintenance.ts` 供两端共用：
+  - 第三档 0「定时任务入口」：`worker/index.ts` 导出 `scheduled`，`wrangler.jsonc` 配置 `triggers.crons`（每日 03:17 UTC）；`server/index.ts` 启动 5 秒后先跑一次、之后 `setInterval` 每 24 小时一次，任务失败只记日志。
+  - 第三档 1「孤儿图片回收」：`deleteOrphanImages` 用 `LEFT JOIN note_body` 加 `instr` 找出所属笔记正文不再引用且 `create_time` 超过 7 天的图片，先删对象再删索引行。存储用量汇总未做。
+  - 第三档 2「回收站自动清理与墓碑回收定时化」：新增部署级配置 `TRASH_RETENTION_DAYS`（Worker `vars` / 服务器环境变量，`compose.yaml` 透传），默认关闭；`purgeExpiredTrash` 以 `update_time` 作为进回收站时间判断超期后走 `purgeNotes`；`reapTombstones` 改由每日任务调用。
