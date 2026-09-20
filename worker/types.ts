@@ -5,6 +5,8 @@ export interface Env {
   R2: ImageStore
   ACCESS_TOKEN: string
   RUNTIME?: 'server'
+  /** 回收站保留天数（部署级配置）。未设置或 0 表示关闭；Worker 用 vars、服务器用环境变量注入。 */
+  TRASH_RETENTION_DAYS?: string
   EDGE_CACHE?: {
     match(request: Request): Promise<Response | undefined>
     put(request: Request, response: Response): Promise<void>

@@ -5,6 +5,7 @@ services:
     init: true
     environment:
       ACCESS_TOKEN: ${ACCESS_TOKEN:?Set ACCESS_TOKEN in .env}
+      TRASH_RETENTION_DAYS: ${TRASH_RETENTION_DAYS:-}
     ports:
       - "127.0.0.1:${PORT:-3000}:3000"
     volumes:

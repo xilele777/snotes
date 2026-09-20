@@ -76,3 +76,10 @@ it('requires a token and accepts a secret file without logging it', () => {
   writeFileSync(secret, 'file-token\n')
   expect(readConfig({ ACCESS_TOKEN_FILE: secret }).token).toBe('file-token')
 })
+
+it('reads the trash retention period and rejects invalid values at startup', () => {
+  expect(readConfig({ ACCESS_TOKEN: 't' }).trashRetentionDays).toBeNull()
+  expect(readConfig({ ACCESS_TOKEN: 't', TRASH_RETENTION_DAYS: '' }).trashRetentionDays).toBeNull()
+  expect(readConfig({ ACCESS_TOKEN: 't', TRASH_RETENTION_DAYS: '30' }).trashRetentionDays).toBe(30)
+  expect(() => readConfig({ ACCESS_TOKEN: 't', TRASH_RETENTION_DAYS: 'abc' })).toThrow('TRASH_RETENTION_DAYS')
+})

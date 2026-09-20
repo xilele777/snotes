@@ -338,6 +338,16 @@ E2E 会自己构建、应用迁移并在 `8790` 端口拉起 `wrangler dev`，�
 
 提交前请跑通 `npm run test:all && npm run build`。
 
+## 自动清理
+
+服务端每天执行一次维护任务（`worker/maintenance.ts`），Cloudflare 版由 `wrangler.jsonc` 里的 `triggers.crons` 触发，独立服务器版在进程内每 24 小时执行一次：
+
+- **孤儿图片回收**：从正文里删掉的图片不会立刻消失，上传满 7 天且不再被所属笔记引用时才删除对象和索引行，给撤销和多端同步留出时间。
+- **回收站过期清理**：默认关闭。设置 `TRASH_RETENTION_DAYS` 后，进入回收站超过该天数的笔记会被自动彻底删除，效果与手动「彻底删除」一致，删除信号照常同步到其他设备。Cloudflare 在 `wrangler.jsonc` 的 `vars` 里加 `"TRASH_RETENTION_DAYS": "30"` 后重新部署；独立服务器在 `.env.server` 或 `.env` 里设置同名变量后重启。值必须是正整数天数，留空或 `0` 表示关闭，非法值会让服务器拒绝启动。
+- **墓碑回收**：彻底删除的笔记在数据库里保留 30 天的删除标记供其他设备同步，超期后物理删除；此前只有手动清空回收站时才回收。
+
+Cloudflare 本地调试可用 `npx wrangler dev --test-scheduled` 启动后访问 `http://localhost:8787/__scheduled` 手动触发。
+
 ## 免费额度
 
 费用取决于请求、数据库读写、图片存储和操作量，不保证所有使用方式都免费。最新额度与计费规则以官方文档为准：

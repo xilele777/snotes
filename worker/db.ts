@@ -70,8 +70,8 @@ export async function purgeNotes(env: Env, ids: string[]): Promise<void> {
  */
 export const TOMBSTONE_RETENTION_MS = 30 * 24 * 60 * 60 * 1000
 
-export async function reapTombstones(env: Env): Promise<string[]> {
-  const cutoff = nowMs() - TOMBSTONE_RETENTION_MS
+export async function reapTombstones(env: Env, now = nowMs()): Promise<string[]> {
+  const cutoff = now - TOMBSTONE_RETENTION_MS
   const { results } = await env.DB.prepare(
     'SELECT id FROM note WHERE invalid = 2 AND update_time < ?'
   )

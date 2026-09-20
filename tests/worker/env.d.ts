@@ -13,6 +13,7 @@ declare global {
       DB: D1Database
       R2: R2Bucket
       ACCESS_TOKEN: string
+      TRASH_RETENTION_DAYS?: string
       TEST_MIGRATIONS: import('cloudflare:test').D1Migration[]
     }
   }

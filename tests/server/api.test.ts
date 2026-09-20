@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os'
 import { createServerApp } from '../../server/app'
 import { DiskImages } from '../../server/images'
 import { SqliteDatabase } from '../../server/sqlite'
+import { ORPHAN_IMAGE_GRACE_MS, runMaintenance } from '../../worker/maintenance'
 
 let directory: string
 let db: SqliteDatabase
@@ -96,4 +97,26 @@ it('bounds request bodies before parsing them', async () => {
     method: 'POST', headers: { Authorization: 'Bearer dev-token' }, body: 'x'.repeat(12 * 1024 * 1024 + 1),
   }, env)
   expect(response.status).toBe(413)
+})
+
+it('runs the shared maintenance job against SQLite and disk images', async () => {
+  const kept = await createNote()
+  const trashed = await createNote()
+  await api(`/api/notes/${kept}`, { content: '![](/api/images/k/kept.png)', title: 'title', summary: '', base_version: 1 }, 'PATCH')
+  await api(`/api/notes/${trashed}/trash`)
+  const old = Date.now() - ORPHAN_IMAGE_GRACE_MS - 1
+  await env.R2.put('k/kept.png', new Uint8Array([1]).buffer)
+  await env.R2.put('k/orphan.png', new Uint8Array([1]).buffer)
+  await db.batch([
+    db.prepare('INSERT INTO image (file_key, note_id, size, mime, create_time) VALUES (?, ?, 1, ?, ?)').bind('k/kept.png', kept, 'image/png', old),
+    db.prepare('INSERT INTO image (file_key, note_id, size, mime, create_time) VALUES (?, ?, 1, ?, ?)').bind('k/orphan.png', kept, 'image/png', old),
+    db.prepare('UPDATE note SET update_time = ? WHERE id = ?').bind(Date.now() - 8 * 24 * 60 * 60 * 1000, trashed),
+  ])
+
+  const report = await runMaintenance({ ...env, TRASH_RETENTION_DAYS: '7' })
+
+  expect(report).toEqual({ orphan_images: 1, expired_trash: 1, reaped_tombstones: 0 })
+  expect(await env.R2.get('k/orphan.png')).toBeNull()
+  expect(await env.R2.get('k/kept.png')).not.toBeNull()
+  expect(await db.prepare('SELECT invalid FROM note WHERE id = ?').bind(trashed).first()).toEqual({ invalid: 2 })
 })
