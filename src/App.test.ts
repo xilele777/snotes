@@ -241,3 +241,64 @@ describe('App 统计弹窗', () => {
     wrapper.unmount()
   })
 })
+
+describe('App 扩展快捷键', () => {
+  it('Ctrl+Shift+S 给当前笔记加星标，Ctrl+Shift+P 置顶', async () => {
+    const notes = useNotesStore()
+    const note = await notes.create()
+    const wrapper = mount(App, { attachTo: document.body })
+    await flushPromises()
+
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'S', ctrlKey: true, shiftKey: true, cancelable: true }))
+    await vi.waitFor(() => expect(notes.notes.find((n) => n.id === note.id)?.star).toBe(1))
+
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'P', ctrlKey: true, shiftKey: true, cancelable: true }))
+    await vi.waitFor(() => expect(notes.notes.find((n) => n.id === note.id)?.top).toBe(1))
+    wrapper.unmount()
+  })
+
+  it('Ctrl+Alt+↓ / ↑ 在列表里切换当前笔记', async () => {
+    const notes = useNotesStore()
+    const older = await notes.create()
+    const newer = await notes.create()
+    const wrapper = mount(App, { attachTo: document.body })
+    await vi.waitFor(() => expect(notes.currentId).toBe(newer.id))
+
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', ctrlKey: true, altKey: true, cancelable: true }))
+    await vi.waitFor(() => expect(notes.currentId).toBe(older.id))
+
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowUp', ctrlKey: true, altKey: true, cancelable: true }))
+    await vi.waitFor(() => expect(notes.currentId).toBe(newer.id))
+    wrapper.unmount()
+  })
+
+  it('Ctrl+Shift+D 打开删除确认弹窗而不是直接删', async () => {
+    const notes = useNotesStore()
+    await notes.create()
+    const wrapper = mount(App, { attachTo: document.body })
+    await flushPromises()
+
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'D', ctrlKey: true, shiftKey: true, cancelable: true }))
+    await vi.waitFor(() => expect(document.body.textContent).toContain('删除这条笔记？'))
+    expect(notes.notes).toHaveLength(1)
+    wrapper.unmount()
+  })
+
+  it('Ctrl+Shift+1 切到第一个分组，Ctrl+Shift+0 回到全部', async () => {
+    const notes = useNotesStore()
+    await notes.create()
+    const groups = useGroupsStore()
+    const group = await groups.create('工作')
+    const ui = useUiStore()
+    const wrapper = mount(App, { attachTo: document.body })
+    await flushPromises()
+
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: '!', code: 'Digit1', ctrlKey: true, shiftKey: true, cancelable: true }))
+    await vi.waitFor(() => expect(ui.view).toBe('group'))
+    expect(ui.activeGroupId).toBe(group.group_id)
+
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: ')', code: 'Digit0', ctrlKey: true, shiftKey: true, cancelable: true }))
+    await vi.waitFor(() => expect(ui.view).toBe('all'))
+    wrapper.unmount()
+  })
+})

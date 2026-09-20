@@ -38,4 +38,10 @@ describe('PWA 配置', () => {
 
     expect(imageIdx).toBeLessThan(apiIdx)
   })
+
+  it('分享目标用 GET 且带 share 标记参数，快捷入口能新建笔记', () => {
+    expect(pwaOptions.manifest.share_target.method).toBe('GET')
+    expect(pwaOptions.manifest.share_target.action).toContain('share')
+    expect(pwaOptions.manifest.shortcuts.map((s) => s.url)).toContain('/?new')
+  })
 })

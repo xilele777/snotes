@@ -2,7 +2,7 @@
 import { computed } from 'vue'
 import { extractSearchExcerpt } from '../../shared/derive'
 import type { LocalNote } from '../../shared/types'
-import { highlight } from './SearchBar'
+import { highlight, matchesAll, splitTerms } from './SearchBar'
 import AppIcon from './AppIcon.vue'
 
 const props = withDefaults(
@@ -17,16 +17,13 @@ const props = withDefaults(
   { active: false, swiped: false, query: '' }
 )
 
-/** 标题未命中而正文命中时，用命中附近的正文替换普通摘要。 */
+/** 标题与摘要都没把关键词凑齐时，用正文里命中附近的片段替换普通摘要。 */
 const displaySummary = computed(() => {
-  const query = props.query.trim()
-  if (!query) return props.note.summary
-
-  const normalized = query.toLowerCase()
-  if (props.note.title.toLowerCase().includes(normalized) || props.note.summary.toLowerCase().includes(normalized)) {
-    return props.note.summary
-  }
-  return extractSearchExcerpt(props.note.body, query) ?? props.note.summary
+  const terms = splitTerms(props.query)
+  if (terms.length === 0) return props.note.summary
+  if (matchesAll(`${props.note.title}
+${props.note.summary}`, terms)) return props.note.summary
+  return extractSearchExcerpt(props.note.body, props.query) ?? props.note.summary
 })
 
 /** 日期格式化：今天显示 HH:mm，否则 MM-DD，跨年带年份 */

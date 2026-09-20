@@ -13,6 +13,7 @@ import FormatToolbar, { type ToolbarAction } from './FormatToolbar.vue'
 import LinkDialog from './LinkDialog.vue'
 import ImageLightbox from './ImageLightbox.vue'
 import { SKIN_COLORS } from './palette'
+import { SHORTCUT_LIST } from './shortcut'
 import { EMPTY_FORMAT_STATE, type FormatState } from '../editor/format'
 import { copyMarkdown, downloadMarkdown, shareMarkdown } from '../export/share'
 import { useUiStore } from '../stores/ui'
@@ -33,6 +34,10 @@ const ui = useUiStore()
 const editorBody = ref<HTMLElement | null>(null)
 const editorReady = ref(false)
 watch(() => notes.current, note => { if (!note) editorReady.value = false })
+/** 快捷键清单：Mod 按平台显示为 ⌘ 或 Ctrl */
+const modKey = /Mac|iPhone|iPad/.test(navigator.platform) ? '⌘' : 'Ctrl'
+const shortcutList = SHORTCUT_LIST.map(item => ({ ...item, keys: item.keys.replace('Mod', modKey) }))
+
 const currentGroup = computed(() => groups.groups.find(group => group.group_id === notes.current?.group_id)?.name ?? '未分组')
 
 /** 颜色、分组、格式提示和导出一次只展开一个。 */
@@ -419,6 +424,8 @@ onUnmounted(() => clearTimeout(noticeTimer))
           <span class="popover-heading">用简单符号，轻松排版</span>
           <dl><div><dt><code># 空格</code></dt><dd>标题</dd></div><div><dt><code>- 空格</code></dt><dd>无序列表</dd></div><div><dt><code>1. 空格</code></dt><dd>有序列表</dd></div><div><dt><code>&gt; 空格</code></dt><dd>引用</dd></div><div><dt><code>**文字**</code></dt><dd>加粗</dd></div></dl>
           <p>也可以直接粘贴文字或图片；手机上请用顶栏的「插入图片」按钮。</p>
+          <span class="popover-heading shortcut-heading">键盘快捷键</span>
+          <dl class="shortcut-list"><div v-for="item in shortcutList" :key="item.keys"><dt><code>{{ item.keys }}</code></dt><dd>{{ item.label }}</dd></div></dl>
         </div>
       </div>
     </footer>

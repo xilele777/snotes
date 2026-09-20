@@ -7,12 +7,15 @@ import NoteList from './components/NoteList.vue'
 import TokenGate from './components/TokenGate.vue'
 import TrashView from './components/TrashView.vue'
 import StatsDialog from './components/StatsDialog.vue'
-import { resolveShortcut } from './components/shortcut'
-import { backToList, initNavigation, isMobile, pushNav } from './navigation'
+import { resolveShortcut, type ShortcutAction } from './components/shortcut'
+import { backToList, initNavigation, isMobile, pushNav, switchListView } from './navigation'
+import { useGroupsStore } from './stores/groups'
 import { useNotesStore } from './stores/notes'
 import { useUiStore } from './stores/ui'
+import { syncNow } from './sync/engine'
 
 const notes = useNotesStore()
+const groups = useGroupsStore()
 const ui = useUiStore()
 const MetricsView = defineAsyncComponent(() => import('./components/MetricsView.vue'))
 const drawerLayout = window.matchMedia('(max-width: 1020px)')
@@ -90,12 +93,41 @@ function onKeydown(e: KeyboardEvent) {
   e.preventDefault()
   e.stopPropagation()
 
-  if (action.type === 'create') {
-    notes.create()
-  } else if (action.type === 'focusSearch') {
-    void focusSearch()
-  } else if (action.type === 'clearQuery') {
-    ui.query = ''
+  void runShortcut(action)
+}
+
+/** 相对当前选中项在可见列表里前后移动；没有选中项时从第一条开始 */
+function stepNote(delta: number) {
+  const list = notes.visible
+  if (list.length === 0) return
+  const index = list.findIndex((n) => n.id === notes.currentId)
+  const next = index === -1 ? 0 : Math.min(list.length - 1, Math.max(0, index + delta))
+  if (list[next].id === notes.currentId) return
+  if (isMobile() && ui.mobilePane === 'list') pushNav()
+  notes.currentId = list[next].id
+}
+
+async function runShortcut(action: ShortcutAction) {
+  const current = notes.current
+  const editable = current && ui.view !== 'trash' && ui.view !== 'metrics'
+  switch (action.type) {
+    case 'create': void notes.create(); return
+    case 'focusSearch': await focusSearch(); return
+    case 'clearQuery': ui.query = ''; return
+    case 'toggleStar': if (editable) await notes.setProps(current.id, { star: current.star === 1 ? 0 : 1 }); return
+    case 'togglePin': if (editable) await notes.setProps(current.id, { top: current.top === 1 ? 0 : 1 }); return
+    // 删除仍要走确认弹窗：直接按顶栏的删除按钮，和鼠标路径完全一致
+    case 'trash': if (editable) document.querySelector<HTMLButtonElement>('[data-op="trash"]')?.click(); return
+    case 'nextNote': stepNote(1); return
+    case 'prevNote': stepNote(-1); return
+    case 'toggleFocus': if (editable) ui.focusMode = !ui.focusMode; return
+    case 'syncNow': await syncNow(); return
+    case 'showAll': await switchListView('all'); return
+    case 'showGroup': {
+      const group = groups.groups[action.index]
+      if (group) await switchListView('group', group.group_id)
+      return
+    }
   }
 }
 

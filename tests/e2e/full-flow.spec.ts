@@ -223,6 +223,65 @@ test('搜索按标题过滤', async ({ page }) => {
   await expect(page.locator('.note-item').first()).toContainText('苹果')
 })
 
+test('搜索多个关键词取交集，分组视图搜不到时可跳到全部笔记', async ({ page }) => {
+  await createNote(page)
+  await page.locator('.milkdown').click()
+  await page.keyboard.type('# 周会记录')
+  await page.keyboard.press('Enter')
+  await page.keyboard.type('讨论了预算')
+  await expect(page.locator('.note-item').first()).toContainText('周会记录')
+
+  await createNote(page)
+  await page.locator('.milkdown').click()
+  await page.keyboard.type('# 周会记录 二')
+  await expect(page.locator('.note-item')).toHaveCount(2)
+
+  await page.getByPlaceholder('搜索笔记').fill('周会 预算')
+  await expect(page.locator('.note-item')).toHaveCount(1)
+  await expect(page.locator('.note-item').first()).toContainText('预算')
+
+  await createGroup(page, '空组')
+  await page.locator('.groups li').first().click()
+  await page.getByPlaceholder('搜索笔记').fill('周会')
+  await expect(page.locator('.empty-state .empty-action')).toHaveText('在全部笔记中搜索')
+  await page.locator('.empty-state .empty-action').click()
+  await expect(page.locator('.header-title')).toHaveText('全部笔记')
+  await expect(page.getByPlaceholder('搜索笔记')).toHaveValue('周会')
+  await expect(page.locator('.note-item')).toHaveCount(2)
+})
+
+test('分享目标参数启动时新建一条带内容的笔记并擦掉地址栏参数', async ({ page }) => {
+  await page.goto('/?share&title=分享标题&text=分享正文&url=https%3A%2F%2Fexample.com%2Fx')
+  await expect(page.locator('.note-item').first()).toContainText('分享标题')
+  await expect(page.locator('.milkdown')).toContainText('分享正文')
+  await expect(page.locator('.milkdown')).toContainText('https://example.com/x')
+  await expect(page).toHaveURL(/\/$/)
+  await page.reload()
+  await expect(page.locator('.note-item')).toHaveCount(1)
+})
+
+test('快捷键：Ctrl+Shift+S 星标、Ctrl+Alt+↓ 切下一条、Ctrl+Shift+F 专注', async ({ page }) => {
+  await createNote(page)
+  await page.locator('.milkdown').click()
+  await page.keyboard.type('# 第一条')
+  await expect(page.locator('.note-item').first()).toContainText('第一条')
+  await createNote(page)
+  await page.locator('.milkdown').click()
+  await page.keyboard.type('# 第二条')
+  await expect(page.locator('.note-item')).toHaveCount(2)
+
+  await page.keyboard.press('Control+Shift+S')
+  await expect(page.locator('.note-item.is-active .note-star')).toBeVisible()
+
+  await page.keyboard.press('Control+Alt+ArrowDown')
+  await expect(page.locator('.note-item.is-active')).toContainText('第一条')
+
+  await page.keyboard.press('Control+Shift+F')
+  await expect(page.locator('.layout')).toHaveClass(/is-focused/)
+  await page.keyboard.press('Escape')
+  await expect(page.locator('.layout')).not.toHaveClass(/is-focused/)
+})
+
 test('删除后进回收站，能看详情，可恢复', async ({ page }) => {
   await createNote(page)
   await page.locator('.milkdown').click()

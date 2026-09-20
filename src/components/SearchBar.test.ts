@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { highlight } from './SearchBar'
+import { highlight, matchesAll, splitTerms } from './SearchBar'
 
 describe('highlight', () => {
   it('切分出命中片段', () => {
@@ -38,5 +38,30 @@ describe('highlight', () => {
       { text: '.', hit: true },
       { text: 'c', hit: false },
     ])
+  })
+})
+
+describe('多关键词', () => {
+  it('空格分隔的多个词各自高亮', () => {
+    expect(highlight('foo bar baz', 'baz foo')).toEqual([
+      { text: 'foo', hit: true },
+      { text: ' bar ', hit: false },
+      { text: 'baz', hit: true },
+    ])
+  })
+
+  it('重叠的命中区间合并成一段', () => {
+    expect(highlight('abc', 'ab bc')).toEqual([{ text: 'abc', hit: true }])
+  })
+
+  it('splitTerms 去重、小写并忽略多余空白', () => {
+    expect(splitTerms('  Foo  bar foo ')).toEqual(['foo', 'bar'])
+    expect(splitTerms('   ')).toEqual([])
+  })
+
+  it('matchesAll 要求全部词都出现', () => {
+    expect(matchesAll('Hello World', ['hello', 'world'])).toBe(true)
+    expect(matchesAll('Hello World', ['hello', 'mars'])).toBe(false)
+    expect(matchesAll('anything', [])).toBe(true)
   })
 })

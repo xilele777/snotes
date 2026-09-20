@@ -5,6 +5,7 @@ import * as repo from '../db/repo'
 import type { ListView, NoteProps } from '../db/repo'
 import { isMobile, pushNav } from '../navigation'
 import { useUiStore } from './ui'
+import { matchesAll, splitTerms } from '../components/SearchBar'
 
 export const useNotesStore = defineStore('notes', () => {
   const ui = useUiStore()
@@ -51,15 +52,20 @@ export const useNotesStore = defineStore('notes', () => {
     }
   }, { flush: 'sync' })
 
+  /**
+   * 搜索：空格分隔的多个关键词取交集，标题与正文合起来都包含才算命中。
+   * 全部关键词都落在标题里的排最前，其余按更新时间倒序。
+   */
   const visible = computed(() => {
-    const q = ui.query.trim().toLowerCase()
-    if (!q) return notes.value
+    const terms = splitTerms(ui.query)
+    if (terms.length === 0) return notes.value
 
     const scored = notes.value
       .map((note) => {
-        const inTitle = note.title.toLowerCase().includes(q)
-        const inBody = note.body.toLowerCase().includes(q)
-        return { note, rank: inTitle ? 0 : inBody ? 1 : -1 }
+        const inTitle = matchesAll(note.title, terms)
+        const inAny = inTitle || matchesAll(`${note.title}
+${note.body}`, terms)
+        return { note, rank: inTitle ? 0 : inAny ? 1 : -1 }
       })
       .filter((x) => x.rank >= 0)
 

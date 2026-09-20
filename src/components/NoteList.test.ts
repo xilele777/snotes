@@ -1,4 +1,4 @@
-import { mount } from '@vue/test-utils'
+import { flushPromises, mount } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { db } from '../db/schema'
@@ -249,6 +249,28 @@ describe('NoteList', () => {
 
     await wrapper.find('.empty-state .empty-action').trigger('click')
     expect(ui.query).toBe('')
+  })
+
+  it('分组视图搜索无结果时给「在全部笔记中搜索」的出口', async () => {
+    const store = useNotesStore()
+    const ui = useUiStore()
+    const note = await store.create()
+    await store.saveBody(note.id, '会议纪要')
+
+    ui.view = 'group'
+    ui.activeGroupId = 'g-none'
+    await store.load()
+    ui.query = '会议'
+
+    const wrapper = mount(NoteList)
+    await wrapper.vm.$nextTick()
+    expect(wrapper.find('.empty-state .empty-action').text()).toBe('在全部笔记中搜索')
+
+    await wrapper.find('.empty-state .empty-action').trigger('click')
+    await flushPromises()
+    expect(ui.view).toBe('all')
+    expect(ui.query).toBe('会议')
+    expect(store.visible.map((n) => n.id)).toEqual([note.id])
   })
 
   it('搜索命中正文深处时显示命中片段并高亮', async () => {

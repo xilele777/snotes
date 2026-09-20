@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
-import { isMobile, openDrawer, pushNav } from '../navigation'
+import { isMobile, openDrawer, pushNav, switchListView } from '../navigation'
 import EmptyState from './EmptyState.vue'
 import ListSkeleton from './ListSkeleton.vue'
 import NoteListItem from './NoteListItem.vue'
@@ -100,7 +100,13 @@ const viewTitle = computed(() => {
  */
 const empty = computed(() => {
   if (ui.query.trim()) {
-    return { title: `没有匹配「${ui.query.trim()}」的笔记`, hint: '换个词试试', action: '清除搜索' }
+    // 分组和星标视图只搜当前范围；搜不到时给一个跳去全部笔记继续找的出口
+    const scoped = ui.view === 'group' || ui.view === 'star'
+    return {
+      title: `没有匹配「${ui.query.trim()}」的笔记`,
+      hint: scoped ? `当前只在「${viewTitle.value}」里搜索` : '换个词试试，多个词用空格隔开',
+      action: scoped ? '在全部笔记中搜索' : '清除搜索',
+    }
   }
   if (ui.view === 'star') {
     return { title: '没有星标笔记', hint: '在笔记顶栏点 ☆ 收藏常用的笔记', action: '' }
@@ -111,9 +117,13 @@ const empty = computed(() => {
   return { title: '还没有笔记', hint: '记点什么吧', action: '新建笔记' }
 })
 
-function onEmptyAction() {
+async function onEmptyAction() {
   if (empty.value.action === '清除搜索') ui.query = ''
-  else notes.create()
+  else if (empty.value.action === '在全部笔记中搜索') {
+    const query = ui.query
+    await switchListView('all')
+    ui.query = query
+  } else notes.create()
 }
 
 onMounted(() => {

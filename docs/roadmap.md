@@ -2,7 +2,7 @@
 
 - 日期：2026-09-19
 - 基线：v0.7.1，main 分支 a98e911
-- 状态：实施中。第一档 1 与第二档 1 已完成，第二档 2、第一档 2、第一档 3、第一档 4 已于 v0.9.0 一并发布，其余待排期。
+- 状态：实施中。第一档 1 与第二档 1 已完成，第二档 2、第一档 2、第一档 3、第一档 4 已于 v0.9.0 发布，第二档 3、第二档 5、第一档 5 已于 v0.10.0 发布，其余待排期。
 - 来源：对 `src/`、`shared/`、`worker/`、`server/` 的代码审阅。各项「现状」均为代码中确认的事实，不是推测
 
 ## 第一档：补齐半成品
@@ -184,3 +184,7 @@
   - 第一档 3「链接处理」：光标落在链接上时浮出气泡（打开、编辑地址、复制、移除），Ctrl/Cmd 加点击直接新标签打开，外链补 `rel="noopener noreferrer"`；新增 `src/editor/link-tooltip.ts`（ProseMirror Plugin，气泡挂 body 用 fixed 定位），`copyText` 从 `copyMarkdown` 中拆出复用。
   - 第一档 4「图片查看」：双击或长按图片打开全屏灯箱（缩放 1–6 倍、放大后拖动、左右切换同笔记内图片、下载原图、方向键与 `+` `-` `0` `Esc` 快捷键）；新增 `src/components/ImageLightbox.vue`，取图逻辑抽为 `imagesAround` 供双击与长按共用。
 - 开发过程中的四个中间版本提交（0.10.0、0.11.0、0.12.0）保留在 Git 历史里，但未作为独立版本发布，正式对外只有 v0.9.0 一个版本与标签。
+- 2026-09-20：v0.10.0 完成实施顺序第 4 步：
+  - 第二档 3「搜索多关键词」：`src/components/SearchBar.ts` 新增 `splitTerms` 与 `matchesAll`，`highlight` 支持多词并合并重叠区间；`stores/notes.ts` 的 `visible` 改为交集匹配；`shared/derive.ts` 的 `extractSearchExcerpt` 以最靠前的命中为中心截取；`NoteList.vue` 分组 / 星标视图搜索空态提供「在全部笔记中搜索」。
+  - 第二档 5「PWA 分享目标与快捷入口」：`pwa.config.ts` 增加 GET 方式的 `share_target`（`/?share`）与 `shortcuts`（`/?new`）；新增 `src/launch.ts` 解析启动参数并在 `main.ts` 挂载前消费、擦除地址栏。图片分享（POST + injectManifest）未做。
+  - 第一档 5「快捷键扩展」：`shortcut.ts` 新增星标、置顶、删除、上下条、专注、立即同步、全部笔记、第 N 个分组；数字键按 `event.code` 识别以兼容 Shift 变符号；`App.vue` 的 `runShortcut` 统一执行；「格式帮助」弹层列出 `SHORTCUT_LIST`。

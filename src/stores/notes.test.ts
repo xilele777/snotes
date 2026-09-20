@@ -117,6 +117,19 @@ describe('notes store', () => {
     expect(store.visible.map((n) => n.id)).toEqual([titleHit.id, bodyHit.id])
   })
 
+  it('多个关键词取交集，词可以分别落在标题与正文里', async () => {
+    const store = useNotesStore()
+    const ui = useUiStore()
+    const both = await store.create()
+    await store.saveBody(both.id, '周会记录\n讨论了 预算')
+    const onlyOne = await store.create()
+    await store.saveBody(onlyOne.id, '周会记录\n没有别的')
+
+    ui.query = '周会 预算'
+
+    expect(store.visible.map((n) => n.id)).toEqual([both.id])
+  })
+
   it('空搜索词返回全部', async () => {
     const store = useNotesStore()
     const ui = useUiStore()

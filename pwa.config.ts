@@ -25,6 +25,8 @@ interface PwaOptions {
     background_color: string
     theme_color: string
     icons: { src: string; sizes: string; type: string; purpose?: 'any' | 'maskable' }[]
+    shortcuts: { name: string; url: string; icons?: { src: string; sizes: string; type: string }[] }[]
+    share_target: { action: string; method: 'GET'; params: { title: string; text: string; url: string } }
   }
   workbox: {
     globPatterns: string[]
@@ -48,6 +50,17 @@ export const pwaOptions: PwaOptions = {
       { src: '/snotes-512.png', sizes: '512x512', type: 'image/png', purpose: 'any' },
       { src: '/snotes-maskable-512.png', sizes: '512x512', type: 'image/png', purpose: 'maskable' },
     ],
+    // 桌面图标长按 / 右键的快捷入口
+    shortcuts: [
+      { name: '新建笔记', url: '/?new', icons: [{ src: '/snotes-192.png', sizes: '192x192', type: 'image/png' }] },
+    ],
+    // 系统分享面板里选 snotes：文字与链接以 GET 参数进来，启动时由 src/launch.ts 消费。
+    // 图片分享需要 POST + Service Worker，暂不做；iOS Safari 不支持 share_target。
+    share_target: {
+      action: '/?share',
+      method: 'GET',
+      params: { title: 'title', text: 'text', url: 'url' },
+    },
   },
   workbox: {
     globPatterns: ['**/*.{js,css,html,ico,png,svg,woff2}'],

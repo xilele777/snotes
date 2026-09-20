@@ -311,6 +311,8 @@ kbd { font-family: inherit; font-size: 10px; line-height: 20px; white-space: now
 .help-popover dl > div { display: flex; align-items: center; justify-content: space-between; padding: 5px 0; }
 .help-popover dd { margin: 0; color: var(--text-secondary); }
 .help-popover code { color: var(--text-primary); font-family: inherit; background: var(--bg-app); padding: 2px 6px; border-radius: 4px; font-size: 11px; }
+.help-popover .shortcut-heading { display: block; border-top: 1px solid var(--border-light); margin-top: 12px; padding-top: 12px; }
+.help-popover .shortcut-list dt code { white-space: nowrap; }
 .help-popover p { border-top: 1px solid var(--border-light); padding: 10px 4px 0; margin: 12px 0 0; font-size: 10px; }
 .is-focused .editor-body .milkdown { max-width: var(--editor-focus-max-width); padding: 44px 60px 64px; }
 .editor-loading { max-width: var(--editor-max-width); padding: 36px 40px; margin: auto; display: flex; flex-direction: column; gap: 20px; }

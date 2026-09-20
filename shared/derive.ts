@@ -67,14 +67,24 @@ export function extractSummary(md: string): string {
  * 因此这里从第二个文本行开始，避免结果摘要重复标题。
  */
 export function extractSearchExcerpt(md: string, query: string, limit = SUMMARY_MAX): string | null {
-  const q = query.trim().toLowerCase()
-  if (!q) return null
+  const terms = query.trim().toLowerCase().split(/\s+/).filter(Boolean)
+  if (terms.length === 0) return null
 
   const content = textLines(md).slice(1).join(' ')
-  const index = content.toLowerCase().indexOf(q)
+  const lower = content.toLowerCase()
+  // 多个关键词时以最靠前的一处命中为中心截取，另一个词若离得近也能落进片段里
+  let index = -1
+  let hitLength = 0
+  for (const term of terms) {
+    const at = lower.indexOf(term)
+    if (at !== -1 && (index === -1 || at < index)) {
+      index = at
+      hitLength = term.length
+    }
+  }
   if (index === -1) return null
 
-  const start = Math.max(0, index - Math.floor((limit - q.length) / 2))
+  const start = Math.max(0, index - Math.floor((limit - hitLength) / 2))
   const end = Math.min(content.length, start + limit)
   const excerpt = content.slice(start, end).trim()
   return `${start > 0 ? '...' : ''}${excerpt}${end < content.length ? '...' : ''}`

@@ -156,6 +156,13 @@ describe('extractSearchExcerpt', () => {
     expect(excerpt).toMatch(/\.\.\.$/)
   })
 
+  it('多个关键词时以最靠前的命中为中心截取', () => {
+    const md = `标题
+${'前文'.repeat(50)}第一个词 紧接着第二个词${'后文'.repeat(50)}`
+    const excerpt = extractSearchExcerpt(md, '第二个词 第一个词')
+    expect(excerpt).toContain('第一个词 紧接着第二个词')
+  })
+
   it('不匹配正文或搜索词为空时返回 null', () => {
     expect(extractSearchExcerpt('标题\n正文', '不存在')).toBeNull()
     expect(extractSearchExcerpt('标题\n正文', '  ')).toBeNull()

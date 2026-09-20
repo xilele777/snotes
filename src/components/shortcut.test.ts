@@ -43,3 +43,42 @@ describe('resolveShortcut', () => {
       .toEqual({ type: 'create' })
   })
 })
+
+describe('resolveShortcut 扩展键位', () => {
+  const ctx = { hasQuery: false }
+  const shift = (key: string, code?: string) => ({ metaKey: false, ctrlKey: true, shiftKey: true, key, code })
+  const alt = (key: string) => ({ metaKey: false, ctrlKey: true, altKey: true, key })
+
+  it('Mod+Shift+S/P/D → 星标、置顶、删除', () => {
+    expect(resolveShortcut(shift('S'), ctx)).toEqual({ type: 'toggleStar' })
+    expect(resolveShortcut(shift('p'), ctx)).toEqual({ type: 'togglePin' })
+    expect(resolveShortcut(shift('D'), ctx)).toEqual({ type: 'trash' })
+  })
+
+  it('Mod+Shift+F 是专注模式而不是搜索', () => {
+    expect(resolveShortcut(shift('F'), ctx)).toEqual({ type: 'toggleFocus' })
+  })
+
+  it('Mod+Shift+U → 立即同步', () => {
+    expect(resolveShortcut(shift('U'), ctx)).toEqual({ type: 'syncNow' })
+  })
+
+  it('Mod+Alt+↑/↓ → 上一条 / 下一条', () => {
+    expect(resolveShortcut(alt('ArrowDown'), ctx)).toEqual({ type: 'nextNote' })
+    expect(resolveShortcut(alt('ArrowUp'), ctx)).toEqual({ type: 'prevNote' })
+  })
+
+  it('Mod+Shift+数字按物理键位识别，Shift 把 key 变成符号也不影响', () => {
+    expect(resolveShortcut(shift(')', 'Digit0'), ctx)).toEqual({ type: 'showAll' })
+    expect(resolveShortcut(shift('!', 'Digit1'), ctx)).toEqual({ type: 'showGroup', index: 0 })
+    expect(resolveShortcut(shift('3', 'Digit3'), ctx)).toEqual({ type: 'showGroup', index: 2 })
+  })
+
+  it('没有 Shift 的 Mod+数字不抢浏览器切标签', () => {
+    expect(resolveShortcut({ metaKey: false, ctrlKey: true, key: '1', code: 'Digit1' }, ctx)).toBeNull()
+  })
+
+  it('单独的 Alt+方向键不切笔记（编辑器里是按词移动光标）', () => {
+    expect(resolveShortcut({ metaKey: false, ctrlKey: false, altKey: true, key: 'ArrowDown' }, ctx)).toBeNull()
+  })
+})

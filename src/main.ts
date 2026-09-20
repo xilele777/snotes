@@ -8,6 +8,7 @@ import { onRemoteApplied } from './sync/signal'
 import { useNotesStore } from './stores/notes'
 import { useGroupsStore } from './stores/groups'
 import { initSettings } from './settings'
+import { clearLaunchParams, parseLaunchIntent } from './launch'
 
 // 主题、字号、宽度在挂载前就落到 <html> 上，首帧不闪白
 initSettings()
@@ -17,7 +18,15 @@ app.use(createPinia())
 
 // 与首帧并行读取 IndexedDB；NoteList 仍会在视图数据过期时兜底重读。
 const notes = useNotesStore()
-void notes.load()
+// 分享目标 / 快捷入口带进来的意图：先建笔记再挂载，第一帧就落在新笔记上；
+// 未登录时不建（建了也只会躺在本地），参数照样擦掉。
+const intent = parseLaunchIntent(location.search)
+clearLaunchParams()
+if (intent && hasToken.value) {
+  void notes.create().then((note) => (intent.body ? notes.saveBody(note.id, intent.body) : undefined))
+} else {
+  void notes.load()
+}
 app.mount('#app')
 
 // iOS Safari 会在存储压力下清理 IndexedDB，先申请持久化
