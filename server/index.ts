@@ -26,7 +26,11 @@ const env = {
   TRASH_RETENTION_DAYS: config.trashRetentionDays === null ? undefined : String(config.trashRetentionDays),
 }
 const app = createServerApp(assets)
-const server = serve({ fetch: (request) => app.fetch(request, env), port: config.port, hostname: config.hostname }, (info) => {
+const server = serve({
+  // 登录限流按来源地址计数，socket 对端地址随请求传入；X-Forwarded-For 的可信判断在 server/rate-limit.ts。
+  fetch: (request, bindings) => app.fetch(request, { ...env, REMOTE_ADDRESS: bindings.incoming.socket.remoteAddress }),
+  port: config.port, hostname: config.hostname,
+}, (info) => {
   console.log(`snotes listening on ${config.hostname}:${info.port}`)
 })
 // 与 Worker 的 cron 对应：启动后先跑一次，之后每日一次。任务失败只记日志，不影响服务。

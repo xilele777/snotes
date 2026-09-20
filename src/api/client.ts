@@ -1,4 +1,4 @@
-import { clearToken, getToken, markTokenInvalid } from './token'
+import { clearToken, getToken, markTokenInvalid, markTooManyAttempts } from './token'
 import type { MetricsData } from '../../shared/types'
 
 export class ApiError extends Error {
@@ -25,6 +25,18 @@ async function request(path: string, init: RequestInit): Promise<Response> {
     clearToken()
     markTokenInvalid()
     throw new ApiError(401, 'unauthorized')
+  }
+
+  // 服务器版登录限流：连续输错令牌达到阈值后所有 API 都返回 429，同样回到令牌页，
+  // 但提示改为「稍后再试」。其它来源的 429（如 Cloudflare 速率限制）不带这个 error 字段，照常按可重试错误处理。
+  if (res.status === 429) {
+    const body = await res.clone().json().catch(() => null) as { error?: string; retry_after?: number } | null
+    if (body?.error === 'too_many_attempts') {
+      const retryAfter = Number(body.retry_after ?? res.headers.get('Retry-After') ?? 60)
+      clearToken()
+      markTooManyAttempts(Number.isFinite(retryAfter) ? retryAfter : 60)
+      throw new ApiError(429, 'too_many_attempts')
+    }
   }
 
   if (!res.ok) {

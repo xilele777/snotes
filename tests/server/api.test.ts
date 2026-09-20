@@ -6,6 +6,7 @@ import { createServerApp } from '../../server/app'
 import { DiskImages } from '../../server/images'
 import { SqliteDatabase } from '../../server/sqlite'
 import { ORPHAN_IMAGE_GRACE_MS, runMaintenance } from '../../worker/maintenance'
+import { LOGIN_FAIL_THRESHOLD } from '../../server/rate-limit'
 
 let directory: string
 let db: SqliteDatabase
@@ -52,6 +53,25 @@ it('serves public health and SPA, protects API and keeps missing assets out of S
   expect((await app.request('/sw.js', {}, env)).headers.get('Cache-Control')).toBe('no-cache')
   const metrics = await api('/api/metrics/types')
   expect(await metrics.json()).toMatchObject({ error: 'not_supported' })
+})
+
+it('blocks a source after repeated 401s, keeps other sources and health working, and resets on success', async () => {
+  const from = (address: string, headers: Record<string, string> = {}) =>
+    app.request('/api/sync/pull', { method: 'POST', headers: { 'Content-Type': 'application/json', ...headers }, body: JSON.stringify({ since: 0 }) }, { ...env, REMOTE_ADDRESS: address })
+  for (let i = 0; i < LOGIN_FAIL_THRESHOLD; i++) expect((await from('203.0.113.9')).status).toBe(401)
+  const blocked = await from('203.0.113.9', { Authorization: 'Bearer dev-token' })
+  expect(blocked.status).toBe(429)
+  expect(blocked.headers.get('Retry-After')).toMatch(/^\d+$/)
+  expect(await blocked.json()).toMatchObject({ error: 'too_many_attempts', retry_after: expect.any(Number) })
+  // 直连时客户端自带的 X-Forwarded-For 不能用来换身份
+  expect((await from('203.0.113.9', { 'X-Forwarded-For': '198.51.100.1' })).status).toBe(429)
+  expect((await from('203.0.113.10', { Authorization: 'Bearer dev-token' })).status).toBe(200)
+  expect((await app.request('/api/health', {}, { ...env, REMOTE_ADDRESS: '203.0.113.9' })).status).toBe(200)
+  // 经本机反向代理时按 X-Forwarded-For 区分来源
+  for (let i = 0; i < LOGIN_FAIL_THRESHOLD - 1; i++) expect((await from('127.0.0.1', { 'X-Forwarded-For': '198.51.100.7' })).status).toBe(401)
+  expect((await from('127.0.0.1', { 'X-Forwarded-For': '198.51.100.7', Authorization: 'Bearer dev-token' })).status).toBe(200)
+  expect((await from('127.0.0.1', { 'X-Forwarded-For': '198.51.100.7' })).status).toBe(401)
+  expect((await from('127.0.0.1', { 'X-Forwarded-For': '198.51.100.8', Authorization: 'Bearer dev-token' })).status).toBe(200)
 })
 
 it('saves notes, detects concurrent changes and returns sync bodies after restart', async () => {

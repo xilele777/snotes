@@ -417,6 +417,8 @@ docs/           设计文档、运维手册
 - 令牌保存在浏览器 `localStorage`，另有一个作用域限定为 `Path=/api/images/` 的 Cookie 专供 `<img>` 使用
 - 更换令牌：Cloudflare 使用 `wrangler secret put ACCESS_TOKEN`；直接运行 Node.js 时修改 `.env.server` 或服务环境文件并重启进程；Docker 修改 `.env` 后执行 `docker compose up -d --force-recreate snotes`。使用旧令牌的客户端会收到 401 并回到输入页，本地数据不受影响
 - 不要把令牌写进 `wrangler.jsonc` 或任何会进仓库的文件；服务器令牌仅保存在被忽略的环境文件或服务端密钥文件中
+- 独立服务器版内置登录限流：同一来源连续 5 次令牌错误后封锁 1 分钟，封锁期满再错则时长翻倍，最长 1 小时；期间该来源的全部 `/api/` 请求返回 429，`/api/health` 不受影响。来源按 socket 地址判定，只有本机或内网反向代理带来的 `X-Forwarded-For` 才被采信，详见[服务器部署文档](docs/server-deployment.md)
+- Cloudflare 版不在代码里做限流，建议在 Cloudflare 控制台的 **Security → WAF → Rate limiting rules** 里添加规则：匹配 URI 路径以 `/api/` 开头且响应状态码为 401 的请求，同一 IP 在 1 分钟内超过 5 次即封锁 10 分钟。免费套餐允许 1 条速率限制规则，按响应状态码计数需要在规则里启用「按响应特征计数」
 
 发现安全问题请通过 GitHub 的 [Security Advisory](https://github.com/xilele777/snotes/security/advisories/new) 私下报告，不要开公开 issue。
 

@@ -107,6 +107,16 @@ notes.example.com {
 
 这里假定 Caddy 运行在宿主机。若也放在容器中，应连接同一 Docker 网络并代理到 `snotes:3000`。使用 Nginx 等代理时，上传请求体上限设为至少 12 MiB；单张图片上限仍为 10 MiB。
 
+### 登录限流与反向代理
+
+服务内置按来源地址的登录限流：同一来源连续 5 次令牌错误（401）后封锁 1 分钟，封锁期满再错则封锁时长翻倍，最长 1 小时；成功一次或安静 15 分钟后清零。封锁期间该来源的全部 `/api/` 请求返回 429 并带 `Retry-After`，网页会回到令牌输入页并提示等待时间；`/api/health` 不计入也不受封锁。计数保存在进程内存中，重启即清空。
+
+来源地址的判定规则：
+
+- 服务直接暴露在公网（`HOST=0.0.0.0` 且没有代理）时，只按 TCP 连接的对端地址计数，请求里自带的 `X-Forwarded-For` 一律忽略，客户端无法伪造来源换取新的额度。
+- 连接来自本机（`127.0.0.1`、`::1`）或私网地址（`10/8`、`172.16/12`、`192.168/16`、`fc00::/7`）时视为可信反向代理，改用 `X-Forwarded-For` 从右往左第一个非内网地址作为来源。Caddy 默认会追加该头，Nginx 需要 `proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;`；Docker Compose 部署里宿主机代理到容器时对端是 Docker 网桥地址，同样落在可信范围。
+- 代理没有带 `X-Forwarded-For` 时退回对端地址，此时所有访客共用一个计数，任何人输错 5 次都会让大家一起等 1 分钟。反向代理后面请务必转发该头。
+
 打开 HTTPS 地址后输入访问令牌。每台设备输入一次，不需要 Cloudflare 密钥。GitHub 仅用于源码和可选的更新提醒，无法访问 GitHub 不影响笔记服务。
 
 ## 备份、升级与恢复
@@ -136,7 +146,7 @@ docker compose start snotes
 ## 验证与排错
 
 ```bash
-npm run test:server      # SQLite、文件存储、API、迁移与鉴权测试
+npm run test:server      # SQLite、文件存储、API、迁移、鉴权与登录限流测试
 npm run test:e2e:server  # 在真实 Node.js HTTP 服务上运行整套浏览器测试
 ```
 

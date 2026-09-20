@@ -130,6 +130,25 @@ describe('apiFetch', () => {
     expect(authNotice.value).toContain('失效')
   })
 
+  it('登录限流的 429 同样回到令牌页，提示改为稍后再试', async () => {
+    setToken('bad')
+    mockFetch(429, { error: 'too_many_attempts', retry_after: 120 })
+
+    await expect(apiFetch('/api/x')).rejects.toMatchObject({ status: 429 })
+    expect(getToken()).toBeNull()
+    expect(hasToken.value).toBe(false)
+    expect(authNotice.value).toContain('2 分钟')
+  })
+
+  it('其它来源的 429 不动令牌，按普通错误抛出', async () => {
+    setToken('tok')
+    mockFetch(429, { error: 'rate_limited' })
+
+    await expect(apiFetch('/api/x')).rejects.toMatchObject({ status: 429 })
+    expect(getToken()).toBe('tok')
+    expect(authNotice.value).toBeNull()
+  })
+
   it('非 2xx 抛出带状态码的 ApiError', async () => {
     setToken('tok')
     mockFetch(500)

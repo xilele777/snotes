@@ -5,6 +5,8 @@ export interface Env {
   R2: ImageStore
   ACCESS_TOKEN: string
   RUNTIME?: 'server'
+  /** 服务器版：socket 对端地址，供登录限流按来源计数；Worker 不设置 */
+  REMOTE_ADDRESS?: string
   /** 回收站保留天数（部署级配置）。未设置或 0 表示关闭；Worker 用 vars、服务器用环境变量注入。 */
   TRASH_RETENTION_DAYS?: string
   EDGE_CACHE?: {

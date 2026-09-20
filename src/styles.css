@@ -544,3 +544,27 @@ kbd { font-family: inherit; font-size: 10px; line-height: 20px; white-space: now
 .lightbox-stage img { max-width: 92%; max-height: 100%; border-radius: 4px; object-fit: contain; user-select: none; }
 /* 放大后才可拖动，光标也跟着变，否则用户不知道图能推 */
 .lightbox-stage img:hover { cursor: grab; }
+
+/* 打印或存 PDF：只留正文。侧栏、列表、顶栏、工具栏、底栏与各类浮层一律隐藏，
+   编辑区解除滚动裁剪按纸张排版；深色主题下也按浅色打印，省墨且可读。 */
+@media print {
+  :root, [data-theme="dark"] { color-scheme: light; --text-primary: #000; --text-secondary: #333; --text-tertiary: #555; --text-disabled: #888; --bg-app: #fff; --bg-surface: #fff; --bg-hover: #fff; --border-default: #bbb; --border-light: #ccc; --accent: #1a4fd6; --editor-max-width: none; --editor-focus-max-width: none; }
+  html, body, #app { height: auto; }
+  body { background: #fff; }
+  .layout { display: block; height: auto; overflow: visible; padding: 0; }
+  .sidebar-pane, .list-pane, .drawer-mask, .editor-top-bar, .format-bar, .editor-footer, .link-tooltip, .lightbox-mask, .dialog-mask, .editor-welcome, .task-checkbox { display: none !important; }
+  .editor-pane { display: block; height: auto; overflow: visible; background: #fff; }
+  .editor-body { overflow: visible; }
+  .editor-body .milkdown, .editor-body .milkdown-mock { max-width: none; min-height: 0; margin: 0; padding: 0; font-size: 12pt; line-height: 1.6; }
+  .editor-body .ProseMirror { min-height: 0; }
+  .editor-body .milkdown a { color: inherit; text-decoration: underline; }
+  .editor-body .milkdown img { max-width: 100%; max-height: 90vh; border-radius: 0; filter: none; break-inside: avoid; page-break-inside: avoid; }
+  .editor-body .milkdown pre, .editor-body .milkdown blockquote, .editor-body .milkdown table, .editor-body .milkdown tr, .editor-body .milkdown li { break-inside: avoid; page-break-inside: avoid; }
+  .editor-body .milkdown pre { white-space: pre-wrap; overflow: visible; border: 1px solid #ccc; background: #fff; }
+  .editor-body .milkdown :is(h1, h2, h3, h4) { break-after: avoid; page-break-after: avoid; }
+  .editor-body .milkdown th, .editor-body .milkdown td { border-color: #bbb; }
+  .editor-body .milkdown th { background: #f2f2f2; }
+  .editor-body .milkdown li[data-item-type='task'] { list-style: none; }
+  .editor-body .milkdown li[data-item-type='task'] > p::before { content: "☐ "; }
+  .editor-body .milkdown li[data-checked='true'] > p::before { content: "☑ "; }
+}

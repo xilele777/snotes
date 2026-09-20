@@ -43,3 +43,10 @@ export function clearToken(): void {
 export function markTokenInvalid(): void {
   authNotice.value = '令牌已失效，请重新输入访问令牌。'
 }
+
+/** 服务器版登录限流：同一来源连续输错达到阈值后返回 429，界面回到令牌页并说明要等多久 */
+export function markTooManyAttempts(retryAfterSeconds: number): void {
+  const seconds = Math.max(1, Math.round(retryAfterSeconds))
+  const wait = seconds >= 60 ? `${Math.ceil(seconds / 60)} 分钟` : `${seconds} 秒`
+  authNotice.value = `尝试次数过多，请 ${wait}后再输入访问令牌。`
+}

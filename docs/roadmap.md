@@ -2,7 +2,7 @@
 
 - 日期：2026-09-19
 - 基线：v0.7.1，main 分支 a98e911
-- 状态：实施中。第一档 1 与第二档 1 已完成，第二档 2、第一档 2、第一档 3、第一档 4 已于 v0.9.0 发布，第二档 3、第二档 5、第一档 5 已于 v0.10.0 发布，第三档 0、1、2 已于 v0.11.0 发布，其余待排期。
+- 状态：实施中。第一档 1 与第二档 1 已完成，第二档 2、第一档 2、第一档 3、第一档 4 已于 v0.9.0 发布，第二档 3、第二档 5、第一档 5 已于 v0.10.0 发布，第三档 0、1、2 已于 v0.11.0 发布，第三档 3、4 已于 v0.12.0 发布，第三档 5 待做。
 - 来源：对 `src/`、`shared/`、`worker/`、`server/` 的代码审阅。各项「现状」均为代码中确认的事实，不是推测
 
 ## 第一档：补齐半成品
@@ -192,3 +192,6 @@
   - 第三档 0「定时任务入口」：`worker/index.ts` 导出 `scheduled`，`wrangler.jsonc` 配置 `triggers.crons`（每日 03:17 UTC）；`server/index.ts` 启动 5 秒后先跑一次、之后 `setInterval` 每 24 小时一次，任务失败只记日志。
   - 第三档 1「孤儿图片回收」：`deleteOrphanImages` 用 `LEFT JOIN note_body` 加 `instr` 找出所属笔记正文不再引用且 `create_time` 超过 7 天的图片，先删对象再删索引行。存储用量汇总未做。
   - 第三档 2「回收站自动清理与墓碑回收定时化」：新增部署级配置 `TRASH_RETENTION_DAYS`（Worker `vars` / 服务器环境变量，`compose.yaml` 透传），默认关闭；`purgeExpiredTrash` 以 `update_time` 作为进回收站时间判断超期后走 `purgeNotes`；`reapTombstones` 改由每日任务调用。
+- 2026-09-20：v0.12.0 完成实施顺序第 6 步的前两项：
+  - 第三档 3「登录限流」：新增 `server/rate-limit.ts`（`LoginLimiter` 按来源计数、封锁翻倍封顶；`clientAddress` 只信任本机与私网对端的 `X-Forwarded-For`），`server/app.ts` 在 `/api/*` 前置中间件，`server/index.ts` 把 socket 对端地址放进 `Env.REMOTE_ADDRESS`。客户端 `api/client.ts` 识别 `error: 'too_many_attempts'` 的 429，清令牌并由 `markTooManyAttempts` 提示等待时长。Cloudflare 版按建议只在 README 引导配置 WAF 速率限制规则。
+  - 第三档 4「打印样式」：`styles.css` 末尾新增 `@media print`，只保留 `.editor-body`，深色主题也按浅色打印，代码块换行、块级元素避免跨页，待办以 ☐ ☑ 呈现。
