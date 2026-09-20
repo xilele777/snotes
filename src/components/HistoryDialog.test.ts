@@ -29,7 +29,6 @@ describe('HistoryDialog', () => {
 
     const dialog = document.querySelector<HTMLElement>('[role="dialog"][aria-label="历史版本"]')!
     expect(dialog.textContent).toContain('1 条')
-    expect(dialog.textContent).toContain('本机与云端')
     const items = document.querySelectorAll('.history-item')
     expect(items).toHaveLength(1)
     ;(items[0]!.querySelector('button[aria-expanded]') as HTMLButtonElement).click()

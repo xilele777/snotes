@@ -62,7 +62,7 @@ const sourceLabel = (entry: MergedHistoryEntry) => entry.sources.map((s) => (s =
     <div v-if="open" class="dialog-mask" @click.self="emit('close')">
       <div ref="panel" class="dialog history-dialog" role="dialog" aria-modal="true" aria-label="历史版本">
         <h3 class="dialog-title">历史版本<span v-if="history.length" class="history-count">{{ history.length }} 条</span></h3>
-        <p class="history-hint">本机与云端的版本合并显示；正文改动间隔满 5 分钟或一次改动较大时自动留存。<span v-if="loadingCloud">正在读取云端…</span></p>
+        <p v-if="loadingCloud" class="history-hint">正在读取云端…</p>
         <section class="history" aria-label="历史版本列表">
           <p v-if="history.length === 0" class="history-empty">暂无历史版本。</p>
           <ul v-else class="history-list">
