@@ -1,38 +1,18 @@
-import { countWords } from '../../shared/derive'
 import { db, type HistoryRow } from './schema'
+import { apiFetch } from '../api/client'
+import type { NoteHistoryResponse } from '../../shared/types'
+import { HISTORY_KEEP, HISTORY_MAX_AGE_MS, shouldSnapshot } from '../../shared/history-rules'
+
+export { HISTORY_CHAR_DELTA, HISTORY_KEEP, HISTORY_MAX_AGE_MS, HISTORY_MIN_INTERVAL_MS, shouldSnapshot } from '../../shared/history-rules'
 
 /**
  * 本地正文历史（roadmap 第三档 5）。
  * 撤销栈随刷新消失、冲突副本只在多端同时改时出现，这里补一层兜底：每次正文落库时，
  * 若与上一条快照隔得够久或改动够大，就把**被替换的旧正文**存一条。
- * 纯本地：不同步、不导出；每条笔记最多保留 20 条且不超过 30 天；笔记物理删除时连带清理。
+ * 留存规则见 shared/history-rules.ts，与云端 note_history 共用；笔记物理删除时连带清理。
  */
-
-export const HISTORY_MIN_INTERVAL_MS = 5 * 60_000
-/** 与上一条快照相比，可见字符数变化达到这个值就立刻存一条，不等 5 分钟 */
-export const HISTORY_CHAR_DELTA = 100
-export const HISTORY_KEEP = 20
-export const HISTORY_MAX_AGE_MS = 30 * 86_400_000
 
 export type HistoryEntry = Required<HistoryRow>
-
-/**
- * 是否该把 previous 存为快照（纯函数，便于测试）。
- * previous 为空或与 next 相同都不存；没有任何快照时存；与上一条快照正文相同不重复存；
- * 否则看时间间隔或字数变化是否达到阈值。
- */
-export function shouldSnapshot(
-  previous: string,
-  next: string,
-  last: { time: number; body: string } | undefined,
-  now: number,
-): boolean {
-  if (!previous.trim() || previous === next) return false
-  if (!last) return true
-  if (last.body === previous) return false
-  if (now - last.time >= HISTORY_MIN_INTERVAL_MS) return true
-  return Math.abs(countWords(previous).chars - countWords(last.body).chars) >= HISTORY_CHAR_DELTA
-}
 
 /** 事务内部用：调用方的 db.transaction 必须包含 db.history */
 export async function latestSnapshotIn(noteId: string): Promise<HistoryEntry | undefined> {
@@ -79,4 +59,51 @@ export async function listHistory(noteId: string): Promise<HistoryEntry[]> {
 
 export function getHistoryEntry(id: number): Promise<HistoryEntry | undefined> {
   return db.history.get(id) as Promise<HistoryEntry | undefined>
+}
+
+export type HistorySource = 'local' | 'cloud'
+
+/** 本机与云端合并后的一条历史：同一份正文两边都有时只显示一条，sources 同时标出 */
+export interface MergedHistoryEntry {
+  key: string
+  time: number
+  body: string
+  sources: HistorySource[]
+}
+
+/** 纯函数：把本机与云端快照按正文去重合并，最新的在前 */
+export function mergeHistory(
+  local: { id: number; time: number; body: string }[],
+  cloud: { id: number; time: number; body: string }[],
+): MergedHistoryEntry[] {
+  const merged: MergedHistoryEntry[] = local.map((row) => ({ key: `local-${row.id}`, time: row.time, body: row.body, sources: ['local'] }))
+  for (const row of cloud) {
+    const same = merged.find((entry) => entry.body === row.body)
+    if (same) {
+      if (!same.sources.includes('cloud')) same.sources.push('cloud')
+      same.time = Math.max(same.time, row.time)
+    } else {
+      merged.push({ key: `cloud-${row.id}`, time: row.time, body: row.body, sources: ['cloud'] })
+    }
+  }
+  return merged.sort((a, b) => b.time - a.time)
+}
+
+/** 云端历史。离线、旧服务端或笔记尚未推送时拿不到，一律当作空列表，不影响本机部分显示 */
+export async function fetchCloudHistory(noteId: string): Promise<{ id: number; time: number; body: string }[]> {
+  try {
+    const response = await apiFetch<NoteHistoryResponse>(`/api/notes/${noteId}/history`, { method: 'GET' })
+    return Array.isArray(response?.history) ? response.history : []
+  } catch {
+    return []
+  }
+}
+
+/** 恢复前把此刻的正文补录到云端历史；失败只影响云端那一份，本机快照已在 repo 里存过 */
+export async function recordCloudSnapshot(noteId: string, body: string, time: number): Promise<void> {
+  try {
+    await apiFetch(`/api/notes/${noteId}/history`, { method: 'POST', body: JSON.stringify({ body, time }) })
+  } catch {
+    /* 离线或旧服务端：忽略 */
+  }
 }

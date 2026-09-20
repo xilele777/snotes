@@ -66,6 +66,7 @@ function fmtDate(ts: number): string {
         <span v-if="note.top === 1" class="note-pin" role="img" aria-label="置顶"><AppIcon name="pin" :size="12" /></span>
         <span v-if="note.star === 1" class="note-star" role="img" aria-label="星标"><AppIcon name="star" :size="12" /></span>
         <span v-if="groupName" class="note-group-label">{{ groupName }}</span>
+        <slot name="meta" />
       </div>
     </button>
 

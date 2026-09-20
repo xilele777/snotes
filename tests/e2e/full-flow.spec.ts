@@ -1038,9 +1038,10 @@ test.describe('手机操作', () => {
     expect(formatBar!.x + formatBar!.width).toBeLessThanOrEqual(320)
     expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(320)
     await expect(page.locator('.format-bar [data-format="bold"]')).toBeVisible()
-    // 手机顶栏没有余量：删除让位给「⋯」，从菜单里删；底栏整条隐藏
+    // 手机顶栏没有余量：删除、字数、信息、历史都让位给「⋯」，从菜单里进；没有底栏
     await expect(page.locator('[data-op="trash"]')).toHaveCount(0)
-    await expect(page.locator('.editor-footer')).toBeHidden()
+    await expect(page.locator('[data-op="wordcount"]')).toHaveCount(0)
+    await expect(page.locator('.editor-footer')).toHaveCount(0)
     await page.locator('[data-op="more"]').click()
     const menu = page.getByRole('menu', { name: '更多操作' })
     await expect(menu.locator('[data-action="trash"]')).toBeVisible()

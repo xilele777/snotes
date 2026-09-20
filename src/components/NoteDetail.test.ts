@@ -295,7 +295,7 @@ describe('NoteDetail 顶栏操作条', () => {
     wrapper.unmount()
   })
 
-  it('底栏只有状态文字与字数，没有任何按钮', async () => {
+  it('没有底栏；桌面顶栏直接显示字数、文档信息、历史版本按钮', async () => {
     const notes = useNotesStore()
     const note = await notes.create()
     await notes.saveBody(note.id, '今天天气不错 hello')
@@ -304,15 +304,19 @@ describe('NoteDetail 顶栏操作条', () => {
     const wrapper = mount(NoteDetail, { attachTo: document.body })
     await wrapper.vm.$nextTick()
 
-    const footer = wrapper.get('.editor-footer')
-    expect(footer.findAll('button')).toHaveLength(0)
-    expect(footer.text()).toContain('自动保存')
-    expect(footer.text()).toContain('7 字')
-    for (const name of ['info', 'wordcount', 'share', 'help']) expect(op(wrapper, name).exists()).toBe(false)
+    expect(wrapper.find('.editor-footer').exists()).toBe(false)
+    expect(op(wrapper, 'wordcount').text()).toContain('7 字')
+    expect(op(wrapper, 'info').exists()).toBe(true)
+    expect(op(wrapper, 'history').exists()).toBe(true)
+    for (const name of ['share', 'help']) expect(op(wrapper, name).exists()).toBe(false)
+
+    await op(wrapper, 'wordcount').trigger('click')
+    await wrapper.vm.$nextTick()
+    expect(document.querySelector('.wordcount-dialog')!.textContent).toContain('7')
     wrapper.unmount()
   })
 
-  it('「⋯」菜单列出文档信息、历史版本、字数、复制、下载、打印；桌面不含删除，首项获得焦点', async () => {
+  it('桌面「⋯」菜单只列复制、下载、打印；文档信息、历史、字数与删除都不在菜单里，首项获得焦点', async () => {
     const notes = useNotesStore()
     const note = await notes.create()
     notes.currentId = note.id
@@ -324,11 +328,11 @@ describe('NoteDetail 顶栏操作条', () => {
 
     expect(menu()).not.toBeNull()
     expect(op(wrapper, 'more').attributes('aria-expanded')).toBe('true')
-    for (const name of ['info', 'history', 'wordcount', 'copy', 'download', 'print']) expect(menuAction(name)).not.toBeNull()
-    expect(menuAction('trash')).toBeNull()
+    for (const name of ['copy', 'download', 'print']) expect(menuAction(name)).not.toBeNull()
+    for (const name of ['info', 'history', 'wordcount', 'trash']) expect(menuAction(name)).toBeNull()
     // jsdom 没有 navigator.share，不给分享入口
     expect(menuAction('share')).toBeNull()
-    expect(document.activeElement).toBe(menuAction('info'))
+    expect(document.activeElement).toBe(menuAction('copy'))
 
     // Esc 关闭并把焦点还给 ⋯
     window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }))
@@ -338,7 +342,7 @@ describe('NoteDetail 顶栏操作条', () => {
     wrapper.unmount()
   })
 
-  it('≤720px：顶栏没有删除按钮，「⋯」菜单里有删除且先弹确认', async () => {
+  it('≤720px：顶栏没有删除、字数、信息、历史按钮，都进「⋯」菜单；删除先弹确认', async () => {
     const restore = mockCompact()
     try {
       const notes = useNotesStore()
@@ -348,8 +352,9 @@ describe('NoteDetail 顶栏操作条', () => {
       const wrapper = mount(NoteDetail, { attachTo: document.body })
       await wrapper.vm.$nextTick()
 
-      expect(op(wrapper, 'trash').exists()).toBe(false)
+      for (const name of ['trash', 'wordcount', 'info', 'history']) expect(op(wrapper, name).exists()).toBe(false)
       await openMore(wrapper)
+      for (const name of ['info', 'history', 'wordcount', 'trash']) expect(menuAction(name)).not.toBeNull()
       menuAction('trash')!.click()
       await wrapper.vm.$nextTick()
 
@@ -364,15 +369,14 @@ describe('NoteDetail 顶栏操作条', () => {
     }
   })
 
-  it('菜单「文档信息」打开信息弹窗，弹窗里不再有历史区块', async () => {
+  it('顶栏「文档信息」打开信息弹窗，弹窗里不再有历史区块', async () => {
     const notes = useNotesStore()
     const note = await notes.create()
     notes.currentId = note.id
 
     const wrapper = mount(NoteDetail, { attachTo: document.body })
     await wrapper.vm.$nextTick()
-    await openMore(wrapper)
-    menuAction('info')!.click()
+    await op(wrapper, 'info').trigger('click')
     await wrapper.vm.$nextTick()
 
     const dialog = document.querySelector('.info-dialog')
@@ -382,7 +386,8 @@ describe('NoteDetail 顶栏操作条', () => {
     wrapper.unmount()
   })
 
-  it('菜单「字数统计」打开字数弹窗，显示当前字数', async () => {
+  it('手机上菜单「字数统计」打开字数弹窗，显示当前字数', async () => {
+    const restore = mockCompact()
     const notes = useNotesStore()
     const note = await notes.create()
     await notes.saveBody(note.id, '今天天气不错 hello')
@@ -393,6 +398,7 @@ describe('NoteDetail 顶栏操作条', () => {
     await openMore(wrapper)
     menuAction('wordcount')!.click()
     await wrapper.vm.$nextTick()
+    restore()
 
     const dialog = document.querySelector('.wordcount-dialog')
     expect(dialog).toBeTruthy()
@@ -612,7 +618,7 @@ describe('NoteDetail 回收站只读态', () => {
     return { notes, note, wrapper }
   }
 
-  it('渲染回收站提示与恢复 / 彻底删除，不渲染编辑动作；底栏显示只读', async () => {
+  it('渲染回收站提示与恢复 / 彻底删除，不渲染编辑动作；没有底栏', async () => {
     const { wrapper } = await mountTrashed()
 
     expect(wrapper.text()).toContain('此笔记在回收站中')
@@ -625,7 +631,8 @@ describe('NoteDetail 回收站只读态', () => {
     expect(op(wrapper, 'undo').exists()).toBe(false)
     expect(op(wrapper, 'redo').exists()).toBe(false)
     expect(op(wrapper, 'image').exists()).toBe(false)
-    expect(wrapper.get('.editor-footer').text()).toContain('只读')
+    expect(wrapper.find('.editor-footer').exists()).toBe(false)
+    expect(op(wrapper, 'history').exists()).toBe(true)
     wrapper.unmount()
   })
 
@@ -708,7 +715,7 @@ describe('NoteDetail 把编辑器的基线交给 store', () => {
   })
 })
 
-describe('「⋯」菜单里的历史版本', () => {
+describe('顶栏的历史版本', () => {
   it('列出快照，点恢复后正文回到那一版且当前正文进入历史，Toast 提示已恢复', async () => {
     const notes = useNotesStore()
     const note = await notes.create()
@@ -718,8 +725,7 @@ describe('「⋯」菜单里的历史版本', () => {
 
     const wrapper = mount(NoteDetail, { attachTo: document.body })
     await wrapper.vm.$nextTick()
-    await openMore(wrapper)
-    menuAction('history')!.click()
+    await op(wrapper, 'history').trigger('click')
     await flushPromises()
 
     expect(document.querySelector('[role="dialog"][aria-label="历史版本"]')).not.toBeNull()
@@ -751,8 +757,7 @@ describe('「⋯」菜单里的历史版本', () => {
 
     const wrapper = mount(NoteDetail, { props: { readonly: true }, attachTo: document.body })
     await wrapper.vm.$nextTick()
-    await openMore(wrapper)
-    menuAction('history')!.click()
+    await op(wrapper, 'history').trigger('click')
     await flushPromises()
 
     expect(document.querySelectorAll('.history-item')).toHaveLength(1)

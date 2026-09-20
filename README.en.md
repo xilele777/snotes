@@ -38,6 +38,7 @@ The in-app update check only queries the latest **stable** GitHub release, cachi
 - **Trash**: preview and restore deleted notes; permanent deletion and emptying the trash require confirmation.
 - **Writing statistics**: word counts, writing streaks, an activity heatmap, group distribution, and opens across devices.
 - **Device sync**: properties and bodies sync separately; concurrent edits produce conflict copies for review and merging.
+- **Body history**: older versions are kept automatically when edits are 5 minutes apart or large, both in the browser and on the server (20 entries, 30 days each); "History" in the editor top bar merges both and restores with one click.
 - **Images and PWA**: paste images to upload to your server, view cached images offline, and install the app on desktop or mobile.
 - **Lightweight UI**: system fonts, shared SVG icons, and lazy loading for the editor and statistics.
 
@@ -50,15 +51,15 @@ Desktop uses three columns for navigation, the note list, and the editor. Trash 
 | All Notes / Starred / Groups | Filter notes, then select a row to read or edit |
 | Trash | Preview, restore, or permanently delete notes; returning restores the previous filter and reading position |
 | Statistics icon | Open statistics; close with its button, Escape, the backdrop, or system Back |
-| "Settings" at the bottom of the icon rail | A tabbed dialog: **Appearance** (theme, font size, editor width, per device), **Data** (export all, import a backup), **Shortcuts** (including a Markdown cheat sheet), **About** (version, upgrade steps, sign out). The version label at the bottom of the sidebar jumps straight to About; shortcut `Ctrl / Cmd + ,` |
-| "⋯" in the editor top bar | Document info, version history, word count, copy Markdown, download .md, share to other apps (browsers with system share), print / save as PDF; on phones "Delete" lives here too |
+| "Settings" at the bottom of the icon rail | A tabbed dialog: **Appearance** (theme, font size, editor width, per device), **Data** (export all, import a backup), **Shortcuts** (including a Markdown cheat sheet), **About** (version, upgrade steps, sign out). Shortcut `Ctrl / Cmd + ,` |
+| Editor top bar | On desktop the word count, document info and history sit directly in the bar; "⋯" holds copy Markdown, download .md, share to other apps (browsers with system share), print / save as PDF. On phones word count, info, history and "Delete" all live in "⋯" |
 | Editor footer | Desktop shows only the save state and word count; hidden on phones. Action feedback appears as a short message at the top of the screen |
 
 Mobile opens to the list and switches to the editor when a note is selected. The top-left button opens navigation; the back button or system Back returns to the list. Desktop also supports focus mode.
 
 | Shortcut | Action |
 | --- | --- |
-| `Ctrl / Cmd + N` | Create a note |
+| `Ctrl / Cmd + Alt + N` | Create a note (`Ctrl + N` opens a browser window and cannot be intercepted) |
 | `Ctrl / Cmd + ,` | Open settings |
 | `Ctrl / Cmd + K` or `Ctrl / Cmd + F` | Focus note search |
 | `Ctrl / Cmd + Z` | Undo in the editor |

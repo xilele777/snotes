@@ -4,8 +4,8 @@ import AppIcon from './AppIcon.vue'
 
 /**
  * 笔记顶栏「⋯」打开的菜单：收拢低频的笔记级操作。
- * 桌面和手机同一套条目；只读态（回收站）去掉分享与删除；删除只在 ≤720px 出现，
- * 因为手机顶栏没有余量，⋯ 顶替的正是删除按钮的位置。
+ * 只读态（回收站）去掉分享与删除；文档信息、历史版本、字数统计和删除只在 ≤720px 出现，
+ * 桌面顶栏放得下，它们直接摆在顶栏；手机顶栏没有余量，⋯ 顶替的正是删除按钮的位置。
  */
 export type NoteMenuAction = 'info' | 'history' | 'wordcount' | 'copy' | 'download' | 'share' | 'print' | 'trash'
 
@@ -15,6 +15,8 @@ defineProps<{
   readonly: boolean
   canShare: boolean
   showDelete: boolean
+  /** 文档信息 / 历史版本 / 字数统计是否进菜单（桌面在顶栏直接可见） */
+  showDocItems: boolean
 }>()
 
 const emit = defineEmits<{ action: [NoteMenuAction]; close: [] }>()
@@ -22,16 +24,18 @@ const emit = defineEmits<{ action: [NoteMenuAction]; close: [] }>()
 
 <template>
   <ActionMenu :open="open" :anchor="anchor" label="更多操作" menu-class="note-menu" @close="emit('close')">
-    <button type="button" role="menuitem" class="menu-item" data-action="info" @click="emit('action', 'info')">
-      <AppIcon name="info" :size="15" /><span>文档信息</span>
-    </button>
-    <button type="button" role="menuitem" class="menu-item" data-action="history" @click="emit('action', 'history')">
-      <AppIcon name="clock" :size="15" /><span>历史版本</span>
-    </button>
-    <button type="button" role="menuitem" class="menu-item" data-action="wordcount" @click="emit('action', 'wordcount')">
-      <AppIcon name="sort" :size="15" /><span>字数统计</span>
-    </button>
-    <span class="menu-separator" aria-hidden="true"></span>
+    <template v-if="showDocItems">
+      <button type="button" role="menuitem" class="menu-item" data-action="info" @click="emit('action', 'info')">
+        <AppIcon name="info" :size="15" /><span>文档信息</span>
+      </button>
+      <button type="button" role="menuitem" class="menu-item" data-action="history" @click="emit('action', 'history')">
+        <AppIcon name="clock" :size="15" /><span>历史版本</span>
+      </button>
+      <button type="button" role="menuitem" class="menu-item" data-action="wordcount" @click="emit('action', 'wordcount')">
+        <AppIcon name="sort" :size="15" /><span>字数统计</span>
+      </button>
+      <span class="menu-separator" aria-hidden="true"></span>
+    </template>
     <button type="button" role="menuitem" class="menu-item" data-action="copy" @click="emit('action', 'copy')">
       <AppIcon name="copy" :size="15" /><span>复制 Markdown</span>
     </button>

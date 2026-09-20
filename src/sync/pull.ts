@@ -15,6 +15,8 @@ import { db } from '../db/schema'
 import { emitRemoteApplied } from './signal'
 
 export const SYNC_CURSOR_KEY = 'sync_cursor'
+/** meta 表里缓存的回收站保留天数，回收站页在首次同步前也能给出提示 */
+export const TRASH_RETENTION_KEY = 'trash_retention_days'
 
 const BODY_BATCH = 50
 
@@ -24,6 +26,8 @@ export interface PullResult {
   bodies: number
   /** 本轮写入本地的分组数 */
   groups: number
+  /** 服务端配置的回收站保留天数；旧服务端不带这个字段时为 undefined */
+  trashRetentionDays?: number | null
 }
 
 function toLocalNote(meta: NoteMeta): LocalNote {
@@ -106,6 +110,7 @@ export async function pullOnce(): Promise<PullResult> {
   let pages = 0
   let applied = 0
   let groups = 0
+  let trashRetentionDays: number | null | undefined
 
   const pendingBodies: string[] = []
 
@@ -118,6 +123,7 @@ export async function pullOnce(): Promise<PullResult> {
 
     pages++
     if (serverTime === null) serverTime = response.server_time
+    if (response.trash_retention_days !== undefined) trashRetentionDays = response.trash_retention_days
 
     await applyGroups(response.groups)
     groups += response.groups.length
@@ -178,10 +184,11 @@ export async function pullOnce(): Promise<PullResult> {
   if (serverTime !== null) {
     await setMeta(SYNC_CURSOR_KEY, serverTime)
   }
+  if (trashRetentionDays !== undefined) await setMeta(TRASH_RETENTION_KEY, trashRetentionDays)
 
   // 通知界面重新读库。没有这一声，远端拉下来的改动要等下一次用户操作才显示。
   // 分组也算：另一台设备新建或重命名分组时，侧栏同样要刷新。
   if (applied > 0 || bodies > 0 || groups > 0) emitRemoteApplied()
 
-  return { pages, applied, bodies, groups }
+  return { pages, applied, bodies, groups, trashRetentionDays }
 }

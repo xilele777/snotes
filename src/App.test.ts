@@ -126,11 +126,11 @@ describe('App 新建入口', () => {
     const wrapper = mount(App, { attachTo: document.body })
     await flushPromises()
 
-    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'n', ctrlKey: true, isComposing: true }))
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'n', ctrlKey: true, altKey: true, isComposing: true }))
     expect(create).not.toHaveBeenCalled()
 
     await wrapper.get('.group-add').trigger('click')
-    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'n', ctrlKey: true }))
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'n', ctrlKey: true, altKey: true }))
     expect(create).not.toHaveBeenCalled()
     wrapper.unmount()
   })
@@ -227,7 +227,7 @@ describe('App 统计弹窗', () => {
     const close = dialog.querySelector<HTMLButtonElement>('[aria-label="关闭统计"]')!
     expect(document.activeElement).toBe(close)
     const create = vi.spyOn(notes, 'create')
-    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'n', ctrlKey: true, cancelable: true }))
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'n', ctrlKey: true, altKey: true, cancelable: true }))
     expect(create).not.toHaveBeenCalled()
 
     window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', cancelable: true }))
@@ -318,24 +318,6 @@ describe('App 扩展快捷键', () => {
     const host = document.querySelector('.toast-host')!
     expect(host.getAttribute('role')).toBe('status')
     expect(host.querySelector('.toast')!.textContent).toBe('已复制 Markdown')
-    wrapper.unmount()
-  })
-
-  it('Ctrl+Shift+1 切到第一个分组，Ctrl+Shift+0 回到全部', async () => {
-    const notes = useNotesStore()
-    await notes.create()
-    const groups = useGroupsStore()
-    const group = await groups.create('工作')
-    const ui = useUiStore()
-    const wrapper = mount(App, { attachTo: document.body })
-    await flushPromises()
-
-    window.dispatchEvent(new KeyboardEvent('keydown', { key: '!', code: 'Digit1', ctrlKey: true, shiftKey: true, cancelable: true }))
-    await vi.waitFor(() => expect(ui.view).toBe('group'))
-    expect(ui.activeGroupId).toBe(group.group_id)
-
-    window.dispatchEvent(new KeyboardEvent('keydown', { key: ')', code: 'Digit0', ctrlKey: true, shiftKey: true, cancelable: true }))
-    await vi.waitFor(() => expect(ui.view).toBe('all'))
     wrapper.unmount()
   })
 })

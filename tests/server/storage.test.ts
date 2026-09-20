@@ -16,7 +16,7 @@ afterEach(() => { db.close(); rmSync(directory, { recursive: true, force: true }
 
 describe('SQLite persistence and migrations', () => {
   it('applies migrations once and preserves data after reopening', async () => {
-    expect(db.migrate(resolve('migrations'))).toHaveLength(3)
+    expect(db.migrate(resolve('migrations'))).toHaveLength(4)
     await db.prepare('INSERT INTO note (id, create_time, update_time) VALUES (?, ?, ?)').bind('n1', 1, 1).run()
     db.close()
     db = new SqliteDatabase(join(directory, 'snotes.sqlite'))

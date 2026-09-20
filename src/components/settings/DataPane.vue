@@ -77,12 +77,6 @@ async function onPicked(event: Event) {
 
 <template>
   <h4 class="settings-section-title">导出与导入</h4>
-  <p class="backup-hint">
-    导出的 zip 里，每个分组是一个文件夹、每条笔记是一个 <code>.md</code> 文件，
-    图片放在 <code>images/</code> 下并改成相对路径，另外附一份 <code>index.json</code> 记录星标、置顶和颜色。
-    这份包可以直接导入回来，也能用别的 Markdown 应用打开。
-  </p>
-
   <div class="backup-actions">
     <button class="dialog-btn ok" data-action="export" :disabled="busy" @click="runExport">
       <AppIcon name="download" :size="15" />导出全部
@@ -108,7 +102,4 @@ async function onPicked(event: Event) {
     <span class="backup-bar" aria-hidden="true"><span class="backup-bar-fill" :style="{ width: `${percent}%` }"></span></span>
   </p>
   <p v-else-if="message" class="backup-progress" :class="{ failed }" role="status">{{ message }}</p>
-
-  <h4 class="settings-section-title settings-section-gap">本机数据</h4>
-  <p class="settings-hint">正文的历史版本只保存在本设备的浏览器里，不参与同步，也不进入导出包。在笔记顶栏的「⋯」菜单里可以预览和恢复。</p>
 </template>

@@ -278,12 +278,25 @@ export async function purgeTrash(): Promise<void> {
 export async function restoreFromHistory(id: string, historyId: number): Promise<boolean> {
   const entry = await getHistoryEntry(historyId)
   if (!entry || entry.note_id !== id) return false
+  await restoreHistoryBody(id, entry.body)
+  return true
+}
+
+/**
+ * 把某一版正文（本机或云端的快照）恢复为当前正文。恢复前先把此刻的正文无条件存一条本机快照，
+ * 然后走与编辑器保存相同的 updateBody，正常入队推送；云端那份「恢复前快照」由调用方另行补录。
+ */
+export async function restoreHistoryBody(id: string, body: string): Promise<boolean> {
+  let exists = false
   await db.transaction('rw', db.notes, db.history, async () => {
     const note = await db.notes.get(id)
-    if (!note || note.body === entry.body || !note.body.trim()) return
+    if (!note) return
+    exists = true
+    if (note.body === body || !note.body.trim()) return
     await recordSnapshotIn(id, note.body, note.update_time)
   })
-  await updateBody(id, entry.body)
+  if (!exists) return false
+  await updateBody(id, body)
   return true
 }
 

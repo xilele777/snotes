@@ -2,6 +2,7 @@ import { Hono } from 'hono'
 import { decodeCursor, encodeCursor } from '../../shared/cursor'
 import type { BodiesRequest, BodiesResponse, Group, NoteBody, PullRequest, PullResponse } from '../../shared/types'
 import { nowMs, rowToNoteMeta } from '../db'
+import { parseTrashRetentionDays } from '../maintenance'
 import type { Env } from '../types'
 
 const DEFAULT_LIMIT = 200
@@ -68,11 +69,17 @@ syncRoutes.post('/api/sync/pull', async (c) => {
   const next_cursor =
     notes.length === limit && last ? encodeCursor(last.update_time, last.id) : null
 
+  // 回收站保留天数是部署级配置，客户端只用来在回收站页给出「N 天后自动删除」的提示。
+  // 配置非法时维护任务会报错，这里按「未知」处理，不让 pull 跟着失败。
+  let trashRetentionDays: number | null = null
+  try { trashRetentionDays = parseTrashRetentionDays(c.env.TRASH_RETENTION_DAYS) } catch { trashRetentionDays = null }
+
   const response: PullResponse = {
     notes,
     groups,
     server_time: serverTime,
     next_cursor,
+    trash_retention_days: trashRetentionDays,
   }
 
   return c.json(response)

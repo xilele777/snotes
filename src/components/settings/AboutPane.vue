@@ -42,7 +42,6 @@ function runLogout() {
     <button type="button" class="logout-button" data-action="logout" @click="confirmLogout = true">
       <AppIcon name="logout" :size="15" />退出登录
     </button>
-    <span class="settings-hint">退出只清除本机保存的访问令牌。</span>
   </div>
 
   <!-- 确认框 Teleport 到 body 末尾，落在设置弹窗之后，Esc 与 Tab 先由它接管 -->

@@ -31,7 +31,8 @@ export function syncNow(): Promise<void> {
       // hasToken 此刻为 false，界面也在切回 TokenGate——别再发注定失败的 pull。
       if (!hasToken.value) return
 
-      await pullOnce()
+      const pulled = await pullOnce()
+      if (pulled.trashRetentionDays !== undefined) ui.trashRetentionDays = pulled.trashRetentionDays
       ui.lastSyncError = null
     } catch (error) {
       ui.lastSyncError = error instanceof Error ? error.message : String(error)

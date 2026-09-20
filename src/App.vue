@@ -11,14 +11,12 @@ import TokenGate from './components/TokenGate.vue'
 import TrashView from './components/TrashView.vue'
 import { resolveShortcut, type ShortcutAction } from './components/shortcut'
 import { useMediaQuery } from './components/useMediaQuery'
-import { backToList, initNavigation, isMobile, openOverlay, pushNav, switchListView } from './navigation'
-import { useGroupsStore } from './stores/groups'
+import { backToList, initNavigation, isMobile, openOverlay, pushNav } from './navigation'
 import { useNotesStore } from './stores/notes'
 import { useUiStore } from './stores/ui'
 import { syncNow } from './sync/engine'
 
 const notes = useNotesStore()
-const groups = useGroupsStore()
 const ui = useUiStore()
 const MetricsView = defineAsyncComponent(() => import('./components/MetricsView.vue'))
 /** ≤1020px 侧栏是抽屉 */
@@ -124,12 +122,6 @@ async function runShortcut(action: ShortcutAction) {
     case 'prevNote': stepNote(-1); return
     case 'toggleFocus': if (editable) ui.focusMode = !ui.focusMode; return
     case 'syncNow': await syncNow(); return
-    case 'showAll': await switchListView('all'); return
-    case 'showGroup': {
-      const group = groups.groups[action.index]
-      if (group) await switchListView('group', group.group_id)
-      return
-    }
     case 'openSettings': openOverlay('settings'); return
   }
 }

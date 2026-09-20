@@ -220,39 +220,24 @@ describe('GroupSidebar', () => {
 })
 
 describe('GroupSidebar 底部版本与同步入口', () => {
-  it('版本按钮读取 package.json，点击打开设置的「关于」页', async () => {
-    const ui = useUiStore()
+  it('侧栏底部不再显示版本号，版本只在设置的「关于」页里看', () => {
     const wrapper = mount(GroupSidebar, { attachTo: document.body })
-    const button = wrapper.get('.user-area .version-button')
-
-    expect(button.element.tagName).toBe('BUTTON')
-    expect(button.text()).toBe(`v${appVersion}`)
-    expect(button.attributes('aria-haspopup')).toBe('dialog')
-    await button.trigger('click')
-
-    expect(ui.overlay).toBe('settings')
-    expect(ui.settingsTab).toBe('about')
-    expect(button.attributes('aria-expanded')).toBe('true')
-    // 侧栏自己不再渲染版本弹窗
-    expect(document.querySelector('[aria-label="版本信息"]')).toBeNull()
+    expect(wrapper.find('.version-button').exists()).toBe(false)
+    expect(wrapper.text()).not.toContain(`v${appVersion}`)
     wrapper.unmount()
   })
 
-  it('挂载时触发一次版本检查；没有新版本时版本号与「设置」都不显示提示点', async () => {
+  it('挂载时触发一次版本检查；没有新版本时「设置」不显示提示点', async () => {
     const wrapper = mount(GroupSidebar)
     await wrapper.vm.$nextTick()
     expect(checkForUpdate).toHaveBeenCalledTimes(1)
-    expect(wrapper.get('.version-button').classes()).not.toContain('has-update')
     expect(wrapper.get('[data-view="settings"]').classes()).not.toContain('has-update')
     wrapper.unmount()
   })
 
-  it('检测到新版本时版本按钮与图标栏「设置」同时带提示点', async () => {
+  it('检测到新版本时图标栏「设置」带提示点', async () => {
     updateInfo.value = { latest: '9.9.9', url: 'https://github.com/xilele777/snotes/releases/tag/v9.9.9', hasUpdate: true }
     const wrapper = mount(GroupSidebar, { attachTo: document.body })
-    const button = wrapper.get('.version-button')
-    expect(button.classes()).toContain('has-update')
-    expect(button.attributes('title')).toContain('v9.9.9')
     const settings = wrapper.get('[data-view="settings"]')
     expect(settings.classes()).toContain('has-update')
     expect(settings.attributes('title')).toContain('v9.9.9')

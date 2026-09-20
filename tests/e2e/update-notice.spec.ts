@@ -15,13 +15,14 @@ for (const width of [1440, 390, 320]) {
       document.cookie = 'snotes_token=dev-token; Path=/api/images/; SameSite=Strict'
     })
     await page.goto('/')
-    await expect(page.locator('.version-button')).toHaveClass(/has-update/)
+    // 侧栏底部不再显示版本号，更新提示点只挂在图标栏「设置」上
+    await expect(page.locator('.version-button')).toHaveCount(0)
     await expect(page.locator('.app-rail [data-view="settings"]')).toHaveClass(/has-update/)
     if (width < 1020) await page.getByRole('button', { name: '打开侧栏' }).click()
-    // 版本号直达设置的「关于」页
-    await page.locator('.version-button').click()
+    await page.locator('.app-rail [data-view="settings"]').click()
     const dialog = page.getByRole('dialog', { name: '设置', exact: true })
     const about = dialog.getByRole('tab', { name: '关于' })
+    await about.click()
     await expect(about).toHaveAttribute('aria-selected', 'true')
     await expect(about).toHaveClass(/has-update/)
     const pane = dialog.getByRole('tabpanel')
@@ -47,9 +48,9 @@ for (const width of [1440, 390, 320]) {
     await page.screenshot({ path: `tmp/update-review/version-${width}.png` })
     await page.keyboard.press('Escape')
     await expect(dialog).toHaveCount(0)
-    // 打开设置时抽屉已收起：窄屏焦点回到可见的抽屉按钮，桌面回到版本号
+    // 打开设置时抽屉已收起：窄屏焦点回到可见的抽屉按钮，桌面回到图标栏「设置」
     if (width < 1020) await expect(page.getByRole('button', { name: '打开侧栏' })).toBeFocused()
-    else await expect(page.locator('.version-button')).toBeFocused()
+    else await expect(page.locator('.app-rail [data-view="settings"]')).toBeFocused()
 
     // 只填充本测试浏览器的 IndexedDB，构造四档更新量，不修改服务端笔记。
     await page.evaluate(async () => {
@@ -79,7 +80,7 @@ for (const width of [1440, 390, 320]) {
       } finally { db.close() }
     })
     await page.reload()
-    await expect(page.locator('.version-button')).toHaveClass(/has-update/)
+    await expect(page.locator('.app-rail [data-view="settings"]')).toHaveClass(/has-update/)
     expect(checks).toBe(1)
     if (width < 1020) await page.getByRole('button', { name: '打开侧栏' }).click()
     await page.getByRole('button', { name: '记录统计', exact: true }).click()

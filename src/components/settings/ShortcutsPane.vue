@@ -22,6 +22,6 @@ const editorList = withMod(EDITOR_SHORTCUT_LIST)
   <section class="shortcut-section" aria-labelledby="shortcut-markdown">
     <h4 id="shortcut-markdown" class="settings-section-title">Markdown 速查</h4>
     <dl class="shortcut-list"><div v-for="item in MARKDOWN_HINTS" :key="item.keys"><dt><code>{{ item.keys }}</code></dt><dd>{{ item.label }}</dd></div></dl>
-    <p class="settings-hint">也可以直接粘贴文字或图片；手机上请用顶栏的「插入图片」按钮。</p>
+    <p class="settings-hint">关于图片：电脑端可以直接粘贴，手机上可用顶栏的“插入图片”按钮。</p>
   </section>
 </template>

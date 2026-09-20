@@ -40,7 +40,7 @@ watch(() => notes.current, note => { if (!note) editorReady.value = false })
 
 const currentGroup = computed(() => groups.groups.find(group => group.group_id === notes.current?.group_id)?.name ?? '未分组')
 
-/** ≤720px 的顶栏放不下删除按钮，删除挪进「更多」菜单 */
+/** ≤720px 的顶栏放不下删除按钮，删除挪进「更多」菜单；字数、文档信息、历史版本同样只在桌面直接放顶栏 */
 const compact = useMediaQuery('(max-width: 720px)')
 
 /** 颜色和分组浮层一次只展开一个。 */
@@ -78,7 +78,7 @@ onUnmounted(() => {
   window.removeEventListener('keydown', onPopoverKeydown, true)
 })
 
-/** 顶栏「⋯」菜单：收拢文档信息、历史、字数、复制、下载、分享、打印，手机上还有删除 */
+/** 顶栏「⋯」菜单：收拢复制、下载、分享、打印，手机上还有文档信息、历史、字数与删除 */
 const moreButton = ref<HTMLButtonElement | null>(null)
 const menuOpen = ref(false)
 
@@ -204,10 +204,10 @@ const showHistory = ref(false)
 const showWordCount = ref(false)
 
 /** 历史弹窗里的「恢复」：当前正文先存为快照再被替换，编辑器随 modelValue 刷新 */
-async function onRestoreHistory(historyId: number) {
+async function onRestoreHistory(body: string) {
   if (props.readonly || !notes.current) return
-  const ok = await notes.restoreHistory(notes.current.id, historyId)
-  notify(ok ? '已恢复到所选版本，之前的正文已存入历史' : '这条历史版本已不存在')
+  const ok = await notes.restoreHistory(notes.current.id, body)
+  notify(ok ? '已恢复到所选版本，之前的正文已存入历史' : '这条笔记已不存在')
 }
 
 /** 图片灯箱状态 */
@@ -305,6 +305,12 @@ async function runShare() {
         <div v-if="notes.current" class="op-bar">
           <button class="trash-op recover" data-op="recover" @click="notes.recover(notes.current.id)">恢复</button>
           <button class="trash-op purge" data-op="purge" @click="confirmAction = 'purge'">彻底删除</button>
+          <template v-if="!compact">
+            <span class="op-separator" aria-hidden="true"></span>
+            <button class="op-btn op-words" data-op="wordcount" title="字数统计" aria-label="字数统计" @click="showWordCount = true">{{ wordCount.words }} 字</button>
+            <button class="op-btn" data-op="info" title="文档信息" aria-label="文档信息" @click="showInfo = true"><AppIcon name="info" /></button>
+            <button class="op-btn" data-op="history" title="历史版本" aria-label="历史版本" @click="showHistory = true"><AppIcon name="clock" /></button>
+          </template>
           <button ref="moreButton" class="op-btn" data-op="more" :class="{ open: menuOpen }" title="更多操作" aria-label="更多操作" aria-haspopup="menu" :aria-expanded="menuOpen" @click="toggleMenu">
             <AppIcon name="more" />
           </button>
@@ -385,6 +391,13 @@ async function runShare() {
           </div>
         </div>
 
+        <template v-if="!compact">
+          <span class="op-separator" aria-hidden="true"></span>
+          <button class="op-btn op-words" data-op="wordcount" title="字数统计" aria-label="字数统计" @click="showWordCount = true">{{ wordCount.words }} 字</button>
+          <button class="op-btn" data-op="info" title="文档信息" aria-label="文档信息" @click="showInfo = true"><AppIcon name="info" /></button>
+          <button class="op-btn" data-op="history" title="历史版本" aria-label="历史版本" @click="showHistory = true"><AppIcon name="clock" /></button>
+        </template>
+
         <span class="op-separator" aria-hidden="true"></span>
         <button class="op-btn focus-toggle" data-op="focus" :class="{ selected: ui.focusMode }" :aria-pressed="ui.focusMode" :title="ui.focusMode ? '退出专注模式 (Esc)' : '专注模式'" :aria-label="ui.focusMode ? '退出专注模式' : '专注模式'" @click="toggleFocus">
           <AppIcon :name="ui.focusMode ? 'collapse' : 'focus'" />
@@ -433,19 +446,13 @@ async function runShare() {
       />
     </div>
 
-    <!-- 底栏只做状态，没有任何按钮：手机浏览器工具栏和键盘都压在这一带，≤720px 整条隐藏 -->
-    <footer v-if="notes.current" class="editor-footer">
-      <span class="autosave"><AppIcon v-if="readonly" name="lock" :size="12" /><span v-else class="status-dot"></span>{{ readonly ? '只读' : '自动保存' }}</span>
-      <span class="footer-sep" aria-hidden="true">·</span>
-      <span class="footer-words">{{ wordCount.words }} 字</span>
-    </footer>
-
     <NoteMenu
       :open="menuOpen"
       :anchor="moreButton"
       :readonly="readonly"
       :can-share="canShare"
       :show-delete="compact"
+      :show-doc-items="compact"
       @action="onMenuAction"
       @close="menuOpen = false"
     />

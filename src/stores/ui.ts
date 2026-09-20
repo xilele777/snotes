@@ -45,9 +45,11 @@ export const useUiStore = defineStore('ui', () => {
    * 手机上删除按钮收进了「更多」菜单，快捷键不能再靠点 DOM 上的按钮。
    */
   const trashRequest = ref(0)
+  /** 服务端配置的回收站保留天数：null 未开启自动清理，undefined 尚未得知（还没同步过） */
+  const trashRetentionDays = ref<number | null | undefined>(undefined)
   /** 离开笔记时仅保存位置，不缓存第二份列表或编辑器。 */
   const lastNotesPosition = ref<WorkspacePosition | null>(null)
   const restorePosition = ref<WorkspacePosition | null>(null)
 
-  return { view, activeGroupId, query, syncing, lastSyncError, failedCount, drawerOpen, mobilePane, focusMode, overlay, settingsTab, trashRequest, lastNotesPosition, restorePosition }
+  return { view, activeGroupId, query, syncing, lastSyncError, failedCount, drawerOpen, mobilePane, focusMode, overlay, settingsTab, trashRequest, trashRetentionDays, lastNotesPosition, restorePosition }
 })

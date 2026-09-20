@@ -1,3 +1,4 @@
+import { recordCloudSnapshot } from '../db/history'
 import { defineStore } from 'pinia'
 import { computed, ref, watch } from 'vue'
 import type { LocalNote } from '../../shared/types'
@@ -137,11 +138,14 @@ ${note.body}`, terms)
     await load()
   }
 
-  /** 从本地正文历史恢复某一版；repo 会先把当前正文存为快照再覆盖 */
-  async function restoreHistory(id: string, historyId: number) {
-    const ok = await repo.restoreFromHistory(id, historyId)
-    if (ok) await load()
-    return ok
+  /** 从历史（本机或云端）恢复某一版正文；repo 先把当前正文存为本机快照，这里再补录一份到云端 */
+  async function restoreHistory(id: string, body: string) {
+    const before = await repo.getNote(id)
+    const ok = await repo.restoreHistoryBody(id, body)
+    if (!ok) return false
+    if (before && before.body.trim() && before.body !== body) await recordCloudSnapshot(id, before.body, before.update_time)
+    await load()
+    return true
   }
 
   async function trash(id: string) {

@@ -1,6 +1,5 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
-import { version as appVersion } from '../../package.json'
 import { checkForUpdate, updateInfo } from '../update-check'
 import { openOverlay, showNotes, switchListView } from '../navigation'
 import { syncNow } from '../sync/engine'
@@ -22,11 +21,9 @@ const inNotes = computed(() => ui.view !== 'metrics')
 const groupList = ref<HTMLElement | null>(null)
 useWorkspaceScroll(groupList, 'groups')
 
-/** 版本号与图标栏「设置」共用一个更新提示点；点版本号直达设置的「关于」页 */
-const versionLabel = `v${appVersion}`
+/** 更新提示点挂在图标栏「设置」上；版本号本身在设置的「关于」页里看 */
 const hasUpdate = computed(() => updateInfo.value?.hasUpdate === true)
 const latestLabel = computed(() => (updateInfo.value ? `v${updateInfo.value.latest}` : null))
-const versionTitle = computed(() => (hasUpdate.value ? `有新版本 ${latestLabel.value} 可用，当前 ${versionLabel}` : `当前网页版本：${versionLabel}`))
 const settingsOpen = computed(() => ui.overlay === 'settings')
 const statsOpen = computed(() => ui.overlay === 'stats')
 
@@ -244,18 +241,6 @@ watch(() => ui.drawerOpen, (open) => { if (!open) menuGroup.value = null })
           <span v-if="ui.failedCount > 0" class="failed-badge" aria-hidden="true">{{ ui.failedCount }}</span>
         </button>
 
-        <button
-          type="button"
-          class="version-button"
-          :title="versionTitle"
-          :aria-label="hasUpdate ? `查看版本信息，有新版本 ${latestLabel} 可用` : `查看版本信息，当前版本 ${versionLabel}`"
-          :class="{ 'has-update': hasUpdate }"
-          aria-haspopup="dialog"
-          :aria-expanded="settingsOpen"
-          @click="openOverlay('settings', 'about')"
-        >
-          {{ versionLabel }}
-        </button>
       </div>
     </div>
 

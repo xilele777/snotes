@@ -5,9 +5,11 @@ const mod = (key: string) => ({ metaKey: true, ctrlKey: false, key })
 const ctrl = (key: string) => ({ metaKey: false, ctrlKey: true, key })
 
 describe('resolveShortcut', () => {
-  it('Cmd/Ctrl + N → create', () => {
-    expect(resolveShortcut(mod('n'), { hasQuery: false })).toEqual({ type: 'create' })
-    expect(resolveShortcut(ctrl('n'), { hasQuery: false })).toEqual({ type: 'create' })
+  it('Cmd/Ctrl + Alt + N → create；不带 Alt 的 Mod+N 是浏览器新窗口，不抢', () => {
+    expect(resolveShortcut({ ...mod('n'), altKey: true }, { hasQuery: false })).toEqual({ type: 'create' })
+    expect(resolveShortcut({ ...ctrl('n'), altKey: true }, { hasQuery: false })).toEqual({ type: 'create' })
+    expect(resolveShortcut(mod('n'), { hasQuery: false })).toBeNull()
+    expect(resolveShortcut(ctrl('n'), { hasQuery: false })).toBeNull()
   })
 
   it('Cmd/Ctrl + F → focusSearch', () => {
@@ -45,8 +47,8 @@ describe('resolveShortcut', () => {
     expect(resolveShortcut({ metaKey: false, ctrlKey: false, key: 'N' }, { hasQuery: false })).toBeNull()
   })
 
-  it('大小写不敏感：Cmd+Shift+N 仍匹配', () => {
-    expect(resolveShortcut({ metaKey: true, ctrlKey: false, key: 'N' }, { hasQuery: false }))
+  it('大小写不敏感：Cmd+Alt+N 的 key 为大写 N 仍匹配', () => {
+    expect(resolveShortcut({ metaKey: true, ctrlKey: false, altKey: true, key: 'N' }, { hasQuery: false }))
       .toEqual({ type: 'create' })
   })
 })
@@ -75,10 +77,10 @@ describe('resolveShortcut 扩展键位', () => {
     expect(resolveShortcut(alt('ArrowUp'), ctx)).toEqual({ type: 'prevNote' })
   })
 
-  it('Mod+Shift+数字按物理键位识别，Shift 把 key 变成符号也不影响', () => {
-    expect(resolveShortcut(shift(')', 'Digit0'), ctx)).toEqual({ type: 'showAll' })
-    expect(resolveShortcut(shift('!', 'Digit1'), ctx)).toEqual({ type: 'showGroup', index: 0 })
-    expect(resolveShortcut(shift('3', 'Digit3'), ctx)).toEqual({ type: 'showGroup', index: 2 })
+  it('Mod+Shift+数字不再占用（与系统和浏览器冲突）', () => {
+    expect(resolveShortcut(shift(')', 'Digit0'), ctx)).toBeNull()
+    expect(resolveShortcut(shift('!', 'Digit1'), ctx)).toBeNull()
+    expect(resolveShortcut(shift('3', 'Digit3'), ctx)).toBeNull()
   })
 
   it('没有 Shift 的 Mod+数字不抢浏览器切标签', () => {

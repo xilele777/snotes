@@ -1,3 +1,4 @@
+import { HISTORY_KEEP, HISTORY_MAX_AGE_MS, shouldSnapshot } from '../shared/history-rules'
 import type { NoteMeta } from '../shared/types'
 import type { Env } from './types'
 
@@ -50,6 +51,7 @@ export async function purgeNotes(env: Env, ids: string[]): Promise<void> {
     env.DB.prepare(`DELETE FROM image WHERE note_id IN (${placeholders})`).bind(...ids),
     env.DB.prepare(`DELETE FROM note_body WHERE note_id IN (${placeholders})`).bind(...ids),
     env.DB.prepare(`DELETE FROM note_open WHERE note_id IN (${placeholders})`).bind(...ids),
+    env.DB.prepare(`DELETE FROM note_history WHERE note_id IN (${placeholders})`).bind(...ids),
     // 置墓碑：invalid=2 + 推进 prop_version/update_time，保留 id/version/prop_version
     // 等同步元字段，让 pull 客户端能识别这是「已被删除」的信号。
     env.DB.prepare(
@@ -89,4 +91,54 @@ export async function reapTombstones(env: Env, now = nowMs()): Promise<string[]>
     env.DB.prepare(`DELETE FROM note WHERE id IN (${placeholders})`).bind(...ids),
   ])
   return ids
+}
+
+export interface HistoryRow {
+  id: number
+  note_id: string
+  time: number
+  body: string
+}
+
+/** 某条笔记的云端历史，最新的在前 */
+export async function listNoteHistory(env: Env, noteId: string): Promise<HistoryRow[]> {
+  const { results } = await env.DB.prepare(
+    'SELECT id, note_id, time, body FROM note_history WHERE note_id = ? ORDER BY time DESC, id DESC'
+  )
+    .bind(noteId)
+    .all<HistoryRow>()
+  return results
+}
+
+/** 写一条云端快照并按条数与时长修剪 */
+export async function recordNoteHistory(env: Env, noteId: string, body: string, time: number, now = nowMs()): Promise<void> {
+  await env.DB.batch([
+    env.DB.prepare('INSERT INTO note_history (note_id, time, body) VALUES (?, ?, ?)').bind(noteId, time, body),
+    env.DB.prepare(
+      `DELETE FROM note_history WHERE note_id = ? AND (time < ? OR id NOT IN (
+         SELECT id FROM note_history WHERE note_id = ? ORDER BY time DESC, id DESC LIMIT ?))`
+    ).bind(noteId, now - HISTORY_MAX_AGE_MS, noteId, HISTORY_KEEP),
+  ])
+}
+
+/**
+ * 正文即将从 previous 换成 next，按共用规则决定是否留快照。
+ * 快照时间取 previousTime（旧正文最后落库的时刻）。
+ */
+export async function maybeRecordNoteHistory(
+  env: Env,
+  noteId: string,
+  previous: string,
+  next: string,
+  previousTime: number,
+  now = nowMs()
+): Promise<boolean> {
+  const last = await env.DB.prepare(
+    'SELECT time, body FROM note_history WHERE note_id = ? ORDER BY time DESC, id DESC LIMIT 1'
+  )
+    .bind(noteId)
+    .first<{ time: number; body: string }>()
+  if (!shouldSnapshot(previous, next, last ?? undefined, now)) return false
+  await recordNoteHistory(env, noteId, previous, previousTime, now)
+  return true
 }

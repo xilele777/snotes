@@ -155,10 +155,6 @@ kbd { font-family: inherit; font-size: 10px; line-height: 20px; white-space: now
 .sync-spinner { animation: sync-spin 1s linear infinite; }
 @keyframes sync-spin { to { transform: rotate(360deg); } }
 .failed-badge { position: absolute; top: -2px; left: 17px; min-width: 13px; height: 13px; line-height: 13px; padding: 0 3px; border-radius: 8px; background: var(--danger); color: white; font-size: 9px; }
-.version-button { margin-left: auto; border: 0; padding: 6px; border-radius: 5px; background: transparent; color: var(--text-tertiary); font-size: 10px; font-variant-numeric: tabular-nums; }
-.version-button:hover { background: var(--bg-hover); color: var(--text-primary); }
-.version-button.has-update { position: relative; color: var(--text-secondary); padding-right: 14px; }
-.version-button.has-update::after { content: ""; position: absolute; top: 6px; right: 4px; width: 6px; height: 6px; border-radius: 50%; background: var(--accent); }
 .update-row .info-sub { grid-column: 1 / -1; margin-top: 6px; font-size: 12px; line-height: 1.65; }
 .update-row .info-sub code { font-size: 11px; padding: 1px 4px; border-radius: 3px; background: var(--bg-press); color: var(--text-primary); overflow-wrap: anywhere; }
 .update-links { margin: -6px 0 0; font-size: 12px; }.update-links a { color: var(--accent); text-decoration: none; }.update-links a:hover { text-decoration: underline; }
@@ -290,10 +286,7 @@ kbd { font-family: inherit; font-size: 10px; line-height: 20px; white-space: now
 .editor-body .milkdown li[data-checked='true'] > p { color: var(--text-tertiary); text-decoration: line-through; text-decoration-color: var(--text-disabled); }
 .task-checkbox { position: absolute; left: -24px; top: 7px; width: 15px; height: 15px; margin: 0; accent-color: var(--accent); cursor: pointer; }
 .task-checkbox:disabled { cursor: default; }
-.editor-footer { min-height: 36px; display: flex; align-items: center; gap: 6px; padding: 0 24px; padding-bottom: env(safe-area-inset-bottom); border-top: 1px solid var(--border-light); color: var(--text-tertiary); flex: none; }
-.autosave { display: flex; align-items: center; gap: 6px; font-size: 11px; white-space: nowrap; }
-.status-dot { width: 5px; height: 5px; border-radius: 50%; background: var(--success); }
-.footer-sep, .footer-words { font-size: 11px; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.op-btn.op-words { width: auto; padding: 0 8px; font-size: 11px; white-space: nowrap; font-variant-numeric: tabular-nums; }
 .backup-hint { margin: 0 0 14px; font-size: 12px; line-height: 1.7; color: var(--text-secondary); }
 .backup-hint code { padding: 1px 5px; border-radius: 4px; background: var(--bg-app); font-family: inherit; font-size: 11px; color: var(--text-primary); }
 .backup-actions { display: flex; gap: 8px; margin-bottom: 12px; }
@@ -364,6 +357,7 @@ kbd { font-family: inherit; font-size: 10px; line-height: 20px; white-space: now
 .history-preview { margin: 0 6px 8px; padding: 10px 12px; max-height: 200px; overflow: auto; border: 1px solid var(--border-light); border-radius: 6px; background: var(--bg-surface); font: inherit; font-size: 12px; line-height: 1.7; white-space: pre-wrap; overflow-wrap: anywhere; color: var(--text-secondary); }
 /* 独立的历史版本弹窗：列表不再嵌在文档信息里，去掉分隔线，条数挂在标题后 */
 .history-dialog { width: 460px; }
+.history-source { font-size: 11px; color: var(--text-tertiary); white-space: nowrap; }
 .history-dialog .dialog-title .history-count { margin-left: 8px; font-size: 12px; font-weight: 400; color: var(--text-tertiary); }
 .history-hint { margin: -12px 0 14px; font-size: 12px; line-height: 1.6; color: var(--text-tertiary); }
 .history-dialog .history { margin: 0; padding-top: 0; border-top: 0; }
@@ -386,6 +380,8 @@ kbd { font-family: inherit; font-size: 10px; line-height: 20px; white-space: now
 
 /* Read-only notes */
 .trash-notice { font-size: 11px; color: var(--text-secondary); }
+.trash-hint { margin: 0; padding: 6px 16px; font-size: 11px; line-height: 1.5; color: var(--text-tertiary); border-bottom: 1px solid var(--border-light); }
+.trash-days-left { font-size: 10px; color: var(--text-tertiary); white-space: nowrap; }
 .trash-op { min-height: 32px; padding: 4px 12px; margin-left: 4px; border: 1px solid var(--border-default); border-radius: 7px; background: var(--bg-surface); font-size: 12px; white-space: nowrap; }
 .trash-op.recover { color: var(--accent); border-color: var(--focus-ring); background: var(--accent-soft); }
 .trash-op.purge:hover { color: var(--danger); border-color: var(--danger); }
@@ -494,7 +490,6 @@ kbd { font-family: inherit; font-size: 10px; line-height: 20px; white-space: now
   .editor-location { max-width: 120px; }
   .editor-location .group-chevron { display: none; }
   .editor-body .milkdown { padding: 32px; }
-  .editor-footer { padding-left: 18px; padding-right: 18px; }
   .layout[data-view='metrics'] .list-pane { grid-column: 1 / -1; }
   .layout.is-focused { grid-template-columns: minmax(0, 1fr); }
 }
@@ -532,7 +527,6 @@ kbd { font-family: inherit; font-size: 10px; line-height: 20px; white-space: now
   .format-bar { min-height: 38px; padding: 0 12px; }
   .editor-pane:has(> .format-bar) { --format-bar-height: 38px; }
   /* 底栏贴着屏幕底边，正是浏览器工具栏与键盘遮住的位置；手机上整条隐藏，空间还给正文 */
-  .editor-footer { display: none; }
   .editor-loading { padding: 28px 22px; }
   .trash-notice { font-size: 10px; }
   .trash-op { font-size: 11px; padding: 4px 8px; }
@@ -599,7 +593,7 @@ kbd { font-family: inherit; font-size: 10px; line-height: 20px; white-space: now
   html, body, #app { height: auto; }
   body { background: #fff; }
   .layout { display: block; height: auto; overflow: visible; padding: 0; }
-  .sidebar-pane, .list-pane, .drawer-mask, .editor-top-bar, .format-bar, .editor-footer, .link-tooltip, .lightbox-mask, .dialog-mask, .editor-welcome, .task-checkbox, .toast-host, .action-menu { display: none !important; }
+  .sidebar-pane, .list-pane, .drawer-mask, .editor-top-bar, .format-bar, .link-tooltip, .lightbox-mask, .dialog-mask, .editor-welcome, .task-checkbox, .toast-host, .action-menu { display: none !important; }
   .editor-pane { display: block; height: auto; overflow: visible; background: #fff; }
   .editor-body { overflow: visible; }
   .editor-body .milkdown, .editor-body .milkdown-mock { max-width: none; min-height: 0; margin: 0; padding: 0; font-size: 12pt; line-height: 1.6; }

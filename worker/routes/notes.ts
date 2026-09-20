@@ -1,6 +1,6 @@
 import { Hono } from 'hono'
 import type { CreateNoteRequest, PatchNoteRequest, PatchNoteResponse } from '../../shared/types'
-import { nowMs, purgeNotes } from '../db'
+import { listNoteHistory, maybeRecordNoteHistory, nowMs, purgeNotes, recordNoteHistory } from '../db'
 import type { Env } from '../types'
 
 const PROP_FIELDS = ['group_id', 'star', 'top', 'skin_color'] as const
@@ -195,6 +195,12 @@ notesRoutes.patch('/api/notes/:id', async (c) => {
     const [noteResult] = await c.env.DB.batch(statements)
     if (noteResult.meta.changes === 0) continue
 
+    // 云端正文历史：被这次写入覆盖的旧正文按共用规则留一条，与本机历史同一套阈值。
+    // 放在条件更新成功之后，落空重试时不会留下多余快照。
+    if (changesBody) {
+      await maybeRecordNoteHistory(c.env, id, current.content ?? '', req.content!, current.update_time, now)
+    }
+
     const response: PatchNoteResponse = {
       version,
       prop_version: propVersion,
@@ -240,6 +246,33 @@ notesRoutes.post('/api/notes/:id/trash', async (c) => {
 notesRoutes.post('/api/notes/:id/recover', async (c) => {
   const result = await setInvalid(c, c.req.param('id'), 0)
   return result ? c.json(result) : c.json({ error: 'not_found' }, 404)
+})
+
+/** 云端正文历史（最新在前）。墓碑与不存在的笔记回 404。 */
+notesRoutes.get('/api/notes/:id/history', async (c) => {
+  const id = c.req.param('id')
+  const exists = await c.env.DB.prepare('SELECT 1 AS ok FROM note WHERE id = ? AND invalid != 2').bind(id).first()
+  if (!exists) return c.json({ error: 'not_found' }, 404)
+  const rows = await listNoteHistory(c.env, id)
+  return c.json({ history: rows.map((row) => ({ id: row.id, time: row.time, body: row.body })) })
+})
+
+/**
+ * 无条件补一条云端快照。客户端从历史恢复前调用，把此刻的正文先存起来——
+ * 恢复错了还能再恢复回来。随后的 PATCH 仍按阈值规则决定是否再留。
+ */
+notesRoutes.post('/api/notes/:id/history', async (c) => {
+  const id = c.req.param('id')
+  const req = await c.req.json<{ body?: unknown; time?: unknown }>().catch(() => null)
+  if (!req || typeof req.body !== 'string') return c.json({ error: 'invalid_body' }, 400)
+  const current = await readCurrent(c.env, id)
+  if (!current) return c.json({ error: 'not_found' }, 404)
+  if (!req.body.trim()) return c.json({ ok: true, recorded: false })
+  const last = await listNoteHistory(c.env, id)
+  if (last[0]?.body === req.body) return c.json({ ok: true, recorded: false })
+  const time = typeof req.time === 'number' && Number.isFinite(req.time) ? req.time : current.update_time
+  await recordNoteHistory(c.env, id, req.body, time)
+  return c.json({ ok: true, recorded: true })
 })
 
 notesRoutes.post('/api/notes/:id/purge', async (c) => {

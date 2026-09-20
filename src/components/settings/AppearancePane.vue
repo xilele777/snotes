@@ -63,6 +63,4 @@ const widths: { value: EditorWidth; label: string }[] = [
       >{{ item.label }}</button>
     </div>
   </div>
-
-  <p class="settings-hint">这些设置只保存在当前设备的浏览器里，不参与同步。</p>
 </template>

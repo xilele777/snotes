@@ -22,14 +22,14 @@ async function noteWithHistory() {
 }
 
 describe('HistoryDialog', () => {
-  it('列出快照并可展开预览，点恢复上抛 historyId', async () => {
+  it('列出快照并可展开预览，点恢复上抛那一版正文', async () => {
     const { note } = await noteWithHistory()
     const wrapper = mount(HistoryDialog, { props: { open: true, note }, attachTo: document.body })
     await flushPromises()
 
     const dialog = document.querySelector<HTMLElement>('[role="dialog"][aria-label="历史版本"]')!
     expect(dialog.textContent).toContain('1 条')
-    expect(dialog.textContent).toContain('只保存在本设备')
+    expect(dialog.textContent).toContain('本机与云端')
     const items = document.querySelectorAll('.history-item')
     expect(items).toHaveLength(1)
     ;(items[0]!.querySelector('button[aria-expanded]') as HTMLButtonElement).click()
@@ -39,7 +39,7 @@ describe('HistoryDialog', () => {
     ;(document.querySelector('[data-op="restore"]') as HTMLButtonElement).click()
     const restored = wrapper.emitted('restore')!
     expect(restored).toHaveLength(1)
-    expect(typeof restored[0]![0]).toBe('number')
+    expect(restored[0]![0]).toBe('# 第一版')
     wrapper.unmount()
   })
 

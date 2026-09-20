@@ -155,6 +155,13 @@ export interface PullResponse {
   groups: Group[]
   server_time: number
   next_cursor: string | null
+  /** 部署级的回收站保留天数；null 表示未开启自动清理。旧服务端没有这个字段。 */
+  trash_retention_days?: number | null
+}
+
+/** GET /api/notes/:id/history 响应体：云端正文历史，最新在前。 */
+export interface NoteHistoryResponse {
+  history: { id: number; time: number; body: string }[]
 }
 
 /** POST /api/sync/bodies 请求体（规格 §7.1）。 */
