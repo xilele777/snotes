@@ -291,3 +291,5 @@
   - 发布结果：标签 v0.15.3；Cloudflare Version ID f575223e-e7e4-43f7-9d28-a180ec35c9a4；GitHub Release https://github.com/xilele777/snotes/releases/tag/v0.15.3。
 - 2026-09-21：v0.15.4 工具栏「插入表格」改为先弹 `TableDialog` 收行数与列数（默认 3×3，范围 1 到 20），再调用 `insertTable(row, col)`；此前固定插入 3×3。
   - 发布结果：标签 v0.15.4；Cloudflare Version ID ca0f5405-bf02-441d-97ef-a0f539ceeef5；GitHub Release https://github.com/xilele777/snotes/releases/tag/v0.15.4。
+- 2026-09-21：v0.16.0 第五档 1 到 4 全部完成：接入 `tableBlock`（`src/editor/table-block.ts` 换项目图标，样式按 Crepe 主题用 opacity 隐藏把手，display:none 会让 floating-ui 定位错）；启用 `cursor` 与 `trailing`；`Settings.tableDensity` 三档落到 `--table-cell-padding`；`src/editor/highlight.ts` 用 `mdast-util-find-and-replace` 解析 `==文字==`、注册 toMarkdown handler 序列化、`markRule` 输入规则、`Mod-Shift-h`。编辑器分包 gzip 34KB → 57KB。
+  - 发布结果：标签 v0.16.0；Cloudflare Version ID 7499b1f5-749d-4491-a43d-ac25d7de7350；GitHub Release https://github.com/xilele777/snotes/releases/tag/v0.16.0。
