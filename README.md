@@ -8,7 +8,7 @@
 
 中文 | [English](README.en.md)
 
-当前稳定版：**[v0.15.3](https://github.com/xilele777/snotes/releases/tag/v0.15.3)**（[全部发布](https://github.com/xilele777/snotes/releases)）。服务器部署从 `v0.7.0` 开始提供。
+当前稳定版：**[v0.15.4](https://github.com/xilele777/snotes/releases/tag/v0.15.4)**（[全部发布](https://github.com/xilele777/snotes/releases)）。服务器部署从 `v0.7.0` 开始提供。
 
 [界面与操作](#界面与操作) · [Cloudflare 部署](#部署到你自己的-cloudflare-账号) · [服务器部署](docs/server-deployment.md) · [本地开发](#本地开发) · [更新记录](CHANGELOG.md)
 
@@ -22,9 +22,9 @@
 | 直接运行 Node.js | Node.js 24 LTS、持久化磁盘 | SQLite、本地图片目录 | [快速开始](#能否部署到自己的服务器) |
 | Docker Compose | Docker Engine、Compose 插件 | `snotes-data` 持久化卷 | [完整指引](docs/server-deployment.md#docker-compose) |
 
-未指定标签的克隆命令默认跟踪 `main`。要安装固定版本，在克隆后、安装或构建前执行 `git switch --detach v0.15.3`；下方服务器快速开始已在克隆命令中指定此标签。`main` 可能包含尚未发布的后续改动；需要固定版本时请选择明确的发布标签。
+未指定标签的克隆命令默认跟踪 `main`。要安装固定版本，在克隆后、安装或构建前执行 `git switch --detach v0.15.4`；下方服务器快速开始已在克隆命令中指定此标签。`main` 可能包含尚未发布的后续改动；需要固定版本时请选择明确的发布标签。
 
-已有部署先完成同步、备份数据并保存本地配置，再执行 `git fetch origin --tags` 和 `git switch --detach v0.15.3`，随后按对应部署方式重新安装、构建和启动。固定标签处于 detached HEAD 状态，后续升级需获取并切换到新标签，不能直接 `git pull`；Cloudflare 配置的保存与恢复见下方[更新步骤](#8-更新到新版本)。不要使用强制切换覆盖本地改动。
+已有部署先完成同步、备份数据并保存本地配置，再执行 `git fetch origin --tags` 和 `git switch --detach v0.15.4`，随后按对应部署方式重新安装、构建和启动。固定标签处于 detached HEAD 状态，后续升级需获取并切换到新标签，不能直接 `git pull`；Cloudflare 配置的保存与恢复见下方[更新步骤](#8-更新到新版本)。不要使用强制切换覆盖本地改动。
 
 应用内更新提醒只查询 GitHub 最新**稳定版**，成功结果缓存 24 小时，不自动提示预览版，也不会自动更新服务端。预览版需在 [Releases](https://github.com/xilele777/snotes/releases) 手动选择。直接运行 Node.js 与 Playwright 端到端已验证；Docker Compose 配置检查已通过，镜像构建与容器运行尚未实测。
 
@@ -286,7 +286,7 @@ npx wrangler secret put CF_API_TOKEN    # 需要 Account > Analytics > Read 权�
 直接运行 Node.js：
 
 ```bash
-git clone --branch v0.15.3 https://github.com/xilele777/snotes.git
+git clone --branch v0.15.4 https://github.com/xilele777/snotes.git
 cd snotes
 npm ci
 npm run build:server
@@ -298,7 +298,7 @@ npm start
 或使用 Docker Compose（独立安装，二选一）：
 
 ```bash
-git clone --branch v0.15.3 https://github.com/xilele777/snotes.git
+git clone --branch v0.15.4 https://github.com/xilele777/snotes.git
 cd snotes
 cp server.env.example .env
 # 编辑 .env，设置自己的随机 ACCESS_TOKEN
