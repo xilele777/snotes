@@ -13,6 +13,7 @@ import AppIcon from './AppIcon.vue'
 import EditorLoading from './EditorLoading.vue'
 import FormatToolbar, { type ToolbarAction } from './FormatToolbar.vue'
 import LinkDialog from './LinkDialog.vue'
+import TableDialog from './TableDialog.vue'
 import ImageLightbox from './ImageLightbox.vue'
 import { SKIN_COLORS } from './palette'
 import { EMPTY_FORMAT_STATE, type FormatState } from '../editor/format'
@@ -113,6 +114,14 @@ const formatState = ref<FormatState>(EMPTY_FORMAT_STATE)
 const linkDialog = ref(false)
 const linkDraft = ref({ href: '', text: '', editing: false })
 
+/** 表格弹窗：先收行列数，再交给编辑器的表格命令 */
+const tableDialog = ref(false)
+
+function submitTable(payload: { rows: number; cols: number }) {
+  tableDialog.value = false
+  editorRef.value?.insertTable?.(payload.rows, payload.cols)
+}
+
 watch(() => notes.currentId, () => {
   openPop.value = null
   menuOpen.value = false
@@ -123,7 +132,7 @@ useWorkspaceScroll(editorBody, 'editor', () => editorReady.value)
 
 function onFormat(action: ToolbarAction) {
   if (action === 'table') {
-    editorRef.value?.insertTable?.()
+    tableDialog.value = true
     return
   }
   if (action === 'link') {
@@ -469,6 +478,7 @@ async function runShare() {
     <NoteInfoDialog :open="showInfo" :note="notes.current" @close="showInfo = false" />
     <HistoryDialog :open="showHistory" :note="notes.current" :readonly="readonly" @close="showHistory = false" @restore="onRestoreHistory" />
     <WordCountDialog :open="showWordCount" :count="wordCount" @close="showWordCount = false" />
+    <TableDialog :open="tableDialog" @submit="submitTable" @close="tableDialog = false" />
     <LinkDialog
       :open="linkDialog"
       :href="linkDraft.href"

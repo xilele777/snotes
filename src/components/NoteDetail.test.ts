@@ -486,13 +486,77 @@ describe('NoteDetail 编辑工具栏', () => {
       insertTable: () => void
     }
     const format = vi.spyOn(exposed, 'format').mockImplementation(() => {})
-    const insertTable = vi.spyOn(exposed, 'insertTable').mockImplementation(() => {})
 
     await wrapper.find('[data-format="bold"]').trigger('click')
-    await wrapper.find('[data-format="table"]').trigger('click')
 
     expect(format).toHaveBeenCalledWith('bold')
-    expect(insertTable).toHaveBeenCalledTimes(1)
+    wrapper.unmount()
+  })
+
+  it('点表格按钮打开弹窗，自定义行列后交给编辑器插入', async () => {
+    const notes = useNotesStore()
+    const note = await notes.create()
+    notes.currentId = note.id
+
+    const wrapper = mount(NoteDetail, { attachTo: document.body })
+    await wrapper.vm.$nextTick()
+    await flushPromises()
+
+    const exposed = wrapper.findComponent(MilkdownEditor).vm.$.exposed as {
+      insertTable: (row: number, col: number) => void
+    }
+    const insertTable = vi.spyOn(exposed, 'insertTable').mockImplementation(() => {})
+
+    expect(document.querySelector('.table-dialog')).toBeNull()
+    await wrapper.find('[data-format="table"]').trigger('click')
+    await wrapper.vm.$nextTick()
+
+    const dialog = document.querySelector('.table-dialog')!
+    expect(dialog).not.toBeNull()
+    expect(insertTable).not.toHaveBeenCalled()
+
+    const rows = dialog.querySelector<HTMLInputElement>('[data-field="rows"]')!
+    const cols = dialog.querySelector<HTMLInputElement>('[data-field="cols"]')!
+    expect(rows.value).toBe('3')
+    expect(cols.value).toBe('3')
+    rows.value = '2'
+    rows.dispatchEvent(new Event('input'))
+    cols.value = '5'
+    cols.dispatchEvent(new Event('input'))
+    await wrapper.vm.$nextTick()
+    ;(dialog.querySelector('[data-op="confirm"]') as HTMLButtonElement).click()
+    await wrapper.vm.$nextTick()
+
+    expect(insertTable).toHaveBeenCalledWith(2, 5)
+    expect(document.querySelector('.table-dialog')).toBeNull()
+    wrapper.unmount()
+  })
+
+  it('表格行列超出范围时确定按钮不可用', async () => {
+    const notes = useNotesStore()
+    const note = await notes.create()
+    notes.currentId = note.id
+
+    const wrapper = mount(NoteDetail, { attachTo: document.body })
+    await wrapper.vm.$nextTick()
+    await flushPromises()
+
+    await wrapper.find('[data-format="table"]').trigger('click')
+    await wrapper.vm.$nextTick()
+    const dialog = document.querySelector('.table-dialog')!
+    const rows = dialog.querySelector<HTMLInputElement>('[data-field="rows"]')!
+    const confirm = dialog.querySelector<HTMLButtonElement>('[data-op="confirm"]')!
+    expect(confirm.disabled).toBe(false)
+
+    rows.value = '0'
+    rows.dispatchEvent(new Event('input'))
+    await wrapper.vm.$nextTick()
+    expect(confirm.disabled).toBe(true)
+
+    rows.value = '99'
+    rows.dispatchEvent(new Event('input'))
+    await wrapper.vm.$nextTick()
+    expect(confirm.disabled).toBe(true)
     wrapper.unmount()
   })
 

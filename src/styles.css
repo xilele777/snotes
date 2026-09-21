@@ -330,6 +330,8 @@ kbd { font-family: inherit; font-size: 10px; line-height: 20px; white-space: now
 .link-field > span { display: block; margin-bottom: 6px; font-size: 12px; color: var(--text-secondary); }
 .link-hint { margin: -6px 0 12px; font-size: 12px; color: var(--text-tertiary); }
 .link-hint.error { color: var(--danger); }
+.table-dialog { width: min(360px, 92vw); }
+.table-fields { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
 .confirm-message { margin: 0; font-size: 13px; color: var(--text-secondary); line-height: 1.8; }
 .confirm-dialog .dialog-btn.ok { background: var(--danger); color: white; border-color: var(--danger); }
 .confirm-dialog .dialog-btn.ok:hover { background: #b94d43; }
