@@ -63,6 +63,7 @@ describe('SettingsDialog 分页壳', () => {
     expect(radio('theme', 'system')!.getAttribute('aria-checked')).toBe('true')
     expect(radio('fontSize', 'medium')!.getAttribute('aria-checked')).toBe('true')
     expect(radio('editorWidth', 'medium')!.getAttribute('aria-checked')).toBe('true')
+    expect(radio('tableDensity', 'medium')!.getAttribute('aria-checked')).toBe('true')
     wrapper.unmount()
   })
 
@@ -72,9 +73,10 @@ describe('SettingsDialog 分页壳', () => {
     radio('theme', 'dark')!.click()
     radio('fontSize', 'large')!.click()
     radio('editorWidth', 'wide')!.click()
+    radio('tableDensity', 'compact')!.click()
     await nextTick()
 
-    expect(settings.value).toEqual({ theme: 'dark', fontSize: 'large', editorWidth: 'wide' })
+    expect(settings.value).toEqual({ theme: 'dark', fontSize: 'large', editorWidth: 'wide', tableDensity: 'compact' })
     expect(radio('theme', 'dark')!.getAttribute('aria-checked')).toBe('true')
     expect(radio('theme', 'system')!.getAttribute('aria-checked')).toBe('false')
     wrapper.unmount()

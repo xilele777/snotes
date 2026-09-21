@@ -1,20 +1,22 @@
 import { ref, watch } from 'vue'
 
-/** 主题、字号、编辑区宽度只影响本设备，存 localStorage，不进同步。 */
+/** 主题、字号、编辑区宽度、表格密度只影响本设备，存 localStorage，不进同步。 */
 export type Theme = 'system' | 'light' | 'dark'
 export type FontSize = 'small' | 'medium' | 'large'
 export type EditorWidth = 'narrow' | 'medium' | 'wide'
+export type TableDensity = 'compact' | 'medium' | 'loose'
 
 export interface Settings {
   theme: Theme
   fontSize: FontSize
   editorWidth: EditorWidth
+  tableDensity: TableDensity
 }
 
 /** index.html 里的首帧脚本读的是同一个键，改名时两处一起改。 */
 export const SETTINGS_KEY = 'snotes_settings'
 
-export const DEFAULT_SETTINGS: Settings = { theme: 'system', fontSize: 'medium', editorWidth: 'medium' }
+export const DEFAULT_SETTINGS: Settings = { theme: 'system', fontSize: 'medium', editorWidth: 'medium', tableDensity: 'medium' }
 
 /** 地址栏与系统状态栏的底色，随主题切换；与 styles.css 的 --bg-surface 保持一致。 */
 export const THEME_COLORS: Record<'light' | 'dark', string> = { light: '#ffffff', dark: '#232428' }
@@ -22,6 +24,7 @@ export const THEME_COLORS: Record<'light' | 'dark', string> = { light: '#ffffff'
 const THEMES: readonly Theme[] = ['system', 'light', 'dark']
 const FONT_SIZES: readonly FontSize[] = ['small', 'medium', 'large']
 const EDITOR_WIDTHS: readonly EditorWidth[] = ['narrow', 'medium', 'wide']
+const TABLE_DENSITIES: readonly TableDensity[] = ['compact', 'medium', 'loose']
 
 function pick<T extends string>(value: unknown, allowed: readonly T[], fallback: T): T {
   return typeof value === 'string' && (allowed as readonly string[]).includes(value) ? (value as T) : fallback
@@ -36,6 +39,7 @@ export function parseSettings(raw: string | null | undefined): Settings {
       theme: pick(data?.theme, THEMES, DEFAULT_SETTINGS.theme),
       fontSize: pick(data?.fontSize, FONT_SIZES, DEFAULT_SETTINGS.fontSize),
       editorWidth: pick(data?.editorWidth, EDITOR_WIDTHS, DEFAULT_SETTINGS.editorWidth),
+      tableDensity: pick(data?.tableDensity, TABLE_DENSITIES, DEFAULT_SETTINGS.tableDensity),
     }
   } catch {
     return { ...DEFAULT_SETTINGS }
@@ -63,6 +67,7 @@ export function applySettings(current: Settings = settings.value): void {
   root.dataset.theme = resolveTheme(current.theme, systemDark())
   root.dataset.fontSize = current.fontSize
   root.dataset.editorWidth = current.editorWidth
+  root.dataset.tableDensity = current.tableDensity
   const meta = document.querySelector<HTMLMetaElement>('meta[name="theme-color"]')
   if (meta) meta.content = THEME_COLORS[root.dataset.theme as 'light' | 'dark']
 }

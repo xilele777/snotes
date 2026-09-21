@@ -7,14 +7,14 @@ const mountBar = (state: Partial<FormatState> = {}) =>
   mount(FormatToolbar, { props: { state: { ...EMPTY_FORMAT_STATE, ...state } } })
 
 describe('FormatToolbar', () => {
-  it('标题三级加十一个格式按钮全部直接可见，不用先点开菜单', () => {
+  it('标题三级加十二个格式按钮全部直接可见，不用先点开菜单', () => {
     const wrapper = mountBar()
 
     for (const action of ['heading1', 'heading2', 'heading3']) {
       expect(wrapper.find(`[data-format="${action}"]`).exists()).toBe(true)
     }
     for (const action of [
-      'bold', 'italic', 'strike', 'inlineCode', 'bulletList', 'orderedList',
+      'bold', 'italic', 'strike', 'inlineCode', 'highlight', 'bulletList', 'orderedList',
       'taskList', 'quote', 'codeBlock', 'link', 'table',
     ]) {
       expect(wrapper.find(`[data-format="${action}"]`).exists()).toBe(true)

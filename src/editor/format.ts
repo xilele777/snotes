@@ -15,6 +15,7 @@ export type FormatAction =
   | 'italic'
   | 'strike'
   | 'inlineCode'
+  | 'highlight'
   | 'bulletList'
   | 'orderedList'
   | 'taskList'
@@ -31,6 +32,7 @@ export interface FormatState {
   italic: boolean
   strike: boolean
   inlineCode: boolean
+  highlight: boolean
   link: boolean
   list: ListKind | null
   quote: boolean
@@ -43,6 +45,7 @@ export const EMPTY_FORMAT_STATE: FormatState = {
   italic: false,
   strike: false,
   inlineCode: false,
+  highlight: false,
   link: false,
   list: null,
   quote: false,
@@ -55,6 +58,7 @@ const MARK_NAMES = {
   italic: 'emphasis',
   strike: 'strike_through',
   inlineCode: 'inlineCode',
+  highlight: 'highlight',
   link: 'link',
 } as const
 
@@ -120,6 +124,7 @@ export function readFormatState(state: EditorState): FormatState {
     italic: markActive(state, schema.marks[MARK_NAMES.italic]),
     strike: markActive(state, schema.marks[MARK_NAMES.strike]),
     inlineCode: markActive(state, schema.marks[MARK_NAMES.inlineCode]),
+    highlight: markActive(state, schema.marks[MARK_NAMES.highlight]),
     link: markActive(state, schema.marks[MARK_NAMES.link]),
     list,
     quote,
@@ -278,6 +283,8 @@ export function formatCommand(state: EditorState, action: FormatAction): Command
       return markCommand(marks[MARK_NAMES.strike])
     case 'inlineCode':
       return markCommand(marks[MARK_NAMES.inlineCode])
+    case 'highlight':
+      return markCommand(marks[MARK_NAMES.highlight])
     case 'bulletList':
       return listCommand('bullet')
     case 'orderedList':

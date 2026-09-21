@@ -24,6 +24,7 @@ const TOOLS: ToolItem[] = [
   { action: 'italic', icon: 'italic', label: '斜体' },
   { action: 'strike', icon: 'strike', label: '删除线' },
   { action: 'inlineCode', icon: 'code', label: '行内代码' },
+  { action: 'highlight', icon: 'highlight', label: '高亮' },
   { action: 'bulletList', icon: 'bulletList', label: '无序列表' },
   { action: 'orderedList', icon: 'orderedList', label: '有序列表' },
   { action: 'taskList', icon: 'taskList', label: '待办清单' },
@@ -44,6 +45,7 @@ function pressed(action: ToolbarAction): boolean {
     case 'italic': return props.state.italic
     case 'strike': return props.state.strike
     case 'inlineCode': return props.state.inlineCode
+    case 'highlight': return props.state.highlight
     case 'link': return props.state.link
     case 'bulletList': return props.state.list === 'bullet'
     case 'orderedList': return props.state.list === 'ordered'

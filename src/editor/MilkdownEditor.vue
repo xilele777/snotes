@@ -2,6 +2,8 @@
 import { commandsCtx, Editor, defaultValueCtx, editorViewCtx, editorViewOptionsCtx, rootCtx } from '@milkdown/kit/core'
 import type { Ctx } from '@milkdown/kit/ctx'
 import { clipboard } from '@milkdown/kit/plugin/clipboard'
+import { cursor } from '@milkdown/kit/plugin/cursor'
+import { trailing } from '@milkdown/kit/plugin/trailing'
 import { history, redoCommand, undoCommand } from '@milkdown/kit/plugin/history'
 import { listener, listenerCtx } from '@milkdown/kit/plugin/listener'
 import { commonmark, linkAttr, paragraphAttr } from '@milkdown/kit/preset/commonmark'
@@ -20,6 +22,8 @@ import { configureListSerialization, orderedList } from './ordered-list'
 import { readFormatState, runFormat, type FormatAction, type FormatState } from './format'
 import { isExternalHref, linkRangeAt, setLink, unlink } from './link'
 import { linkTooltip } from './link-tooltip'
+import { tableBlock } from './table-block'
+import { highlight } from './highlight'
 
 const props = defineProps<{ noteId: string; modelValue: string; editable?: boolean }>()
 const emit = defineEmits<{
@@ -438,7 +442,13 @@ const MilkdownInner = defineComponent({
         .use(orderedList)
         .use(paragraphSchema)
         .use(gfm)
+        .use(tableBlock)
+        .use(highlight)
         .use(taskCheckboxes)
+        // gap cursor：表格、图片这类块级节点前后本没有文字位置，方向键走到边上时也要能放光标；
+        // trailing：文末始终留一个空段落，否则表格在文末时点表格下方无处落光标
+        .use(cursor)
+        .use(trailing)
         .use(linkTooltip({ edit: (href) => emit('edit-link', href), notify: (message) => emit('notice', message) }))
         .use(listener)
         .use(clipboard)

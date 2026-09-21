@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { settings, updateSettings, type EditorWidth, type FontSize, type Theme } from '../../settings'
+import { settings, updateSettings, type EditorWidth, type FontSize, type TableDensity, type Theme } from '../../settings'
 
 const themes: { value: Theme; label: string }[] = [
   { value: 'system', label: '跟随系统' },
@@ -15,6 +15,11 @@ const widths: { value: EditorWidth; label: string }[] = [
   { value: 'narrow', label: '窄' },
   { value: 'medium', label: '标准' },
   { value: 'wide', label: '宽' },
+]
+const densities: { value: TableDensity; label: string }[] = [
+  { value: 'compact', label: '紧凑' },
+  { value: 'medium', label: '标准' },
+  { value: 'loose', label: '宽松' },
 ]
 </script>
 
@@ -60,6 +65,21 @@ const widths: { value: EditorWidth; label: string }[] = [
         :aria-checked="settings.editorWidth === item.value"
         :data-value="item.value"
         @click="updateSettings({ editorWidth: item.value })"
+      >{{ item.label }}</button>
+    </div>
+  </div>
+
+  <div class="settings-row">
+    <span id="settings-density-label" class="settings-label">表格密度</span>
+    <div class="settings-seg" role="radiogroup" aria-labelledby="settings-density-label" data-setting="tableDensity">
+      <button
+        v-for="item in densities"
+        :key="item.value"
+        type="button"
+        role="radio"
+        :aria-checked="settings.tableDensity === item.value"
+        :data-value="item.value"
+        @click="updateSettings({ tableDensity: item.value })"
       >{{ item.label }}</button>
     </div>
   </div>

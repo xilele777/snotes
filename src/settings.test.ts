@@ -26,6 +26,7 @@ beforeEach(() => {
   delete document.documentElement.dataset.theme
   delete document.documentElement.dataset.fontSize
   delete document.documentElement.dataset.editorWidth
+  delete document.documentElement.dataset.tableDensity
   document.head.innerHTML = '<meta name="theme-color" content="#ffffff">'
   stubMedia(false)
 })
@@ -42,8 +43,10 @@ describe('parseSettings', () => {
   })
 
   it('合法取值原样保留，缺失字段补默认', () => {
-    expect(parseSettings('{"theme":"dark"}')).toEqual({ theme: 'dark', fontSize: 'medium', editorWidth: 'medium' })
-    expect(parseSettings('{"fontSize":"large","editorWidth":"wide"}')).toEqual({ theme: 'system', fontSize: 'large', editorWidth: 'wide' })
+    expect(parseSettings('{"theme":"dark"}')).toEqual({ theme: 'dark', fontSize: 'medium', editorWidth: 'medium', tableDensity: 'medium' })
+    expect(parseSettings('{"fontSize":"large","editorWidth":"wide"}')).toEqual({ theme: 'system', fontSize: 'large', editorWidth: 'wide', tableDensity: 'medium' })
+    expect(parseSettings('{"tableDensity":"loose"}').tableDensity).toBe('loose')
+    expect(parseSettings('{"tableDensity":"huge"}').tableDensity).toBe('medium')
   })
 })
 
@@ -58,12 +61,13 @@ describe('resolveTheme', () => {
 
 describe('applySettings', () => {
   it('把主题、字号、宽度写到 <html> 并更新 theme-color', () => {
-    applySettings({ theme: 'dark', fontSize: 'large', editorWidth: 'wide' })
+    applySettings({ theme: 'dark', fontSize: 'large', editorWidth: 'wide', tableDensity: 'compact' })
 
     const root = document.documentElement
     expect(root.dataset.theme).toBe('dark')
     expect(root.dataset.fontSize).toBe('large')
     expect(root.dataset.editorWidth).toBe('wide')
+    expect(root.dataset.tableDensity).toBe('compact')
     expect(document.querySelector<HTMLMetaElement>('meta[name="theme-color"]')!.content).toBe(THEME_COLORS.dark)
   })
 
@@ -84,7 +88,7 @@ describe('initSettings', () => {
 
     expect(document.documentElement.dataset.theme).toBe('dark')
     expect(document.documentElement.dataset.fontSize).toBe('small')
-    expect(JSON.parse(localStorage.getItem(SETTINGS_KEY)!)).toEqual({ theme: 'dark', fontSize: 'small', editorWidth: 'medium' })
+    expect(JSON.parse(localStorage.getItem(SETTINGS_KEY)!)).toEqual({ theme: 'dark', fontSize: 'small', editorWidth: 'medium', tableDensity: 'medium' })
   })
 
   it('跟随系统时系统切换深色会跟着变；手动选了浅色则不跟', () => {

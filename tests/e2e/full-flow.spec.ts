@@ -342,7 +342,7 @@ test('GFM 表格在编辑器里渲染成 table', async ({ page }) => {
   // Milkdown 的表输入规则：`|2x2| `（尾随空格）生成 2 行 × 2 列表格
   await page.keyboard.type('|2x2| ')
 
-  const table = page.locator('.milkdown table')
+  const table = page.locator('.milkdown table.children')
   await expect(table).toHaveCount(1, { timeout: 5_000 })
   await expect(table.locator('th')).toHaveCount(2)
   await expect(table.locator('td')).toHaveCount(2)
@@ -359,7 +359,46 @@ test('GFM 表格在编辑器里渲染成 table', async ({ page }) => {
   // 刷新后表格应从 markdown 反解析回格子（Bug 3 回归点：没有 GFM preset，这里就是纯文本管道符）
   await page.reload()
   await expect(table).toHaveCount(1, { timeout: 5_000 })
-  await expect(page.locator('.milkdown table th').first()).toHaveText('名称')
+  await expect(page.locator('.milkdown table.children th').first()).toHaveText('名称')
+})
+
+test('表格在文末时按 ↓ 能跳到表格后继续输入，且可以加行加列', async ({ page }) => {
+  await createNote(page)
+  await page.locator('.milkdown').click()
+  await page.keyboard.type('|2x2| ')
+  const table = page.locator('.milkdown table.children')
+  await expect(table).toHaveCount(1, { timeout: 5_000 })
+
+  // 从最后一格往下：trailing 保证表格后有空段落，gap cursor 保证能走出去
+  await page.keyboard.press('ArrowDown')
+  await page.keyboard.press('ArrowDown')
+  await page.keyboard.type('表格后面的文字')
+  await expect(page.locator('.milkdown .ProseMirror p').last()).toHaveText('表格后面的文字')
+
+  // 表格操作 UI：点进单元格后出现加行/加列按钮
+  // 表格操作 UI：指针靠近单元格下边缘出现「加行」，靠近右边缘出现「加列」
+  const lastCell = table.locator('td').last()
+  await lastCell.click()
+  const box = (await lastCell.boundingBox())!
+  const block = page.locator('.milkdown-table-block')
+  await lastCell.hover({ position: { x: box.width / 2, y: box.height - 3 } })
+  await expect(block.locator('[data-role="x-line-drag-handle"]')).toHaveAttribute('data-show', 'true')
+  await block.locator('[data-role="x-line-drag-handle"] button').click()
+  await expect(table.locator('tr')).toHaveCount(3)
+  await lastCell.hover({ position: { x: box.width - 3, y: box.height / 2 } })
+  await expect(block.locator('[data-role="y-line-drag-handle"]')).toHaveAttribute('data-show', 'true')
+  await block.locator('[data-role="y-line-drag-handle"] button').click()
+  await expect(table.locator('th')).toHaveCount(3)
+})
+
+test('==文字== 渲染成高亮，刷新后仍是高亮', async ({ page }) => {
+  await createNote(page)
+  await page.locator('.milkdown').click()
+  await page.keyboard.type('前 ==重点== 后')
+  await expect(page.locator('.milkdown mark')).toHaveText('重点')
+  await expect.poll(() => savedBody(page), { timeout: 5_000 }).toContain('==重点==')
+  await page.reload()
+  await expect(page.locator('.milkdown mark')).toHaveText('重点')
 })
 
 test('刷新后默认选中列表第一条并打开详情', async ({ page }) => {
@@ -705,12 +744,16 @@ test('编辑工具栏把格式写进正文，且不抢编辑器焦点', async ({
   await expect(page.locator('.task-checkbox')).toHaveCount(1)
   await expect.poll(() => savedBody(page)).toContain('[ ] 买牛奶')
 
-  // 表格：插入走 Milkdown 的表格预设，行列由预设的默认值决定
+  // 表格：先在弹窗里定行列，确认后走 Milkdown 的表格预设插入
   await createNoteAndWait(page, editor)
   await page.locator('.format-bar [data-format="table"]').click()
-  const table = page.locator('.milkdown table')
+  const tableDialog = page.locator('.table-dialog')
+  await expect(tableDialog).toBeVisible()
+  await tableDialog.locator('[data-field="cols"]').fill('4')
+  await tableDialog.locator('[data-op="confirm"]').click()
+  const table = page.locator('.milkdown table.children')
   await expect(table).toHaveCount(1)
-  await expect(page.locator('.milkdown table th')).toHaveCount(3)
+  await expect(page.locator('.milkdown table.children th')).toHaveCount(4)
   await expect.poll(() => savedBody(page)).toContain('| :')
 
   // 链接：选中文字后填地址，改成 https 并写进正文

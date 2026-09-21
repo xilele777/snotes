@@ -34,6 +34,7 @@ const schema = new Schema({
     emphasis: {},
     strike_through: {},
     inlineCode: { code: true },
+    highlight: {},
     link: { attrs: { href: {}, title: { default: null } }, inclusive: false },
   },
 })
@@ -85,6 +86,7 @@ describe('runFormat 行内标记', () => {
     expect(run(state, 'italic').doc.rangeHasMark(1, 4, schema.marks.emphasis)).toBe(true)
     expect(run(state, 'strike').doc.rangeHasMark(1, 4, schema.marks.strike_through)).toBe(true)
     expect(run(state, 'inlineCode').doc.rangeHasMark(1, 4, schema.marks.inlineCode)).toBe(true)
+    expect(run(state, 'highlight').doc.rangeHasMark(1, 4, schema.marks.highlight)).toBe(true)
   })
 })
 
@@ -155,7 +157,7 @@ describe('readFormatState 读取光标处的格式', () => {
   it('空文档上是全 false 的空态', () => {
     const state = stateOf([paragraph('')], 1)
     expect(readFormatState(state)).toEqual({
-      heading: 0, bold: false, italic: false, strike: false, inlineCode: false, link: false,
+      heading: 0, bold: false, italic: false, strike: false, inlineCode: false, highlight: false, link: false,
       list: null, quote: false, codeBlock: false,
     })
   })
