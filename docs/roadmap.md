@@ -293,3 +293,6 @@
   - 发布结果：标签 v0.15.4；Cloudflare Version ID ca0f5405-bf02-441d-97ef-a0f539ceeef5；GitHub Release https://github.com/xilele777/snotes/releases/tag/v0.15.4。
 - 2026-09-21：v0.16.0 第五档 1 到 4 全部完成：接入 `tableBlock`（`src/editor/table-block.ts` 换项目图标，样式按 Crepe 主题用 opacity 隐藏把手，display:none 会让 floating-ui 定位错）；启用 `cursor` 与 `trailing`；`Settings.tableDensity` 三档落到 `--table-cell-padding`；`src/editor/highlight.ts` 用 `mdast-util-find-and-replace` 解析 `==文字==`、注册 toMarkdown handler 序列化、`markRule` 输入规则、`Mod-Shift-h`。编辑器分包 gzip 34KB → 57KB。
   - 发布结果：标签 v0.16.0；Cloudflare Version ID 7499b1f5-749d-4491-a43d-ac25d7de7350；GitHub Release https://github.com/xilele777/snotes/releases/tag/v0.16.0。
+- 2026-09-24：v0.16.1 修复手机 PWA 缺少直接手动刷新入口的问题，笔记列表顶栏提供刷新按钮、忙碌状态与结果提示；HTML 转义保留 Markdown 自动链接，避免保存重开后网址被附加 `>`，打开链接时清理尾部空白并检查协议。
+  - 验证：前端单测 647 项、Worker 测试 147 项、服务器测试 24 项通过；3 项浏览器回归覆盖 320px / 390px 手动刷新、离线提示和链接保存重开；类型检查与生产构建通过。线上 `/api/health` 返回正常，首页、Service Worker、主脚本、样式和编辑器脚本的 SHA256 均与本次构建一致，应用版本为 0.16.1。
+  - 发布结果：提交 9949ae8；标签 v0.16.1；Cloudflare Version ID 217f6404-ea4e-49a7-bb05-dee3f60f8ee4（100% 流量）；GitHub Release https://github.com/xilele777/snotes/releases/tag/v0.16.1。
