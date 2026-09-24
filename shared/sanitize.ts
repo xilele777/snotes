@@ -7,9 +7,11 @@ const FENCE_RE = /^\s{0,3}(`{3,}|~{3,})/
 const INDENTED_CODE_RE = /^(?: {4,}|\t)/
 const INLINE_CODE_RE = /`+[^`]*`+/g
 
-// 只转义「像标签起始」的小于号：后面紧跟字母、/、!、? 才算。
-// 这样 `a < b`、`3<5` 这类数学写法不受影响。
-const TAG_OPEN_RE = /<(?=[!/?a-zA-Z])/g
+// 优先保留 Markdown 的 URI / 邮箱自动链接。Milkdown 会把同名网址序列化成
+// <https://example.com>；只转义它的 < 会让 GFM 把剩下的 > 吞进 href。
+// URI 按 CommonMark 排除 ASCII 空白与尖括号；协议安全仍由编辑器白名单负责。
+// 其余只转义「像标签起始」的小于号，数学写法 `a < b`、`3<5` 不受影响。
+const AUTOLINK_OR_TAG_OPEN_RE = /(<[a-zA-Z][a-zA-Z0-9+.-]{1,31}:[^\u0000-\u0020<>]*>|<[a-zA-Z0-9.!#$%&'*+/=?^_`{|}~-]+@[a-zA-Z0-9](?:[a-zA-Z0-9.-]*[a-zA-Z0-9])?>)|<(?=[!/?a-zA-Z])/g
 
 // 与 milkdown remarkPreserveEmptyLinePlugin 认定的 br 变体保持一致：
 // ``<br />`` ``<br>`` ``<br >`` ``<br/>``。旧版编辑器把空段落序列化成这些
@@ -97,7 +99,7 @@ export function escapeRawHtml(md: string): string {
       if (inFence || INDENTED_CODE_RE.test(line)) return line
 
       const code = takeInlineCode(line)
-      return restoreInlineCode(code.masked.replace(TAG_OPEN_RE, '&lt;'), code)
+      return restoreInlineCode(code.masked.replace(AUTOLINK_OR_TAG_OPEN_RE, (_match, autolink: string | undefined) => autolink ?? '&lt;'), code)
     })
     .join('\n')
 }

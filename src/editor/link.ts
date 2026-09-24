@@ -115,6 +115,9 @@ export function unlink(state: EditorState): Command | null {
 
 /** 区分站内与站外地址，供「打开」按钮决定怎么开 */
 export function openHref(href: string): void {
-  if (isExternalHref(href)) window.open(href, '_blank', 'noopener,noreferrer')
-  else window.location.href = href
+  // 气泡取的是文档里的原始 href，也要像渲染 <a> 一样去掉尾部空白并检查协议。
+  const safe = normalizeHref(href)
+  if (!safe) return
+  if (isExternalHref(safe)) window.open(safe, '_blank', 'noopener,noreferrer')
+  else window.location.href = safe
 }

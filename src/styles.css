@@ -172,6 +172,11 @@ kbd { font-family: inherit; font-size: 10px; line-height: 20px; white-space: now
 .header-create { margin-left: auto; display: flex; align-items: center; justify-content: center; gap: 4px; height: 30px; padding: 0 8px; border: 0; border-radius: 5px; background: transparent; color: var(--accent); flex: none; font-size: 13px; font-weight: 500; }
 .header-create:hover { background: var(--accent-soft); color: var(--accent-press); }
 .header-create svg { width: 16px; height: 16px; }
+.header-refresh { margin-left: auto; display: flex; align-items: center; justify-content: center; width: 36px; height: 36px; padding: 0; border: 0; border-radius: 5px; background: transparent; color: var(--text-secondary); flex: none; }
+.header-refresh:hover:enabled { background: var(--bg-hover); color: var(--text-primary); }
+.header-refresh:disabled { color: var(--accent); cursor: default; }
+.header-refresh + .header-create { margin-left: 0; }
+@media (pointer: coarse) { .header-refresh { width: 44px; height: 44px; } }
 .drawer-btn, .back-btn { display: none; width: 32px; height: 32px; padding: 0; border: 0; border-radius: 5px; background: transparent; color: var(--text-secondary); align-items: center; justify-content: center; flex: none; }
 .drawer-btn:hover, .back-btn:hover { background: var(--bg-press); }
 .note-search { display: flex; align-items: center; gap: 8px; min-height: 36px; margin: 0 18px 12px; padding: 0 10px; border: 1px solid transparent; border-radius: 6px; background: var(--bg-app); color: var(--text-tertiary); flex: none; }

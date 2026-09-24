@@ -11,6 +11,9 @@ import { useNotesStore } from '../stores/notes'
 import { useUiStore } from '../stores/ui'
 import { useGroupsStore } from '../stores/groups'
 import { useWorkspaceScroll } from './useWorkspaceScroll'
+import { syncNow } from '../sync/engine'
+import { hasToken } from '../api/token'
+import { notify } from '../notify'
 
 const notes = useNotesStore()
 const groups = useGroupsStore()
@@ -18,6 +21,32 @@ const ui = useUiStore()
 const groupNames = computed(() => new Map(groups.groups.map(g => [g.group_id, g.name])))
 const list = ref<HTMLElement | null>(null)
 useWorkspaceScroll(list, 'list')
+
+const refreshing = ref(false)
+const refreshBusy = computed(() => refreshing.value || ui.syncing)
+
+async function refreshNotes() {
+  if (refreshBusy.value) return
+  if (!navigator.onLine) {
+    notify('当前离线，联网后可刷新笔记')
+    return
+  }
+  refreshing.value = true
+  try {
+    await syncNow()
+    if (!hasToken.value) return
+    if (ui.lastSyncError) {
+      notify(`刷新失败：${ui.lastSyncError}`)
+      return
+    }
+    await Promise.all([notes.load(), groups.load()])
+    notify(ui.failedCount > 0 ? '已刷新，仍有本地更改未同步' : '笔记已刷新')
+  } catch (error) {
+    notify(`刷新失败：${error instanceof Error ? error.message : String(error)}`)
+  } finally {
+    refreshing.value = false
+  }
+}
 
 // 左滑删除：pointer 事件记录起点，松手时按位移决定是否展开删除按钮。
 const swipeStartX = ref<number | null>(null)
@@ -147,6 +176,17 @@ watch(
       <span class="header-title">{{ viewTitle }}</span>
       <span v-if="!notes.stale" class="header-count">{{ notes.visible.length }}</span>
 
+      <button
+        type="button"
+        class="header-refresh"
+        :title="refreshBusy ? '正在刷新' : '刷新笔记'"
+        aria-label="刷新笔记"
+        :aria-busy="refreshBusy"
+        :disabled="refreshBusy"
+        @click="refreshNotes"
+      >
+        <AppIcon name="refresh" :size="16" :class="{ 'sync-spinner': refreshBusy }" />
+      </button>
       <button class="header-create" title="新建笔记" aria-label="新建笔记" @click="notes.create()">
         <AppIcon name="plus" :size="15" />
         <span>新建</span>

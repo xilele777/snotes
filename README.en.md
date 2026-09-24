@@ -8,7 +8,7 @@ A lightweight personal Markdown notebook with offline editing, device sync, and 
 
 [中文](README.md) | English
 
-Current stable release: **[v0.15.3](https://github.com/xilele777/snotes/releases/tag/v0.15.3)** ([all releases](https://github.com/xilele777/snotes/releases)). Standalone server support starts with `v0.7.0`.
+Current stable release: **[v0.16.1](https://github.com/xilele777/snotes/releases/tag/v0.16.1)** ([all releases](https://github.com/xilele777/snotes/releases)). Standalone server support starts with `v0.7.0`.
 
 [Interface and controls](#interface-and-controls) · [Cloudflare](#deploy-to-your-own-cloudflare-account) · [Server deployment](#can-i-host-this-on-my-own-server) · [Local development](#local-development) · [Changelog](CHANGELOG.md)
 
@@ -22,9 +22,9 @@ Notes are saved to the browser's IndexedDB before syncing in the background. Cho
 | Direct Node.js | Node.js 24 LTS and persistent disk | SQLite and local images | [Quick start](#can-i-host-this-on-my-own-server) |
 | Docker Compose | Docker Engine and Compose plugin | `snotes-data` named volume | [Detailed guide (Chinese)](docs/server-deployment.md#docker-compose) |
 
-Unpinned clone commands below follow `main`. To install a pinned version, run `git switch --detach v0.15.3` after cloning and before installing or building. `main` may contain subsequent unreleased changes; use a release tag to pin a version.
+Unpinned clone commands below follow `main`. To install a pinned version, run `git switch --detach v0.16.1` after cloning and before installing or building. `main` may contain subsequent unreleased changes; use a release tag to pin a version.
 
-For an existing deployment, sync clients, back up data and save local configuration first. Run `git fetch origin --tags` and `git switch --detach v0.15.3`, then install, build and restart using the instructions for your deployment. A pinned tag uses detached HEAD: future upgrades require fetching and switching to the next tag instead of `git pull`. See the [Cloudflare update steps](#8-updating-to-a-new-version) for preserving configuration. Do not force a checkout over local changes.
+For an existing deployment, sync clients, back up data and save local configuration first. Run `git fetch origin --tags` and `git switch --detach v0.16.1`, then install, build and restart using the instructions for your deployment. A pinned tag uses detached HEAD: future upgrades require fetching and switching to the next tag instead of `git pull`. See the [Cloudflare update steps](#8-updating-to-a-new-version) for preserving configuration. Do not force a checkout over local changes.
 
 The in-app update check only queries the latest **stable** GitHub release, caching successful results for 24 hours. It does not notify about previews or update your server automatically. Select previews manually from [Releases](https://github.com/xilele777/snotes/releases). Direct Node.js operation and the Playwright end-to-end suite have been verified. Docker Compose configuration was validated, but image builds and container execution have not been tested.
 
@@ -284,7 +284,7 @@ Yes. Use **Docker Compose** or **Node.js 24 LTS** directly. The server serves bo
 Direct Node.js:
 
 ```bash
-git clone --branch v0.15.3 https://github.com/xilele777/snotes.git
+git clone --branch v0.16.1 https://github.com/xilele777/snotes.git
 cd snotes
 npm ci
 npm run build:server
@@ -298,7 +298,7 @@ The default address is `http://127.0.0.1:3000`. Startup automatically applies pe
 Alternatively, install with Docker Compose:
 
 ```bash
-git clone --branch v0.15.3 https://github.com/xilele777/snotes.git
+git clone --branch v0.16.1 https://github.com/xilele777/snotes.git
 cd snotes
 cp server.env.example .env
 # Set a random ACCESS_TOKEN in .env before starting

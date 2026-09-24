@@ -51,6 +51,18 @@ describe('escapeRawHtml', () => {
     expect(escapeRawHtml(md)).toBe(md)
   })
 
+  it('保留 URI、邮箱自动链接与尖括号包裹的网址', () => {
+    const md = '<https://anyrouter.top> <https://anyrouter.top\u00a0> <mailto:hello@example.com> <hello@example.com>\n[链接](<https://anyrouter.top>)'
+    expect(escapeRawHtml(md)).toBe(md)
+  })
+
+  it('自动链接旁的 HTML 仍被转义', () => {
+    expect(escapeRawHtml('<https://anyrouter.top><img src=x onerror=alert(1)>'))
+      .toBe('<https://anyrouter.top>&lt;img src=x onerror=alert(1)>')
+    expect(escapeRawHtml('<a href="https://anyrouter.top">链接</a>'))
+      .toBe('&lt;a href="https://anyrouter.top">链接&lt;/a>')
+  })
+
   it('空串返回空串', () => {
     expect(escapeRawHtml('')).toBe('')
   })

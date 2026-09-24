@@ -1,16 +1,28 @@
 import { flushPromises, mount } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { db } from '../db/schema'
 import { useNotesStore } from '../stores/notes'
 import { useUiStore } from '../stores/ui'
 import NoteList from './NoteList.vue'
+import { setToken } from '../api/token'
+import { notify } from '../notify'
+import { useGroupsStore } from '../stores/groups'
+
+const syncNow = vi.hoisted(() => vi.fn())
+vi.mock('../sync/engine', () => ({ syncNow }))
+vi.mock('../notify', () => ({ notify: vi.fn() }))
 
 beforeEach(async () => {
   setActivePinia(createPinia())
+  setToken('test-token')
+  syncNow.mockReset().mockResolvedValue(undefined)
+  vi.mocked(notify).mockClear()
   await db.delete()
   await db.open()
 })
+
+afterEach(() => vi.restoreAllMocks())
 
 /**
  * 派发带 clientX 的 PointerEvent。
@@ -24,6 +36,70 @@ function pointer(el: Element, type: string, clientX: number) {
 }
 
 describe('NoteList', () => {
+  it('空列表也能手动刷新，拉取后显示远端笔记并反馈成功', async () => {
+    const store = useNotesStore()
+    const groups = useGroupsStore()
+    const loadGroups = vi.spyOn(groups, 'load')
+    const wrapper = mount(NoteList)
+    await vi.waitFor(() => expect(wrapper.find('.empty-state').exists()).toBe(true))
+    syncNow.mockImplementationOnce(async () => {
+      // 模拟同步只把远端数据落库，刷新入口需要等待列表加载完成。
+      const note = await store.create()
+      await db.notes.update(note.id, { title: '远端新笔记' })
+    })
+
+    await wrapper.get('[aria-label="刷新笔记"]').trigger('click')
+    await vi.waitFor(() => expect(wrapper.text()).toContain('远端新笔记'))
+    expect(syncNow).toHaveBeenCalledOnce()
+    expect(loadGroups).toHaveBeenCalledOnce()
+    expect(notify).toHaveBeenCalledWith('笔记已刷新')
+    wrapper.unmount()
+  })
+
+  it('刷新期间禁止重复点击，完成后恢复按钮', async () => {
+    let finish!: () => void
+    syncNow.mockReturnValueOnce(new Promise<void>(resolve => { finish = resolve }))
+    const wrapper = mount(NoteList)
+    const button = wrapper.get('[aria-label="刷新笔记"]')
+    await button.trigger('click')
+    expect(button.attributes('disabled')).toBeDefined()
+    expect(button.attributes('aria-busy')).toBe('true')
+    await button.trigger('click')
+    expect(syncNow).toHaveBeenCalledOnce()
+    finish()
+    await vi.waitFor(() => expect(button.attributes('disabled')).toBeUndefined())
+    expect(button.attributes('aria-busy')).toBe('false')
+    wrapper.unmount()
+  })
+
+  it('自动同步期间也禁用刷新按钮', async () => {
+    useUiStore().syncing = true
+    const wrapper = mount(NoteList)
+    await wrapper.get('[aria-label="刷新笔记"]').trigger('click')
+    expect(syncNow).not.toHaveBeenCalled()
+    wrapper.unmount()
+  })
+
+  it('同步失败显示错误，允许再次刷新', async () => {
+    syncNow.mockImplementationOnce(async () => { useUiStore().lastSyncError = '网络连接失败' })
+    const wrapper = mount(NoteList)
+    const button = wrapper.get('[aria-label="刷新笔记"]')
+    await button.trigger('click')
+    await flushPromises()
+    expect(notify).toHaveBeenCalledWith('刷新失败：网络连接失败')
+    expect(button.attributes('disabled')).toBeUndefined()
+    wrapper.unmount()
+  })
+
+  it('离线时给出提示，不假报刷新成功', async () => {
+    vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(false)
+    const wrapper = mount(NoteList)
+    await wrapper.get('[aria-label="刷新笔记"]').trigger('click')
+    expect(syncNow).not.toHaveBeenCalled()
+    expect(notify).toHaveBeenCalledWith('当前离线，联网后可刷新笔记')
+    wrapper.unmount()
+  })
+
   it('渲染标题与摘要', async () => {
     const store = useNotesStore()
     const note = await store.create()

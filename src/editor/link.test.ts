@@ -1,7 +1,7 @@
 import { Schema } from '@milkdown/kit/prose/model'
 import { EditorState, TextSelection } from '@milkdown/kit/prose/state'
-import { describe, expect, it } from 'vitest'
-import { isExternalHref, linkRangeAt, normalizeHref, setLink, unlink } from './link'
+import { describe, expect, it, vi } from 'vitest'
+import { isExternalHref, linkRangeAt, normalizeHref, openHref, setLink, unlink } from './link'
 
 const schema = new Schema({
   nodes: {
@@ -72,6 +72,18 @@ describe('isExternalHref', () => {
     expect(isExternalHref('http://a.cn')).toBe(true)
     expect(isExternalHref('/notes/1')).toBe(false)
     expect(isExternalHref('mailto:a@b.cn')).toBe(false)
+  })
+})
+
+describe('openHref', () => {
+  it('打开链接时去掉尾部不换行空格，保留网址里的合法编码', () => {
+    const open = vi.spyOn(window, 'open').mockReturnValue(null)
+    try {
+      openHref('https://anyrouter.top\u00a0')
+      expect(open).toHaveBeenLastCalledWith('https://anyrouter.top', '_blank', 'noopener,noreferrer')
+      openHref('https://example.com/%3E')
+      expect(open).toHaveBeenLastCalledWith('https://example.com/%3E', '_blank', 'noopener,noreferrer')
+    } finally { open.mockRestore() }
   })
 })
 
