@@ -24,6 +24,7 @@ import { isExternalHref, linkRangeAt, setLink, unlink } from './link'
 import { linkTooltip } from './link-tooltip'
 import { tableBlock } from './table-block'
 import { highlight } from './highlight'
+import { handleMarkdownPaste, unwrapMarkdownCodeBlock } from './markdown-paste'
 
 const props = defineProps<{ noteId: string; modelValue: string; editable?: boolean }>()
 const emit = defineEmits<{
@@ -194,7 +195,9 @@ function format(action: FormatAction) {
   if (!editor) return
   editor.action((ctx) => {
     const view = ctx.get(editorViewCtx)
-    runFormat(view.state, action, view.dispatch)
+    if (action !== 'codeBlock' || !unwrapMarkdownCodeBlock(ctx, view)) {
+      runFormat(view.state, action, view.dispatch)
+    }
     view.focus()
   })
 }
@@ -508,11 +511,10 @@ const MilkdownInner = defineComponent({
               touchend: () => { clearTouchTimer(); return false },
               touchcancel: () => { clearTouchTimer(); return false },
             },
-            handlePaste: (_view, event) => {
-              // 只拦图片。全量拦截会把复制来的富文本、文件附件一并吞掉，
-              // 而 return true 意味着 ProseMirror 不再执行默认粘贴——文字就丢了。
+            handlePaste: (view, event) => {
+              // 图片上传与 Markdown 源文各自处理，其余交给默认富文本粘贴。
               const files = clipboardImageFiles(event.clipboardData)
-              if (files.length === 0) return false
+              if (files.length === 0) return handleMarkdownPaste(ctx, view, event)
 
               void handleImageFiles(files)
               return true

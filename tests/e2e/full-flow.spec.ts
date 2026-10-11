@@ -1012,6 +1012,90 @@ test('清单可勾选、撤销并保存，回收站中保持只读', async ({ pa
   await expect(checkbox).toBeDisabled()
 })
 
+const pasteMarkdown = '# Markflow｜技术讲解\n\n整理日期与 **重点**。\n\n## 实现机制\n\n> 项目介绍\n\n| 名称 | 作用 |\n| --- | --- |\n| Outbox | 投递 |\n\n```mermaid\nflowchart LR\n    A --> B\n```'
+
+for (const width of [1440, 320]) {
+  test(`${width}px 从下载旁导入 .md，打开新笔记并保留原文，刷新后格式不变`, async ({ page }) => {
+    await page.setViewportSize({ width, height: 900 })
+    await createNote(page)
+    const editor = page.getByRole('textbox', { name: '笔记正文' })
+    await expect(editor).toBeFocused()
+    await page.keyboard.type('原笔记保留内容')
+    await expect.poll(() => savedBody(page)).toContain('原笔记保留内容')
+    await page.locator('[data-op="more"]').click()
+    const menu = page.getByRole('menu', { name: '更多操作' })
+    const entry = menu.getByRole('menuitem', { name: '导入 .md', exact: true })
+    expect(await entry.evaluate(element => element.previousElementSibling?.textContent)).toContain('下载 .md')
+    const chooser = page.waitForEvent('filechooser')
+    await entry.click()
+    const picker = await chooser
+    expect(picker.isMultiple()).toBe(false)
+    await picker.setFiles({ name: 'Markflow.md', mimeType: 'text/markdown', buffer: Buffer.from(pasteMarkdown) })
+    await expect(menu).toHaveCount(0)
+    await expect(editor.locator('h1')).toHaveText('Markflow｜技术讲解')
+    await expect(editor.locator('table.children')).toHaveCount(1)
+    await expect(editor.locator('pre')).toHaveText('flowchart LR\n    A --> B')
+    await expect.poll(() => savedBody(page)).toContain('原笔记保留内容')
+    await expect.poll(() => savedBody(page)).toContain('# Markflow')
+    await page.reload()
+    if (width <= 720) await page.getByRole('button', { name: '打开笔记：Markflow｜技术讲解' }).click()
+    await expect(editor.locator('h1')).toHaveText('Markflow｜技术讲解')
+    await expect(editor.locator('table.children')).toHaveCount(1)
+    await expect(editor.locator('strong')).toHaveText('重点')
+  })
+}
+
+for (const source of ['VS Code', 'pre 包装'] as const) {
+  test(`粘贴 Markdown ${source}后渲染正文，撤销重做与刷新保持格式`, async ({ page }) => {
+    await createNote(page)
+    const editor = page.getByRole('textbox', { name: '笔记正文' })
+    await expect(editor).toBeFocused()
+    await editor.evaluate((element, { text, source }) => {
+      const clipboardData = new DataTransfer()
+      clipboardData.setData('text/plain', text.replace(/\n/g, '\r\n'))
+      const code = document.createElement('code')
+      code.textContent = text
+      clipboardData.setData('text/html', `<div><pre>${code.outerHTML}</pre></div>`)
+      if (source === 'VS Code') clipboardData.setData('vscode-editor-data', JSON.stringify({ mode: 'markdown' }))
+      element.dispatchEvent(new ClipboardEvent('paste', { clipboardData, bubbles: true, cancelable: true }))
+    }, { text: pasteMarkdown, source })
+
+    await expect(editor.locator('h1')).toHaveText('Markflow｜技术讲解')
+    await expect(editor.locator('table.children')).toHaveCount(1)
+    await expect(editor.locator('pre')).toHaveText('flowchart LR\n    A --> B')
+    await page.locator('[data-op="undo"]').click()
+    await expect(editor.locator('h1')).toHaveCount(0)
+    await page.locator('[data-op="redo"]').click()
+    await expect(editor.locator('h1')).toHaveText('Markflow｜技术讲解')
+    await expect.poll(() => savedBody(page)).toMatch(/^# Markflow/)
+    await page.reload()
+    await expect(editor.locator('h2')).toHaveText('实现机制')
+    await expect(editor.locator('strong')).toHaveText('重点')
+    await expect(editor.locator('table.children')).toHaveCount(1)
+    await expect(editor.locator('pre')).toHaveText('flowchart LR\n    A --> B')
+  })
+}
+
+test('取消误粘贴的 Markdown 代码块时恢复正文格式', async ({ page }) => {
+  await createNote(page)
+  const editor = page.getByRole('textbox', { name: '笔记正文' })
+  await expect(editor).toBeFocused()
+  await editor.evaluate((element, text) => {
+    const clipboardData = new DataTransfer()
+    clipboardData.setData('text/plain', `\`\`\`\`markdown\n${text}\n\`\`\`\``)
+    element.dispatchEvent(new ClipboardEvent('paste', { clipboardData, bubbles: true, cancelable: true }))
+  }, pasteMarkdown)
+  await expect(editor.locator('pre')).toHaveText(pasteMarkdown)
+  await editor.locator('pre').click()
+  await page.locator('[data-format="codeBlock"]').click()
+  await expect(editor.locator('h1')).toHaveText('Markflow｜技术讲解')
+  await expect(editor.locator('table.children')).toHaveCount(1)
+  await expect(editor.locator('pre')).toHaveText('flowchart LR\n    A --> B')
+  await expect.poll(() => savedBody(page)).toMatch(/^# Markflow/)
+  await page.reload()
+  await expect(editor.locator('h1')).toHaveText('Markflow｜技术讲解')
+})
+
 test('粘贴编号文本后从 1 开始，刷新后保留编号', async ({ page }) => {
   await createNote(page)
   const editor = page.getByRole('textbox', { name: '笔记正文' })

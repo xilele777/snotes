@@ -18,10 +18,12 @@ import ImageLightbox from './ImageLightbox.vue'
 import { SKIN_COLORS } from './palette'
 import { EMPTY_FORMAT_STATE, type FormatState } from '../editor/format'
 import { copyMarkdown, downloadMarkdown, shareMarkdown } from '../export/share'
+import { importBackup } from '../export/backup'
 import { notify } from '../notify'
 import { trashDaysLeft, useUiStore } from '../stores/ui'
 import { useMediaQuery } from './useMediaQuery'
 import { useWorkspaceScroll } from './useWorkspaceScroll'
+import { pushNav } from '../navigation'
 
 const MilkdownEditor = defineAsyncComponent({
   loader: () => import('../editor/MilkdownEditor.vue'),
@@ -79,7 +81,7 @@ onUnmounted(() => {
   window.removeEventListener('keydown', onPopoverKeydown, true)
 })
 
-/** 顶栏「⋯」菜单（回收站里没有）：收拢复制、下载、分享、打印，手机上还有文档信息、历史、字数与删除 */
+/** 顶栏「⋯」菜单（回收站里没有）：收拢复制、下载、导入、分享、打印，手机上还有文档信息、历史、字数与删除 */
 const moreButton = ref<HTMLButtonElement | null>(null)
 const menuOpen = ref(false)
 
@@ -101,6 +103,7 @@ async function onMenuAction(action: NoteMenuAction) {
     case 'wordcount': showWordCount.value = true; return
     case 'copy': await runCopy(); return
     case 'download': runDownload(); return
+    case 'import': if (!props.readonly && !importing.value) markdownInput.value?.click(); return
     case 'share': await runShare(); return
     case 'print': window.print(); return
     case 'trash': if (!props.readonly) confirmAction.value = 'trash'; return
@@ -188,6 +191,41 @@ function onImagePicked(event: Event) {
   // 先清空再插入：不清空的话再次选同一张图不会触发 change
   input.value = ''
   if (files.length > 0) editorRef.value?.insertImages?.(files)
+}
+
+/** 每次导入一个 Markdown 文件，新建笔记后打开，沿用设置里的导入逻辑。 */
+const markdownInput = ref<HTMLInputElement | null>(null)
+const importing = ref(false)
+
+async function onMarkdownPicked(event: Event) {
+  const input = event.target as HTMLInputElement
+  const file = input.files?.[0]
+  input.value = ''
+  if (!file || props.readonly || importing.value) return
+  if (!/\.(md|markdown)$/i.test(file.name)) {
+    notify('请选择 .md 或 .markdown 文件')
+    return
+  }
+  importing.value = true
+  notify('正在导入 .md…')
+  try {
+    const result = await importBackup([file])
+    const id = result.noteIds[0]
+    if (id) {
+      pushNav()
+      ui.view = 'all'
+      ui.activeGroupId = null
+      ui.query = ''
+      ui.drawerOpen = false
+      await notes.load()
+      notes.currentId = id
+    }
+    notify(`已导入 ${result.notes} 条笔记`)
+  } catch (error) {
+    notify(error instanceof Error ? `导入失败：${error.message}` : '导入失败，请检查文件后重试')
+  } finally {
+    importing.value = false
+  }
 }
 
 /** 删除动作统一定点到这个弹窗；null = 未打开 */
@@ -461,9 +499,12 @@ async function runShare() {
       :can-share="canShare"
       :show-delete="compact"
       :show-doc-items="compact"
+      :importing="importing"
       @action="onMenuAction"
       @close="menuOpen = false"
     />
+
+    <input v-if="!readonly" ref="markdownInput" class="image-input" data-input="markdown" type="file" accept=".md,.markdown,text/markdown" tabindex="-1" aria-hidden="true" @change="onMarkdownPicked" />
 
     <!-- 删除统一先确认：移入回收站可恢复，彻底删除不可恢复 -->
     <ConfirmDialog

@@ -164,6 +164,7 @@ describe('导入', () => {
 
     expect(result.notes).toBe(1)
     const note = (await db.notes.toArray())[0]
+    expect(result.noteIds).toEqual([note.id])
     expect(note.title).toBe('会议记录')
     expect(note.body).toBe('# 会议记录\n\n讨论内容')
     // 走的是 createNote，所以照样进了同步队列

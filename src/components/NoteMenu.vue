@@ -7,7 +7,7 @@ import AppIcon from './AppIcon.vue'
  * 回收站详情不渲染这个菜单；文档信息、历史版本、字数统计和删除只在 ≤720px 出现，
  * 桌面顶栏放得下，它们直接摆在顶栏；手机顶栏没有余量，⋯ 顶替的正是删除按钮的位置。
  */
-export type NoteMenuAction = 'info' | 'history' | 'wordcount' | 'copy' | 'download' | 'share' | 'print' | 'trash'
+export type NoteMenuAction = 'info' | 'history' | 'wordcount' | 'copy' | 'download' | 'import' | 'share' | 'print' | 'trash'
 
 defineProps<{
   open: boolean
@@ -16,6 +16,7 @@ defineProps<{
   showDelete: boolean
   /** 文档信息 / 历史版本 / 字数统计是否进菜单（桌面在顶栏直接可见） */
   showDocItems: boolean
+  importing?: boolean
 }>()
 
 const emit = defineEmits<{ action: [NoteMenuAction]; close: [] }>()
@@ -40,6 +41,9 @@ const emit = defineEmits<{ action: [NoteMenuAction]; close: [] }>()
     </button>
     <button type="button" role="menuitem" class="menu-item" data-action="download" @click="emit('action', 'download')">
       <AppIcon name="download" :size="15" /><span>下载 .md</span>
+    </button>
+    <button type="button" role="menuitem" class="menu-item" data-action="import" :disabled="importing" @click="emit('action', 'import')">
+      <AppIcon name="upload" :size="15" /><span>{{ importing ? '正在导入…' : '导入 .md' }}</span>
     </button>
     <button v-if="canShare" type="button" role="menuitem" class="menu-item" data-action="share" @click="emit('action', 'share')">
       <AppIcon name="share" :size="15" /><span>分享到其他应用</span>

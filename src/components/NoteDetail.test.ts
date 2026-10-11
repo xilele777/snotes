@@ -316,7 +316,7 @@ describe('NoteDetail 顶栏操作条', () => {
     wrapper.unmount()
   })
 
-  it('桌面「⋯」菜单只列复制、下载、打印；文档信息、历史、字数与删除都不在菜单里，首项获得焦点', async () => {
+  it('桌面「⋯」菜单列复制、下载、导入、打印；文档信息、历史、字数与删除都不在菜单里，首项获得焦点', async () => {
     const notes = useNotesStore()
     const note = await notes.create()
     notes.currentId = note.id
@@ -328,7 +328,8 @@ describe('NoteDetail 顶栏操作条', () => {
 
     expect(menu()).not.toBeNull()
     expect(op(wrapper, 'more').attributes('aria-expanded')).toBe('true')
-    for (const name of ['copy', 'download', 'print']) expect(menuAction(name)).not.toBeNull()
+    for (const name of ['copy', 'download', 'import', 'print']) expect(menuAction(name)).not.toBeNull()
+    expect(menuAction('import')!.previousElementSibling).toBe(menuAction('download'))
     for (const name of ['info', 'history', 'wordcount', 'trash']) expect(menuAction(name)).toBeNull()
     // jsdom 没有 navigator.share，不给分享入口
     expect(menuAction('share')).toBeNull()
@@ -354,7 +355,7 @@ describe('NoteDetail 顶栏操作条', () => {
 
       for (const name of ['trash', 'wordcount', 'info', 'history']) expect(op(wrapper, name).exists()).toBe(false)
       await openMore(wrapper)
-      for (const name of ['info', 'history', 'wordcount', 'trash']) expect(menuAction(name)).not.toBeNull()
+      for (const name of ['info', 'history', 'wordcount', 'trash', 'import']) expect(menuAction(name)).not.toBeNull()
       menuAction('trash')!.click()
       await wrapper.vm.$nextTick()
 
@@ -430,6 +431,57 @@ describe('NoteDetail 顶栏操作条', () => {
     menuAction('print')!.click()
     expect(print).toHaveBeenCalledTimes(1)
     print.mockRestore()
+    wrapper.unmount()
+  })
+
+  it('导入 Markdown 新建并打开笔记，退出分组筛选并保留原笔记', async () => {
+    const groups = useGroupsStore()
+    const group = await groups.create('工作')
+    const ui = useUiStore()
+    ui.view = 'group'
+    ui.activeGroupId = group.group_id
+    const notes = useNotesStore()
+    const original = await notes.create()
+    await notes.saveBody(original.id, '# 原笔记\n\n保留正文')
+    ui.query = '原笔记'
+    const wrapper = mount(NoteDetail, { attachTo: document.body })
+    await wrapper.vm.$nextTick()
+    await openMore(wrapper)
+    const input = wrapper.find<HTMLInputElement>('[data-input="markdown"]')
+    const click = vi.spyOn(input.element, 'click')
+    menuAction('import')!.click()
+    expect(click).toHaveBeenCalledOnce()
+    Object.defineProperty(input.element, 'files', { value: [new File(['# 导入的笔记\n\n**内容**'], '导入.md', { type: 'text/markdown' })] })
+    await input.trigger('change')
+    await vi.waitFor(() => expect(notes.current?.title).toBe('导入的笔记'))
+    expect(notes.currentId).not.toBe(original.id)
+    expect(ui.view).toBe('all')
+    expect(ui.query).toBe('')
+    expect((await db.notes.get(original.id))!.body).toBe('# 原笔记\n\n保留正文')
+    expect(notice.value).toBe('已导入 1 条笔记')
+    expect(await db.outbox.where('[note_id+kind]').equals([notes.currentId!, 'create']).count()).toBe(1)
+    expect(input.element.value).toBe('')
+    wrapper.unmount()
+  })
+
+  it('拒绝非 Markdown 文件，读取失败时提示错误并保留当前笔记', async () => {
+    const notes = useNotesStore()
+    const original = await notes.create()
+    const wrapper = mount(NoteDetail, { attachTo: document.body })
+    await wrapper.vm.$nextTick()
+    const input = wrapper.find<HTMLInputElement>('[data-input="markdown"]')
+    Object.defineProperty(input.element, 'files', { value: [new File(['bad'], 'bad.zip')], configurable: true })
+    await input.trigger('change')
+    expect(notice.value).toBe('请选择 .md 或 .markdown 文件')
+    const unreadable = new File(['text'], 'broken.md')
+    vi.spyOn(unreadable, 'text').mockRejectedValue(new Error('无法读取文件'))
+    Object.defineProperty(input.element, 'files', { value: [unreadable], configurable: true })
+    await input.trigger('change')
+    await vi.waitFor(() => expect(notice.value).toBe('导入失败：无法读取文件'))
+    expect(notes.currentId).toBe(original.id)
+    expect(await db.notes.count()).toBe(1)
+    await openMore(wrapper)
+    expect(menuAction('import')?.disabled).toBe(false)
     wrapper.unmount()
   })
 

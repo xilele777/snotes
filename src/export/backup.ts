@@ -278,6 +278,8 @@ export async function buildBackup(report: ProgressReporter = () => {}): Promise<
 
 export interface ImportResult {
   notes: number
+  /** 本次新建的笔记，供独立 Markdown 入口定位并打开。 */
+  noteIds: string[]
   /** 已经存在（id 相同）而跳过的条数，重复导入同一份包不会产生副本 */
   skipped: number
   groups: number
@@ -314,8 +316,7 @@ export async function importBackup(
   picked: File[],
   report: ProgressReporter = () => {}
 ): Promise<ImportResult> {
-  const { strFromU8, unzipSync } = await import('fflate')
-  const result: ImportResult = { notes: 0, skipped: 0, groups: 0, images: 0, failedImages: 0 }
+  const result: ImportResult = { notes: 0, noteIds: [], skipped: 0, groups: 0, images: 0, failedImages: 0 }
 
   const staged: StagedNote[] = []
   /** 包内路径 → 图片字节，导入时按需上传 */
@@ -330,6 +331,8 @@ export async function importBackup(
       continue
     }
 
+    // 普通 Markdown 无需加载 ZIP 解压库。
+    const { strFromU8, unzipSync } = await import('fflate')
     const entries = unzipSync(new Uint8Array(await file.arrayBuffer()))
     index = readIndex(entries, strFromU8) ?? index
     for (const [path, data] of Object.entries(entries)) {
@@ -398,6 +401,7 @@ export async function importBackup(
       create_time: meta?.create_time,
     })
     result.notes++
+    result.noteIds.push(id)
   }
 
   report({ done: total, total, label: '正在刷新列表' })
