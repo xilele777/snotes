@@ -296,3 +296,7 @@
 - 2026-09-24：v0.16.1 修复手机 PWA 缺少直接手动刷新入口的问题，笔记列表顶栏提供刷新按钮、忙碌状态与结果提示；HTML 转义保留 Markdown 自动链接，避免保存重开后网址被附加 `>`，打开链接时清理尾部空白并检查协议。
   - 验证：前端单测 647 项、Worker 测试 147 项、服务器测试 24 项通过；3 项浏览器回归覆盖 320px / 390px 手动刷新、离线提示和链接保存重开；类型检查与生产构建通过。线上 `/api/health` 返回正常，首页、Service Worker、主脚本、样式和编辑器脚本的 SHA256 均与本次构建一致，应用版本为 0.16.1。
   - 发布结果：提交 9949ae8；标签 v0.16.1；Cloudflare Version ID 217f6404-ea4e-49a7-bb05-dee3f60f8ee4（100% 流量）；GitHub Release https://github.com/xilele777/snotes/releases/tag/v0.16.1。
+- 2026-10-11：v0.17.0 在笔记「更多操作」菜单的「下载 .md」旁新增「导入 .md」，单次读取一个文件，新建并打开笔记，保留原笔记；普通 Markdown 导入不再加载 ZIP 解压库。修复 VS Code 的 Markdown 剪贴板语言标记和单一 pre 包装导致整篇正文变成代码块的问题，取消历史 Markdown 代码块时重新解析标题、表格和文中代码块。
+  - 验证：前端单测 659 项、Worker 测试 147 项、服务器测试 24 项全部通过；10 项浏览器回归覆盖 1440px / 320px 导入、Markdown 粘贴与代码块恢复、撤销重做、保存刷新、富文本编号及 1440px / 390px / 320px 更新提醒；类型检查与生产构建通过。另已使用用户提供的完整 Markflow 文档验证粘贴、保存及刷新。
+  - 发布结果：提交 96c920d；标签 v0.17.0；Cloudflare Version ID 67048ded-713a-4738-a02a-888bcf2e4b3d（100% 流量）；正式站点 https://note.alover.me；GitHub Release https://github.com/xilele777/snotes/releases/tag/v0.17.0。
+  - 上线核验限制：正式域名和 workers.dev 均启用 Cloudflare Access，当前未登录的验证会话被重定向到登录页，因此未完成线上 `/api/health` 与静态资源 SHA256 比对；部署成功及 100% 流量已通过 Wrangler 确认。
