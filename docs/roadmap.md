@@ -309,3 +309,7 @@
   - 部署结果：本地发布提交 `d51aa83`；本地标签 `v0.19.0`；生产 D1 已应用 `0006_knowledge_bases.sql`，复查无待执行迁移；Cloudflare Version ID `94b720a4-43fe-4d98-9f5a-51b733b12dab`，经 `wrangler deployments list` 确认承接 100% 流量；正式站点 https://note.alover.me。
   - 用户明确要求不 push：本次没有推送提交或标签，也没有创建 GitHub Release，远端发布记录尚未包含此版本。
   - 上线核验限制：正式域名的首页及 `/api/health` 均返回 302 至 Cloudflare Access；未登录验证会话无法完成线上界面、健康响应或静态资源比对。workers.dev 的本次 HTTP 检查发生连接超时。未绕过访问控制；部署和数据库结果已通过 Wrangler 核实。
+- 2026-10-15：v0.20.0 统一笔记与知识库工作区。侧栏支持收起和分区折叠，已隐藏笔记直接访问，底部工具位于同步状态上方；搜索与排序同行，知识库恢复卡片网格和基本信息首页，顶部新建默认根目录、章节菜单提供就地创建。统一动画和表单聚焦，修复拖选文字误关弹窗及菜单抢焦点。
+  - 验证：发布前 `npm run test:all` 全部通过（客户端/领域 714、Worker 162、Node/SQLite 31，共 907 项），`npm run build` 与部署构建通过；开发阶段 Node 浏览器全量回归 62 项通过，覆盖桌面与 320px 等窄屏、目录创建位置、排序、表单拖选和键盘焦点。生产 D1 复查无待执行迁移，本版本不新增迁移。
+  - 发布结果：发布提交 `255321a`、标签 `v0.20.0` 已推送到 origin；此前仅保留在本地的 v0.19.0 提交和标签也已一并推送。Cloudflare Version ID `15fc753f-9141-4230-9e9e-f8107178281f`，经 `wrangler deployments list` 确认承接 100% 流量；正式站点 https://note.alover.me；GitHub Release https://github.com/xilele777/snotes/releases/tag/v0.20.0，标记为 Latest 稳定版。
+  - 上线核验限制：正式域名首页和 `/api/health` 返回 302 至 Cloudflare Access 登录页，workers.dev 的 HTTP 请求连接失败；当前未登录会话未完成线上页面、健康响应及静态资源比对。部署成功、绑定及 100% 流量已通过 Wrangler 核实。
