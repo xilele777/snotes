@@ -13,7 +13,7 @@ import { useGroupsStore } from '../stores/groups'
 import { homeHiddenGroupIds, isHiddenFromHome } from '../../shared/home-feed'
 import type { LocalNote } from '../../shared/types'
 import { useWorkspaceScroll } from './useWorkspaceScroll'
-import { syncNow } from '../sync/engine'
+import { retrySyncNow } from '../sync/engine'
 import { hasToken } from '../api/token'
 import { notify } from '../notify'
 
@@ -35,7 +35,7 @@ async function refreshNotes() {
   }
   refreshing.value = true
   try {
-    await syncNow()
+    await retrySyncNow()
     if (!hasToken.value) return
     if (ui.lastSyncError) {
       notify(`刷新失败：${ui.lastSyncError}`)

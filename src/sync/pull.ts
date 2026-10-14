@@ -151,6 +151,7 @@ export async function pullOnce(): Promise<PullResult> {
     }
 
     if (plan.deleteLocal.length > 0) {
+      await db.knowledgeBaseNoteStates.bulkPut(plan.deleteLocal.map(n => ({ id: n.id, state: 'purged' as const })))
       // 远端墓碑：物理删本地副本，并清掉它名下所有未推送任务——
       // 该笔记在服务端已不存在，剩下的 create/body/prop 推上去也只会 not_found。
       await db.notes.bulkDelete(plan.deleteLocal.map((n) => n.id))

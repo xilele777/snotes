@@ -15,5 +15,5 @@
     "lib": ["ES2022"],
     "types": ["@cloudflare/workers-types", "@cloudflare/vitest-plugin"]
   },
-  "include": ["worker/**/*.ts", "shared/**/*.ts", "tests/worker/**/*.ts", "tests/setup/**/*.ts"]
+  "include": ["worker/**/*.ts", "shared/**/*.ts", "tests/worker/**/*.ts", "tests/setup/**/*.ts", "tests/knowledge-base-contract.ts"]
 }

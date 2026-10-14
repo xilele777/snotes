@@ -1,5 +1,7 @@
 import Dexie, { type EntityTable } from 'dexie'
 import type { Group, LocalNote, OutboxTask } from '../../shared/types'
+import type { KnowledgeBase, KnowledgeBaseToc } from '../../shared/knowledge-base'
+import type { KnowledgeBaseTask, KnowledgeBaseHistory, KnowledgeBaseNoteState } from './knowledge-base-types'
 
 export interface MetaRow {
   key: string
@@ -21,6 +23,11 @@ export const db = new Dexie('snotes') as Dexie & {
   groups: EntityTable<Group, 'group_id'>
   meta: EntityTable<MetaRow, 'key'>
   history: EntityTable<HistoryRow, 'id'>
+  knowledgeBases: EntityTable<KnowledgeBase, 'id'>
+  knowledgeBaseTocs: EntityTable<KnowledgeBaseToc, 'knowledge_base_id'>
+  knowledgeBaseOutbox: EntityTable<KnowledgeBaseTask, 'id'>
+  knowledgeBaseTocHistory: EntityTable<KnowledgeBaseHistory, 'id'>
+  knowledgeBaseNoteStates: EntityTable<KnowledgeBaseNoteState, 'id'>
 }
 
 db.version(1).stores({
@@ -37,4 +44,12 @@ db.version(2).stores({
   groups: 'group_id, ord, invalid',
   meta: 'key',
   history: '++id, note_id, time',
+})
+
+db.version(3).stores({
+  knowledgeBases: 'id, ord, invalid',
+  knowledgeBaseTocs: 'knowledge_base_id',
+  knowledgeBaseOutbox: 'id, book_id, next_at',
+  knowledgeBaseTocHistory: 'id, book_id, time',
+  knowledgeBaseNoteStates: 'id',
 })

@@ -91,6 +91,8 @@ kbd { font-family: inherit; font-size: 10px; line-height: 20px; white-space: now
 /* The narrow rail and group navigation share one responsive sidebar. */
 .layout { --sidebar-width: 248px; --list-width: 352px; display: grid; grid-template-columns: var(--sidebar-width) var(--list-width) minmax(0, 1fr); height: 100vh; height: 100dvh; position: relative; overflow: hidden; }
 .layout[data-view='metrics'] { --sidebar-width: var(--rail-width); }
+.layout[data-view='knowledge-bases'] { --sidebar-width: var(--rail-width); --list-width: 320px; }
+.layout.is-library-list .list-pane { grid-column: 2 / -1; }
 .sidebar-pane { background: var(--bg-surface); border-right: 1px solid var(--border-light); overflow: hidden; min-width: 0; }
 .list-pane { min-width: 0; min-height: 0; background: var(--bg-surface); border-right: 1px solid var(--border-light); overflow: hidden; }
 .editor-pane { min-width: 0; min-height: 0; background: var(--bg-surface); display: flex; flex-direction: column; overflow: hidden; }
@@ -535,6 +537,8 @@ kbd { font-family: inherit; font-size: 10px; line-height: 20px; white-space: now
   .editor-body .milkdown { padding: 32px; }
 }
 @media (max-width: 1020px) {
+  .layout.is-library-list .list-pane { grid-column: 1 / -1; }
+  .layout[data-view='knowledge-bases'] { --sidebar-width: 120px; --list-width: 296px; }
   .layout { --sidebar-width: 280px; --list-width: 296px; grid-template-columns: var(--list-width) minmax(0, 1fr); }
   /* Opening must expose the controls immediately so focus can enter before the slide finishes. */
   .sidebar-pane { position: fixed; top: 0; bottom: 0; left: 0; width: var(--sidebar-width); z-index: 40; transform: translateX(-100%); visibility: hidden; transition: transform 180ms ease, visibility 0s linear 180ms; box-shadow: 4px 0 24px rgb(0 0 0 / 8%); }

@@ -1,0 +1,125 @@
+import { expect, test, type Page } from '@playwright/test'
+import { resetServer } from './reset-server'
+
+const headers = { Authorization: 'Bearer dev-token' }
+async function signIn(page: Page) {
+  await page.goto('/')
+  await page.evaluate(() => localStorage.setItem('snotes_token', 'dev-token'))
+  await page.reload()
+}
+async function enterLibraries(page: Page, width: number) {
+  if (width <= 1020) await page.getByRole('button', { name: '打开侧栏', exact: true }).click()
+  await page.getByRole('button', { name: '知识库', exact: true }).click()
+  await expect(page.getByRole('heading', { name: '把笔记整理成知识' })).toBeVisible()
+}
+test.beforeEach(() => resetServer())
+
+for (const width of [1440, 720, 390, 320]) {
+  test(`personal library offline creation and sync at ${width}px`, async ({ page, browser }, testInfo) => {
+    await page.setViewportSize({ width, height: 900 })
+    const id = crypto.randomUUID()
+    await page.request.post('/api/notes', { headers, data: { id, title: '已有参考', summary: '原正文', content: '# 已有参考\n\n原正文', create_time: Date.now() } })
+    await signIn(page)
+    await expect(page.locator('.note-item')).toHaveCount(1)
+    await enterLibraries(page, width)
+    await page.context().setOffline(true)
+    await page.getByRole('button', { name: '新建知识库', exact: true }).click()
+    await page.getByLabel('知识库名称').fill('产品研究')
+    await page.getByLabel('知识库简介').fill('研究资料与实践笔记')
+    await page.getByRole('dialog', { name: '新建知识库' }).getByRole('button', { name: '保存' }).click()
+    await expect(page.locator('.kb-header h2')).toHaveText('产品研究')
+    await page.getByRole('button', { name: '新建章节', exact: true }).click()
+    await page.getByRole('textbox', { name: '章节名称', exact: true }).fill('基础')
+    await page.getByRole('dialog', { name: '章节名称' }).getByRole('button', { name: '保存' }).click()
+    await page.getByRole('button', { name: '加入笔记', exact: true }).click()
+    await page.getByRole('dialog', { name: '加入已有笔记' }).getByRole('checkbox').check()
+    await page.getByRole('button', { name: '加入 1 篇', exact: true }).click()
+    await expect(page.locator('.kb-node-link').filter({ hasText: '已有参考' })).toBeVisible()
+    await page.locator('.kb-create-actions').getByRole('button', { name: '新建笔记', exact: true }).click()
+    const editor = page.locator('.ProseMirror[contenteditable="true"]')
+    await expect(editor).toBeVisible()
+    await editor.fill('新建实践\n\n离线记录')
+    if (width <= 720) {
+      // Allow Milkdown's debounced body write, then return through the real nav.
+      await expect.poll(async () => page.evaluate(async () => {
+        const db = await new Promise<IDBDatabase>(resolve => { const req = indexedDB.open('snotes'); req.onsuccess = () => resolve(req.result) })
+        try { return await new Promise<boolean>(resolve => { const req = db.transaction('notes').objectStore('notes').getAll(); req.onsuccess = () => resolve(req.result.some(n => n.body.includes('离线记录'))) }) } finally { db.close() }
+      })).toBe(true)
+      await page.getByRole('button', { name: '返回列表', exact: true }).click()
+    }
+    await expect(page.locator('.kb-node-link').filter({ hasText: '新建实践' })).toBeVisible()
+    await page.getByLabel('搜索本库笔记', { exact: true }).fill('离线记录')
+    await expect(page.locator('.kb-tree-row')).toHaveCount(1)
+    await page.getByRole('button', { name: '清除知识库搜索' }).click()
+    // Mobile/keyboard movement uses a dialog, so drag is never required.
+    const row = page.locator('.kb-tree-row').filter({ hasText: '已有参考' })
+    await row.locator('summary').click()
+    await row.getByRole('button', { name: '移动到…', exact: true }).click()
+    await page.getByLabel('目标章节').selectOption('')
+    await page.getByRole('dialog', { name: '移动目录' }).getByRole('button', { name: '移动', exact: true }).click()
+    // Close the native details menu before screenshots and subsequent controls.
+    await row.locator('details').evaluate(el => (el as HTMLDetailsElement).open = false)
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
+    await page.screenshot({ path: testInfo.outputPath(`library-${width}.png`), fullPage: true })
+    await page.context().setOffline(false)
+    await expect(page.locator('.kb-directory-footer button')).toBeEnabled()
+    await page.locator('.kb-directory-footer button').click()
+    await expect.poll(async () => {
+      const response = await page.request.post('/api/knowledge-bases/sync/pull', { headers, data: { since: 0 } })
+      const result = await response.json()
+      return result.books?.[0]?.toc_version
+    }).toBeGreaterThan(0)
+    await expect(page.locator('.kb-directory-footer')).toContainText('已同步')
+    const second = await browser.newContext({ baseURL: new URL(page.url()).origin, viewport: { width: 1440, height: 900 } })
+    const other = await second.newPage()
+    await signIn(other)
+    await enterLibraries(other, 1440)
+    await expect(other.locator('.kb-card-link').filter({ hasText: '产品研究' })).toBeVisible()
+    await other.locator('.kb-card-link').filter({ hasText: '产品研究' }).click()
+    await expect(other.locator('.kb-node-link').filter({ hasText: '新建实践' })).toBeVisible()
+    await expect(other.locator('.kb-tree-row')).toHaveCount(3)
+    await other.getByRole('button', { name: '移除知识库', exact: true }).click()
+    await other.getByRole('alertdialog').getByRole('button', { name: '移除', exact: true }).click()
+    await other.getByRole('button', { name: '已移除', exact: true }).click()
+    await expect(other.locator('.kb-card')).toHaveCount(1)
+    await other.getByRole('button', { name: '恢复知识库', exact: true }).click()
+    await other.getByRole('button', { name: '我的知识库', exact: true }).click()
+    await expect(other.locator('.kb-card-link').filter({ hasText: '产品研究' })).toBeVisible()
+    await second.close()
+  })
+}
+
+test('two offline devices retain both trees and can explicitly resolve a conflict', async ({ page, browser }) => {
+  await page.setViewportSize({ width: 1440, height: 900 })
+  const id = crypto.randomUUID()
+  await page.request.post('/api/knowledge-bases', { headers, data: { id, operation_id: crypto.randomUUID(), name: '跨设备资料', description: '', icon: '', ord: 0, invalid: 0 } })
+  await signIn(page)
+  await enterLibraries(page, 1440)
+  await page.locator('.kb-card-link').filter({ hasText: '跨设备资料' }).click()
+  const second = await browser.newContext({ baseURL: new URL(page.url()).origin, viewport: { width: 1440, height: 900 } })
+  const other = await second.newPage()
+  await signIn(other)
+  await enterLibraries(other, 1440)
+  await other.locator('.kb-card-link').filter({ hasText: '跨设备资料' }).click()
+  for (const [device, title] of [[page, '电脑章节'], [other, '手机章节']] as const) {
+    await device.context().setOffline(true)
+    await device.getByRole('button', { name: '新建章节', exact: true }).click()
+    await device.getByRole('textbox', { name: '章节名称', exact: true }).fill(title)
+    await device.getByRole('dialog', { name: '章节名称' }).getByRole('button', { name: '保存' }).click()
+  }
+  await page.context().setOffline(false)
+  await page.locator('.kb-directory-footer button').click()
+  await expect.poll(async () => (await (await page.request.get(`/api/knowledge-bases/${id}/toc`, { headers })).json()).toc.version).toBe(1)
+  await other.context().setOffline(false)
+  await other.locator('.kb-directory-footer button').click()
+  await expect(other.getByRole('button', { name: '查看并选择', exact: true })).toBeVisible()
+  await other.getByRole('button', { name: '查看并选择', exact: true }).click()
+  const conflict = other.getByRole('dialog', { name: '解决知识库冲突' })
+  await expect(conflict).toContainText('电脑章节')
+  await expect(conflict).toContainText('手机章节')
+  await conflict.getByRole('button', { name: '保留本机修改', exact: true }).click()
+  await expect.poll(async () => (await (await page.request.get(`/api/knowledge-bases/${id}/toc`, { headers })).json()).toc.nodes[0].title).toBe('手机章节')
+  await other.getByRole('button', { name: '目录快照', exact: true }).click()
+  await expect(other.getByRole('dialog')).toContainText('冲突 / 导入保留')
+  await second.close()
+})

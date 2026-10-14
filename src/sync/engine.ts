@@ -5,11 +5,28 @@ import { pullOnce } from './pull'
 import { pushOnce } from './push'
 import { onLocalWrite } from './signal'
 import { flushOpensSync, syncOpens } from './opens'
+import { retryKnowledgeBases, syncKnowledgeBases } from './knowledge-bases'
+import { db } from '../db/schema'
 
 export const POLL_INTERVAL_MS = 30_000
 export const LOCAL_WRITE_DEBOUNCE_MS = 800
 
 let inFlight: Promise<void> | null = null
+let retryInFlight: Promise<void> | null = null
+
+/** Reconnecting invalidates network backoff, but never unblocks a structure conflict. */
+export function retrySyncNow(): Promise<void> {
+  if (retryInFlight) return retryInFlight
+  retryInFlight = (async () => {
+    // An old offline request must finish before resetting its retry delay.
+    if (inFlight) await inFlight
+    if (!hasToken.value) return
+    await db.outbox.where('failed').equals(0).modify({ next_at: 0 })
+    await retryKnowledgeBases()
+    await syncNow()
+  })().finally(() => { retryInFlight = null })
+  return retryInFlight
+}
 
 export function syncNow(): Promise<void> {
   if (inFlight) return inFlight
@@ -34,6 +51,11 @@ export function syncNow(): Promise<void> {
       const pulled = await pullOnce()
       if (pulled.trashRetentionDays !== undefined) ui.trashRetentionDays = pulled.trashRetentionDays
       ui.lastSyncError = null
+      if (hasToken.value) {
+        const libraries = await syncKnowledgeBases()
+        ui.knowledgeBaseSyncError = libraries.error
+        ui.failedCount += libraries.failed
+      }
     } catch (error) {
       ui.lastSyncError = error instanceof Error ? error.message : String(error)
     } finally {
@@ -46,12 +68,13 @@ export function syncNow(): Promise<void> {
 }
 
 export function startSyncEngine(): () => void {
+  let active = true
   const onVisible = () => {
     if (document.visibilityState === 'visible') void syncNow()
     else void flushOpensSync().catch(() => undefined)
   }
 
-  const onOnline = () => void syncNow()
+  const onOnline = () => void retrySyncNow()
 
   document.addEventListener('visibilitychange', onVisible)
   window.addEventListener('online', onOnline)
@@ -64,7 +87,11 @@ export function startSyncEngine(): () => void {
     if (writeTimer !== undefined) clearTimeout(writeTimer)
     writeTimer = setTimeout(() => {
       writeTimer = undefined
-      void syncNow()
+      // A write's debounce may expire during a slow request. Schedule it after
+      // that request instead of coalescing it away until the next 30s poll.
+      const pending = inFlight
+      if (pending) void pending.then(() => { if (active && hasToken.value) void syncNow() })
+      else void syncNow()
     }, LOCAL_WRITE_DEBOUNCE_MS)
   })
 
@@ -80,6 +107,7 @@ export function startSyncEngine(): () => void {
   void syncOpens().catch(() => undefined)
 
   return () => {
+    active = false
     clearInterval(timer)
     if (writeTimer !== undefined) clearTimeout(writeTimer)
     offLocalWrite()

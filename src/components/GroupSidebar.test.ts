@@ -11,7 +11,7 @@ import GroupSidebar from './GroupSidebar.vue'
 import { updateInfo } from '../update-check'
 
 const syncNow = vi.hoisted(() => vi.fn())
-vi.mock('../sync/engine', () => ({ syncNow }))
+vi.mock('../sync/engine', () => ({ retrySyncNow: syncNow }))
 // 版本检查会请求 GitHub，单测里不出网；updateInfo 保留为真实 ref 以便用例直接赋值
 const checkForUpdate = vi.hoisted(() => vi.fn())
 vi.mock('../update-check', async (importOriginal) => ({

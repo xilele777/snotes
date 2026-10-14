@@ -10,6 +10,7 @@ const busy = ref(false)
 const progress = ref<BackupProgress | null>(null)
 const message = ref('')
 const failed = ref(false)
+const legacy = ref(false)
 
 const percent = computed(() => {
   const p = progress.value
@@ -29,9 +30,11 @@ async function runExport() {
   failed.value = false
   message.value = '正在准备导出…'
   try {
-    const bundle = await buildBackup((p) => (progress.value = p))
+    const bundle = await buildBackup((p) => (progress.value = p), legacy.value ? 1 : 2)
     downloadBlob(bundle.blob, `snotes-backup-${stamp()}.zip`)
     const parts = [`已导出 ${bundle.notes} 条笔记、${bundle.groups} 个分组、${bundle.images} 张图片。`]
+    if (bundle.knowledgeBases) parts.push(`${bundle.knowledgeBases} 个知识库及目录已包含在备份中。`)
+    if (legacy.value) parts.push('旧版兼容备份不包含知识库结构。')
     if (bundle.missingImages > 0) {
       // 少图是备份不完整，必须说出来，不能说成「已全部导出」
       parts.push(`其中 ${bundle.missingImages} 张图片下载失败，正文里保留了原地址。`)
@@ -60,6 +63,9 @@ async function onPicked(event: Event) {
     const result = await importBackup(files, (p) => (progress.value = p))
     const parts = [`已导入 ${result.notes} 条笔记、${result.groups} 个新分组、${result.images} 张图片。`]
     if (result.skipped > 0) parts.push(`跳过 ${result.skipped} 条已存在的笔记。`)
+    if (result.knowledgeBases) parts.push(`恢复 ${result.knowledgeBases} 个知识库。`)
+    if (result.knowledgeBaseConflicts) { parts.push(`${result.knowledgeBaseConflicts} 个同 ID 知识库内容不同，已保留现有内容与导入快照。`); failed.value = true }
+    if (result.missingReferences) { parts.push(`${result.missingReferences} 个笔记引用缺少正文，目录中保留占位。`); failed.value = true }
     if (result.failedImages > 0) {
       parts.push(`${result.failedImages} 张图片上传失败，正文里保留了相对路径。`)
       failed.value = true
@@ -95,6 +101,9 @@ async function onPicked(event: Event) {
       @change="onPicked"
     />
   </div>
+
+  <label class="kb-legacy-backup"><input v-model="legacy" type="checkbox" :disabled="busy" /> 导出旧版兼容备份（不包含知识库）</label>
+  <p class="kb-backup-help">完整备份含知识库目录，请在新版应用中导入；旧版应用会忽略知识库结构。</p>
 
   <p v-if="busy" class="backup-progress" role="status">
     {{ progress?.label ?? '正在处理…' }}

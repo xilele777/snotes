@@ -28,6 +28,10 @@ function snapshot(): NavSnapshot {
     currentId: notes.currentId,
     view: ui.view,
     activeGroupId: ui.activeGroupId,
+    activeKnowledgeBaseId: ui.activeKnowledgeBaseId,
+    activeTocNodeId: ui.activeTocNodeId,
+    collapsedKnowledgeBaseNodes: [...ui.collapsedKnowledgeBaseNodes],
+    knowledgeBaseScroll: document.querySelector('.knowledge-base-tree')?.scrollTop ?? 0,
     query: ui.query,
     mobilePane: ui.mobilePane,
     drawerOpen: ui.drawerOpen,
@@ -75,6 +79,23 @@ export async function showNotes() {
     drawerOpen: false,
     overlay: null,
   })
+  await useNotesStore().load()
+}
+
+export async function showKnowledgeBases(id: string | null = null) {
+  const ui = useUiStore()
+  if (ui.view === 'knowledge-bases' && ui.activeKnowledgeBaseId === id) { ui.drawerOpen = false; return }
+  if (isNotesView(ui.view)) ui.lastNotesPosition = snapshot()
+  pushNav()
+  ui.focusMode = false
+  ui.readingMode = false
+  ui.view = 'knowledge-bases'
+  ui.activeKnowledgeBaseId = id
+  ui.activeTocNodeId = null
+  ui.query = ''
+  ui.drawerOpen = false
+  ui.restorePosition = null
+  useNotesStore().currentId = null
   await useNotesStore().load()
 }
 
@@ -180,6 +201,9 @@ function restore(s: NavSnapshot) {
   notes.currentId = s.currentId
   ui.view = s.view
   ui.activeGroupId = s.activeGroupId
+  ui.activeKnowledgeBaseId = s.activeKnowledgeBaseId ?? null
+  ui.activeTocNodeId = s.activeTocNodeId ?? null
+  ui.collapsedKnowledgeBaseNodes = s.collapsedKnowledgeBaseNodes ?? []
   ui.query = s.query ?? ''
   ui.mobilePane = s.mobilePane
   ui.drawerOpen = s.drawerOpen

@@ -3,7 +3,7 @@ import { ref } from 'vue'
 import type { ListView } from '../db/repo'
 
 /** 统计作为弹窗显示，不参与主界面的视图切换。 */
-export type UiView = ListView | 'metrics'
+export type UiView = ListView | 'metrics' | 'knowledge-bases'
 
 /** <720px 时列表与编辑器互斥，这里是当前显示哪一格 */
 export type MobilePane = 'list' | 'editor'
@@ -17,6 +17,10 @@ export type SettingsTab = 'appearance' | 'data' | 'shortcuts' | 'about'
 export interface WorkspacePosition {
   view: UiView
   activeGroupId: string | null
+  activeKnowledgeBaseId?: string | null
+  activeTocNodeId?: string | null
+  collapsedKnowledgeBaseNodes?: string[]
+  knowledgeBaseScroll?: number
   currentId: string | null
   query: string
   mobilePane: MobilePane
@@ -39,6 +43,10 @@ export function trashDaysLeft(updateTime: number, retention: number | null | und
 export const useUiStore = defineStore('ui', () => {
   const view = ref<UiView>('all')
   const activeGroupId = ref<string | null>(null)
+  const activeKnowledgeBaseId = ref<string | null>(null)
+  const activeTocNodeId = ref<string | null>(null)
+  const collapsedKnowledgeBaseNodes = ref<string[]>([])
+  const knowledgeBaseSyncError = ref<string | null>(null)
   const query = ref('')
   const syncing = ref(false)
   const lastSyncError = ref<string | null>(null)
@@ -74,5 +82,5 @@ export const useUiStore = defineStore('ui', () => {
   const lastNotesPosition = ref<WorkspacePosition | null>(null)
   const restorePosition = ref<WorkspacePosition | null>(null)
 
-  return { view, activeGroupId, query, syncing, lastSyncError, failedCount, drawerOpen, mobilePane, focusMode, readingMode, overlay, settingsTab, trashRequest, readingRequest, trashRetentionDays, lastNotesPosition, restorePosition }
+  return { view, activeGroupId, activeKnowledgeBaseId, activeTocNodeId, collapsedKnowledgeBaseNodes, knowledgeBaseSyncError, query, syncing, lastSyncError, failedCount, drawerOpen, mobilePane, focusMode, readingMode, overlay, settingsTab, trashRequest, readingRequest, trashRetentionDays, lastNotesPosition, restorePosition }
 })

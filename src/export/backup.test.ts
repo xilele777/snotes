@@ -7,6 +7,7 @@ import { IMAGE_URL_PREFIX } from '../../shared/derive'
 import { useGroupsStore } from '../stores/groups'
 import { useNotesStore } from '../stores/notes'
 import { safeName, mimeOfFile, importBackup, buildBackup } from './backup'
+import { addKnowledgeBaseNode, createKnowledgeBase, updateKnowledgeBase } from '../db/knowledge-base-repo'
 
 vi.mock('../api/client', () => ({
   apiFetch: vi.fn(),
@@ -157,6 +158,65 @@ describe('导出', () => {
 })
 
 describe('导入', () => {
+  it('完整备份往返保留跨库同一笔记引用，重复导入不翻倍', async () => {
+    const note = await createNote('# 同一篇笔记')
+    const meta = { name: '知识库', description: '简介', icon: '📚', ord: 0, invalid: 0 as const }
+    const a = await createKnowledgeBase(meta)
+    const b = await createKnowledgeBase({ ...meta, name: '第二个库' })
+    await addKnowledgeBaseNode(a.id, { kind: 'note', note_id: note.id, title: null })
+    await addKnowledgeBaseNode(b.id, { kind: 'note', note_id: note.id, title: null })
+    const bundle = await buildBackup()
+    const files = await unzip(bundle.blob)
+    const index = JSON.parse(files['index.json'])
+    expect(index.format).toBe(2)
+    expect(index.notes).toHaveLength(1)
+    expect(index.knowledge_bases).toHaveLength(2)
+    const bytes = new Uint8Array(await bundle.blob.arrayBuffer())
+    await db.delete(); await db.open(); setActivePinia(createPinia())
+    const makeFile = () => new File([bytes], 'backup.zip')
+    const first = await importBackup([makeFile()])
+    expect(first).toMatchObject({ notes: 1, knowledgeBases: 2, knowledgeBaseConflicts: 0 })
+    const again = await importBackup([makeFile()])
+    expect(again).toMatchObject({ notes: 0, skipped: 1, knowledgeBases: 0, knowledgeBaseConflicts: 0 })
+    expect(await db.notes.count()).toBe(1)
+    expect((await db.knowledgeBaseTocs.toArray()).flatMap(t => t.nodes.map(n => n.note_id))).toEqual([note.id, note.id])
+  })
+
+  it('同 ID 的知识库不同内容不会被导入覆盖，替代内容保存为快照', async () => {
+    const meta = { name: '原名称', description: '', icon: '', ord: 0, invalid: 0 as const }
+    const book = await createKnowledgeBase(meta)
+    const bundle = await buildBackup()
+    await updateKnowledgeBase(book.id, { name: '现在的名称' })
+    const result = await importBackup([new File([new Uint8Array(await bundle.blob.arrayBuffer())], 'backup.zip')])
+    expect(result.knowledgeBaseConflicts).toBe(1)
+    expect((await db.knowledgeBases.get(book.id))?.name).toBe('现在的名称')
+    expect((await db.knowledgeBaseTocHistory.toArray())[0].meta?.name).toBe('原名称')
+  })
+
+  it('格式 2 保留回收站引用与已移除知识库；旧版导出明确不含知识库', async () => {
+    const note = await createNote('# 回收站笔记')
+    const book = await createKnowledgeBase({ name: '资料', description: '', icon: '', ord: 0, invalid: 0 })
+    await addKnowledgeBaseNode(book.id, { kind: 'note', note_id: note.id, title: null })
+    const { trashNote } = await import('../db/repo')
+    await trashNote(note.id)
+    await updateKnowledgeBase(book.id, { invalid: 1 })
+    const full = await buildBackup()
+    const legacy = JSON.parse((await unzip((await buildBackup(undefined, 1)).blob))['index.json'])
+    expect(legacy.format).toBe(1)
+    expect(legacy.knowledge_bases).toBeUndefined()
+    expect(legacy.notes).toHaveLength(0)
+    await db.delete(); await db.open(); setActivePinia(createPinia())
+    await importBackup([new File([new Uint8Array(await full.blob.arrayBuffer())], 'backup.zip')])
+    expect((await db.notes.get(note.id))?.invalid).toBe(1)
+    expect((await db.knowledgeBases.get(book.id))?.invalid).toBe(1)
+  })
+
+  it('未知格式或损坏目录在写入任何笔记前拒绝', async () => {
+    const index = { app: 'snotes', format: 99, exported_at: 1, notes: [], groups: [] }
+    const zip = zipSync({ 'index.json': strToU8(JSON.stringify(index)) })
+    await expect(importBackup([new File([new Uint8Array(zip)], 'b.zip')])).rejects.toThrow('不支持')
+    expect(await db.notes.count()).toBe(0)
+  })
   const mdFile = (name: string, text: string) => new File([text], name, { type: 'text/markdown' })
 
   it('导入散装 .md：建笔记、按标题派生标题', async () => {

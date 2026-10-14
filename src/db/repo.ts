@@ -246,7 +246,8 @@ export const recoverNote = (id: string) => setInvalid(id, 0, 'recover')
  * 笔记行都没了，applyAck 里 db.notes.get 会返回 undefined 而提前返回，清脏位那套逻辑不参与。
  */
 export async function purgeNote(id: string): Promise<void> {
-  await db.transaction('rw', db.notes, db.outbox, db.history, async () => {
+  await db.transaction('rw', db.notes, db.outbox, db.history, db.knowledgeBaseNoteStates, async () => {
+    await db.knowledgeBaseNoteStates.put({ id, state: 'purged' })
     await db.notes.delete(id)
     await deleteHistoryIn([id])
     // 笔记行都要物理删了，它名下还没推出去的 create/body/prop 任务已无意义，
@@ -264,9 +265,10 @@ export async function purgeNote(id: string): Promise<void> {
  * 多次调用会合并成同一行（payload 都是 { scope: 'trash' }，幂等）。
  */
 export async function purgeTrash(): Promise<void> {
-  await db.transaction('rw', db.notes, db.outbox, db.history, async () => {
+  await db.transaction('rw', db.notes, db.outbox, db.history, db.knowledgeBaseNoteStates, async () => {
     const trashed = await db.notes.where('invalid').equals(1).toArray()
     if (trashed.length === 0) return
+    await db.knowledgeBaseNoteStates.bulkPut(trashed.map(n => ({ id: n.id, state: 'purged' as const })))
 
     await db.notes.bulkDelete(trashed.map((n) => n.id))
     await deleteHistoryIn(trashed.map((n) => n.id))

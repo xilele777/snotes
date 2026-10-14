@@ -260,6 +260,9 @@ describe('App 扩展快捷键', () => {
   it('Ctrl+Alt+↓ / ↑ 在列表里切换当前笔记', async () => {
     const notes = useNotesStore()
     const older = await notes.create()
+    // Give the fixture distinct times; IDB's id order is otherwise arbitrary
+    // when both creates finish within the same millisecond.
+    await db.notes.update(older.id, { update_time: Date.now() - 1000 })
     const newer = await notes.create()
     const wrapper = mount(App, { attachTo: document.body })
     await vi.waitFor(() => expect(notes.currentId).toBe(newer.id))

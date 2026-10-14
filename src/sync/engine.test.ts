@@ -3,16 +3,19 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { clearToken, hasToken, setToken } from '../api/token'
 import { db } from '../db/schema'
 import { useUiStore } from '../stores/ui'
-import { POLL_INTERVAL_MS, LOCAL_WRITE_DEBOUNCE_MS, startSyncEngine, syncNow } from './engine'
+import { POLL_INTERVAL_MS, LOCAL_WRITE_DEBOUNCE_MS, retrySyncNow, startSyncEngine, syncNow } from './engine'
 import { emitLocalWrite } from './signal'
 
 const pushOnce = vi.hoisted(() => vi.fn())
 const pullOnce = vi.hoisted(() => vi.fn())
 const saveConflictCopies = vi.hoisted(() => vi.fn())
+const syncKnowledgeBases = vi.hoisted(() => vi.fn())
+const retryKnowledgeBases = vi.hoisted(() => vi.fn())
 
 vi.mock('./push', () => ({ pushOnce }))
 vi.mock('./pull', () => ({ pullOnce, SYNC_CURSOR_KEY: 'sync_cursor' }))
 vi.mock('./conflict', () => ({ saveConflictCopies, CONFLICT_SUFFIX: '（冲突副本）' }))
+vi.mock('./knowledge-bases', () => ({ syncKnowledgeBases, retryKnowledgeBases }))
 
 let stop: (() => void) | undefined
 
@@ -39,6 +42,8 @@ beforeEach(async () => {
   pushOnce.mockReset().mockResolvedValue({ sent: 0, failed: 0, failedTotal: 0, conflicts: [] })
   pullOnce.mockReset().mockResolvedValue({ pages: 1, applied: 0, bodies: 0 })
   saveConflictCopies.mockReset().mockResolvedValue([])
+  syncKnowledgeBases.mockReset().mockResolvedValue({ error: null, failed: 0 })
+  retryKnowledgeBases.mockReset().mockResolvedValue(undefined)
 })
 
 afterEach(() => {
@@ -49,6 +54,19 @@ afterEach(() => {
 })
 
 describe('syncNow', () => {
+  it('手动同步清除网络退避，并保留不可自动重试的失败任务', async () => {
+    vi.useRealTimers()
+    await db.outbox.bulkAdd([
+      { note_id: 'pending', kind: 'create', payload: {}, retry: 4, next_at: Date.now() + 600_000, failed: 0, seq: 1 },
+      { note_id: 'failed', kind: 'create', payload: {}, retry: 4, next_at: Date.now() + 600_000, failed: 1, seq: 1 },
+    ])
+    await retrySyncNow()
+    const tasks = await db.outbox.toArray()
+    expect(tasks.find(t => t.note_id === 'pending')?.next_at).toBe(0)
+    expect(tasks.find(t => t.note_id === 'failed')?.failed).toBe(1)
+    expect(retryKnowledgeBases).toHaveBeenCalledTimes(1)
+    expect(pushOnce).toHaveBeenCalledTimes(1)
+  })
   it('先 push 再 pull', async () => {
     const order: string[] = []
     pushOnce.mockImplementation(async () => {
@@ -163,6 +181,19 @@ describe('syncNow', () => {
 })
 
 describe('startSyncEngine', () => {
+  it('写入的防抖在请求期间到期时，完成后立即补一次同步', async () => {
+    let finish: (() => void) | undefined
+    pushOnce.mockImplementationOnce(() => new Promise(resolve => {
+      finish = () => resolve({ sent: 0, failed: 0, failedTotal: 0, conflicts: [] })
+    }))
+    stop = startSyncEngine()
+    emitLocalWrite()
+    await vi.advanceTimersByTimeAsync(LOCAL_WRITE_DEBOUNCE_MS)
+    expect(pushOnce).toHaveBeenCalledTimes(1)
+    finish!()
+    await vi.advanceTimersByTimeAsync(0)
+    expect(pushOnce).toHaveBeenCalledTimes(2)
+  })
   it('启动时立即同步一次', async () => {
     stop = startSyncEngine()
     await vi.advanceTimersByTimeAsync(0)
@@ -242,7 +273,7 @@ describe('startSyncEngine', () => {
     window.dispatchEvent(new Event('online'))
     await vi.advanceTimersByTimeAsync(0)
 
-    expect(pushOnce).toHaveBeenCalledTimes(1)
+    await vi.waitFor(() => expect(pushOnce).toHaveBeenCalledTimes(1))
   })
 
   it('停止后不再轮询也不再响应事件', async () => {

@@ -7,6 +7,8 @@ import type { ListView, NoteProps } from '../db/repo'
 import { isMobile, pushNav } from '../navigation'
 import { useUiStore } from './ui'
 import { matchesAll, splitTerms } from '../components/SearchBar'
+import { db } from '../db/schema'
+import { addKnowledgeBaseNode } from '../db/knowledge-base-repo'
 
 export const useNotesStore = defineStore('notes', () => {
   const ui = useUiStore()
@@ -16,7 +18,7 @@ export const useNotesStore = defineStore('notes', () => {
   let loadSeq = 0
 
   function viewKey(): string {
-    return `${ui.view}:${ui.activeGroupId ?? ''}`
+    return `${ui.view}:${ui.view === 'knowledge-bases' ? ui.activeKnowledgeBaseId ?? '' : ui.activeGroupId ?? ''}`
   }
 
   /** 当前内存中的列表是否确实属于正在看的视图。 */
@@ -91,7 +93,10 @@ ${note.body}`, terms)
     const seq = ++loadSeq
     const key = viewKey()
     // metrics 视图不经这里取数（MetricsView 直接调 apiMetrics），所以 types 收窄到列表视图是安全的
-    const rows = await repo.listNotes({ view: ui.view as ListView, groupId: ui.activeGroupId })
+    const toc = ui.view === 'knowledge-bases' && ui.activeKnowledgeBaseId ? await db.knowledgeBaseTocs.get(ui.activeKnowledgeBaseId) : undefined
+    const rows = ui.view === 'knowledge-bases'
+      ? (await db.notes.bulkGet(toc?.nodes.flatMap(n => n.note_id ? [n.note_id] : []) ?? [])).filter((n): n is LocalNote => !!n && n.invalid === 0)
+      : await repo.listNotes({ view: ui.view as ListView, groupId: ui.activeGroupId })
     // 视图快速切换时，较早查询的结果不能覆盖较新的查询。
     if (seq !== loadSeq) return
     notes.value = rows
@@ -106,7 +111,7 @@ ${note.body}`, terms)
     // 桌面端同屏目录+详情，打开应用 / 切视图时若没选中项，默认选中列表第一条，
     // 详情区立刻有内容；移动端 <720px 目录与详情互斥，默认选中会直接把详情页顶成首屏。
     // 移动端保持 null，像便签那样先展示目录；currentId 失效落空时也不替它补选。
-    if (currentId.value === null && notes.value.length > 0 && !isMobile()) {
+    if (currentId.value === null && notes.value.length > 0 && !isMobile() && ui.view !== 'knowledge-bases') {
       currentId.value = notes.value[0].id
     }
   }
@@ -120,6 +125,17 @@ ${note.body}`, terms)
   async function create() {
     const groupId = createGroupId()
     const note = await repo.createNote('', groupId ? { group_id: groupId } : {})
+    if (ui.view === 'knowledge-bases' && ui.activeKnowledgeBaseId) {
+      const toc = await db.knowledgeBaseTocs.get(ui.activeKnowledgeBaseId)
+      const selected = toc?.nodes.find(n => n.id === ui.activeTocNodeId)
+      const parent = selected?.kind === 'folder' ? selected.id : selected?.parent_id ?? null
+      ui.activeTocNodeId = await addKnowledgeBaseNode(ui.activeKnowledgeBaseId, { kind: 'note', note_id: note.id, title: null }, parent)
+      if (isMobile()) pushNav()
+      ui.query = ''
+      await load()
+      currentId.value = note.id
+      return note
+    }
     // 分组内就地新建；星标、回收站和监控视图的新笔记统一显示在全部笔记里。
     const viewSwitches = ui.view !== 'all' && ui.view !== 'group'
     if (viewSwitches) {
@@ -165,7 +181,7 @@ ${note.body}`, terms)
     const wasCurrent = currentId.value === id
     await load()
 
-    if (wasCurrent) {
+    if (wasCurrent && ui.view !== 'knowledge-bases') {
       currentId.value = notes.value[0]?.id ?? null
     }
   }

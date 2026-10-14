@@ -1,0 +1,167 @@
+import { Hono, type Context } from 'hono'
+import { bodyLimit } from 'hono/body-limit'
+import { MAX_TOC_BYTES, validId, validateKnowledgeBaseMeta, validateToc } from '../../shared/knowledge-base'
+import type { KnowledgeBase, KnowledgeBaseAck, KnowledgeBaseRemote, TocNode } from '../../shared/knowledge-base'
+import type { Database } from '../storage'
+import type { Env } from '../types'
+
+export const knowledgeBasesRoutes = new Hono<{ Bindings: Env }>()
+knowledgeBasesRoutes.use('/api/knowledge-bases/*', bodyLimit({ maxSize: MAX_TOC_BYTES + 4096 }))
+knowledgeBasesRoutes.use('/api/knowledge-bases', bodyLimit({ maxSize: 8192 }))
+
+const BOOK_FIELDS = 'id, name, description, icon, ord, invalid, meta_version, toc_version, create_time, update_time, change_seq'
+const ACK_FIELDS = 'meta_version, toc_version, update_time'
+const absent = 'NOT EXISTS (SELECT 1 FROM knowledge_base_operation WHERE knowledge_base_id = ? AND operation_id = ?)'
+
+async function remote(db: Database, id: string): Promise<KnowledgeBaseRemote | null> {
+  // Join metadata and TOC in one statement so concurrent commits cannot produce
+  // a metadata projection for one version and a structure for another.
+  const row = await db.prepare(`SELECT b.*, t.version AS structure_version, t.nodes_json, t.update_time AS structure_time
+    FROM knowledge_base b JOIN knowledge_base_toc t ON t.knowledge_base_id = b.id WHERE b.id = ?`).bind(id)
+    .first<KnowledgeBase & { structure_version: number; nodes_json: string; structure_time: number }>()
+  if (!row) return null
+  const nodes = JSON.parse(row.nodes_json) as TocNode[]
+  const noteIds = nodes.flatMap(n => n.note_id ? [n.note_id] : [])
+  const note_states: KnowledgeBaseRemote['note_states'] = {}
+  // Keep well below both SQLite and D1's per-statement parameter limit.
+  for (let i = 0; i < noteIds.length; i += 50) {
+    const ids = noteIds.slice(i, i + 50)
+    const rows = await db.prepare(`SELECT id, invalid FROM note WHERE id IN (${ids.map(() => '?').join(',')})`).bind(...ids)
+      .all<{ id: string; invalid: number }>()
+    const statuses = new Map(rows.results.map(n => [n.id, n.invalid]))
+    for (const id of ids) note_states[id] = statuses.get(id) === 0 ? 'available' : statuses.get(id) === 1 ? 'trash' : 'purged'
+  }
+  const { id: bookId, name, description, icon, ord, invalid, meta_version, toc_version, create_time, update_time, change_seq } = row
+  return {
+    book: { id: bookId, name, description, icon, ord, invalid, meta_version, toc_version, create_time, update_time, change_seq },
+    toc: { knowledge_base_id: id, version: row.structure_version, nodes, update_time: row.structure_time }, note_states,
+  }
+}
+
+async function fingerprint(value: unknown) {
+  const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(JSON.stringify(value)))
+  return Array.from(new Uint8Array(digest), b => b.toString(16).padStart(2, '0')).join('')
+}
+async function operation(db: Database, id: string, op: string) {
+  return db.prepare(`SELECT request_json, ${ACK_FIELDS} FROM knowledge_base_operation WHERE knowledge_base_id = ? AND operation_id = ?`)
+    .bind(id, op).first<KnowledgeBaseAck & { request_json: string }>()
+}
+function ack(row: KnowledgeBaseAck): KnowledgeBaseAck {
+  return { meta_version: row.meta_version, toc_version: row.toc_version, update_time: row.update_time }
+}
+
+/** The clock and ack are in the same atomic batch as the guarded write. */
+function finish(db: Database, id: string, op: string, hash: string, guard: string) {
+  return [
+    db.prepare(`UPDATE knowledge_base_clock SET seq = seq + 1 WHERE id = 1 AND ${guard} AND ${absent}`).bind(id, op, id, op),
+    db.prepare(`UPDATE knowledge_base SET change_seq = (SELECT seq FROM knowledge_base_clock WHERE id = 1)
+      WHERE id = ? AND ${guard} AND ${absent}`).bind(id, id, op, id, op),
+    db.prepare(`INSERT INTO knowledge_base_operation (knowledge_base_id, operation_id, request_json, ${ACK_FIELDS})
+      SELECT id, ?, ?, ${ACK_FIELDS} FROM knowledge_base WHERE id = ? AND ${guard} AND ${absent}`)
+      .bind(op, hash, id, id, op, id, op),
+  ]
+}
+const metaGuard = 'EXISTS (SELECT 1 FROM knowledge_base WHERE id = ? AND last_operation_id = ?)'
+const tocGuard = 'EXISTS (SELECT 1 FROM knowledge_base_toc WHERE knowledge_base_id = ? AND last_operation_id = ?)'
+
+knowledgeBasesRoutes.post('/api/knowledge-bases/sync/pull', async c => {
+  const req = await c.req.json().catch(() => null)
+  const since = req?.since ?? 0
+  const after = req?.after ?? since
+  const clock = (await c.env.DB.prepare('SELECT seq FROM knowledge_base_clock WHERE id = 1').first<{ seq: number }>())!.seq
+  const until = req?.until ?? clock
+  if (![since, after, until].every(n => Number.isSafeInteger(n) && n >= 0) || after < since || until > clock || since > until) {
+    return c.json({ error: 'invalid_cursor' }, 400)
+  }
+  const rows = await c.env.DB.prepare(`SELECT ${BOOK_FIELDS} FROM knowledge_base
+    WHERE change_seq > ? AND change_seq <= ? ORDER BY change_seq LIMIT 51`).bind(after, until).all<KnowledgeBase>()
+  const books = rows.results.slice(0, 50)
+  return c.json({ books, until, next_after: rows.results.length > 50 ? books.at(-1)!.change_seq : null })
+})
+
+knowledgeBasesRoutes.get('/api/knowledge-bases/:id/toc', async c => {
+  const result = await remote(c.env.DB, c.req.param('id'))
+  return result ? c.json(result) : c.json({ error: 'not_found' }, 404)
+})
+
+// Metadata includes recoverable removal; this changes no note or TOC records.
+async function writeMeta(c: Context<{ Bindings: Env }>, create: boolean) {
+  const req = await c.req.json().catch(() => null)
+  const id = create ? req?.id : c.req.param('id')
+  const op = req?.operation_id
+  const base = create ? 0 : req?.base_meta_version
+  if (!validId(id) || !validId(op) || !Number.isSafeInteger(base) || base < 0) return c.json({ error: 'invalid_body' }, 400)
+  let meta
+  try { meta = validateKnowledgeBaseMeta(req) } catch (e) { return c.json({ error: String(e) }, 400) }
+  const hash = await fingerprint({ kind: 'meta', base, meta })
+  const prior = await operation(c.env.DB, id, op)
+  if (prior) return prior.request_json === hash ? c.json(ack(prior)) : c.json({ error: 'operation_reused' }, 400)
+  const now = Date.now()
+  const db = c.env.DB
+  const values = [meta.name, meta.description, meta.icon, meta.ord, meta.invalid]
+  const statements = create ? [
+    db.prepare(`INSERT INTO knowledge_base (id, name, description, icon, ord, invalid, create_time, update_time, last_operation_id)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(id) DO NOTHING`).bind(id, ...values, now, now, op),
+    db.prepare(`INSERT INTO knowledge_base_toc (knowledge_base_id, update_time)
+      SELECT id, ? FROM knowledge_base WHERE id = ? ON CONFLICT(knowledge_base_id) DO NOTHING`).bind(now, id),
+  ] : [
+    db.prepare(`UPDATE knowledge_base SET name = ?, description = ?, icon = ?, ord = ?, invalid = ?,
+      meta_version = meta_version + 1, update_time = ?, last_operation_id = ? WHERE id = ? AND meta_version = ? AND ${absent}`)
+      .bind(...values, now, op, id, base, id, op),
+  ]
+  await db.batch([...statements, ...finish(db, id, op, hash, metaGuard)])
+  const result = await operation(db, id, op)
+  if (result) return result.request_json === hash ? c.json(ack(result)) : c.json({ error: 'operation_reused' }, 400)
+  const current = await remote(db, id)
+  return current ? c.json({ error: 'conflict', current }, 409) : c.json({ error: 'not_found' }, 404)
+}
+knowledgeBasesRoutes.post('/api/knowledge-bases', c => writeMeta(c, true))
+knowledgeBasesRoutes.patch('/api/knowledge-bases/:id', c => writeMeta(c, false))
+
+knowledgeBasesRoutes.put('/api/knowledge-bases/:id/toc', async c => {
+  const id = c.req.param('id')
+  const req = await c.req.json().catch(() => null)
+  const op = req?.operation_id
+  const base = req?.base_toc_version
+  if (!validId(id) || !validId(op) || !Number.isSafeInteger(base) || base < 0) return c.json({ error: 'invalid_body' }, 400)
+  let nodes: TocNode[]
+  try { nodes = validateToc(req.nodes) } catch (e) { return c.json({ error: String(e) }, 400) }
+  const db = c.env.DB
+  const preserveMissing = req.preserve_missing_references === true
+  const archivedVersion = req.archived_meta_version ?? -1
+  if (!Number.isSafeInteger(archivedVersion) || archivedVersion < -1 || req.preserve_missing_references !== undefined && typeof req.preserve_missing_references !== 'boolean') return c.json({ error: 'invalid_body' }, 400)
+  const hash = await fingerprint({ kind: 'toc', base, nodes, preserveMissing, archivedVersion })
+  const prior = await operation(db, id, op)
+  if (prior) return prior.request_json === hash ? c.json(ack(prior)) : c.json({ error: 'operation_reused' }, 400)
+  const current = await remote(db, id)
+  if (!current) return c.json({ error: 'not_found' }, 404)
+  if (current.toc.version !== base || current.book.invalid && current.book.meta_version !== archivedVersion) return c.json({ error: 'conflict', current }, 409)
+  const oldRefs = new Set(current.toc.nodes.flatMap(n => n.note_id ? [n.note_id] : []))
+  // Restore/import can retain missing references as placeholders. This flag
+  // never creates, restores or modifies a note's content or lifecycle.
+  if (!preserveMissing && nodes.some(n => n.note_id && !oldRefs.has(n.note_id) && current.note_states[n.note_id] !== 'available')) {
+    const newIds = nodes.flatMap(n => n.note_id && !oldRefs.has(n.note_id) ? [n.note_id] : [])
+    for (let i = 0; i < newIds.length; i += 50) {
+      const ids = newIds.slice(i, i + 50)
+      const found = await db.prepare(`SELECT id FROM note WHERE invalid = 0 AND id IN (${ids.map(() => '?').join(',')})`).bind(...ids).all<{ id: string }>()
+      if (found.results.length !== ids.length) return c.json({ error: 'missing_notes' }, 422)
+    }
+  }
+  const now = Date.now()
+  await db.batch([
+    db.prepare(`INSERT OR IGNORE INTO knowledge_base_toc_history (knowledge_base_id, version, nodes_json, update_time)
+      SELECT knowledge_base_id, version, nodes_json, update_time FROM knowledge_base_toc WHERE knowledge_base_id = ? AND version = ?
+      AND EXISTS (SELECT 1 FROM knowledge_base WHERE id = ? AND (invalid = 0 OR meta_version = ?)) AND ${absent}`).bind(id, base, id, archivedVersion, id, op),
+    db.prepare(`UPDATE knowledge_base_toc SET version = version + 1, nodes_json = ?, update_time = ?, last_operation_id = ?
+      WHERE knowledge_base_id = ? AND version = ? AND EXISTS (SELECT 1 FROM knowledge_base WHERE id = ? AND (invalid = 0 OR meta_version = ?)) AND ${absent}`)
+      .bind(JSON.stringify(nodes), now, op, id, base, id, archivedVersion, id, op),
+    db.prepare(`UPDATE knowledge_base SET toc_version = toc_version + 1, update_time = ? WHERE id = ? AND ${tocGuard} AND ${absent}`)
+      .bind(now, id, id, op, id, op),
+    ...finish(db, id, op, hash, tocGuard),
+    db.prepare(`DELETE FROM knowledge_base_toc_history WHERE knowledge_base_id = ? AND version NOT IN
+      (SELECT version FROM knowledge_base_toc_history WHERE knowledge_base_id = ? ORDER BY version DESC LIMIT 50)`).bind(id, id),
+  ])
+  const result = await operation(db, id, op)
+  if (result) return result.request_json === hash ? c.json(ack(result)) : c.json({ error: 'operation_reused' }, 400)
+  return c.json({ error: 'conflict', current: await remote(db, id) }, 409)
+})

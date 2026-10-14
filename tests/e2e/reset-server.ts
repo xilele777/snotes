@@ -2,12 +2,12 @@ import { execFileSync } from 'node:child_process'
 import { resolve } from 'node:path'
 import { createRequire } from 'node:module'
 
-const TABLES = ['note_open', 'note_body', 'image', 'note', 'note_group'] as const
+const TABLES = ['knowledge_base_operation', 'knowledge_base_toc_history', 'knowledge_base_toc', 'knowledge_base', 'note_open', 'note_history', 'note_body', 'image', 'note', 'note_group'] as const
 
 /** 清空本地 D1。必须在每个用例开始前调用，否则用例之间会通过服务端互相污染。 */
 export function resetServer(): void {
   // note_body 与 image 排在 note 前面：它们对 note 有外键，删除顺序反了会被约束挡住。
-  const sql = TABLES.map((t) => `DELETE FROM ${t};`).join(' ')
+  const sql = TABLES.map((t) => `DELETE FROM ${t};`).join(' ') + ' UPDATE knowledge_base_clock SET seq = 0;'
 
   if (process.env.E2E_BACKEND === 'server') {
     const { DatabaseSync } = createRequire(import.meta.url)('node:sqlite') as typeof import('node:sqlite')

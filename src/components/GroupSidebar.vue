@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { checkForUpdate, updateInfo } from '../update-check'
-import { openOverlay, showNotes, switchListView } from '../navigation'
-import { syncNow } from '../sync/engine'
+import { openOverlay, showKnowledgeBases, showNotes, switchListView } from '../navigation'
+import { retrySyncNow } from '../sync/engine'
 import { notify } from '../notify'
 import AppIcon from './AppIcon.vue'
 import ConfirmDialog from './ConfirmDialog.vue'
@@ -18,7 +18,7 @@ const groups = useGroupsStore()
 const notes = useNotesStore()
 const ui = useUiStore()
 const brandIconUrl = `${import.meta.env.BASE_URL}snotes.svg`
-const inNotes = computed(() => ui.view !== 'metrics')
+const inNotes = computed(() => ui.view !== 'metrics' && ui.view !== 'knowledge-bases')
 const groupList = ref<HTMLElement | null>(null)
 useWorkspaceScroll(groupList, 'groups')
 
@@ -161,6 +161,7 @@ watch(() => ui.drawerOpen, (open) => { if (!open) menuGroup.value = null })
       <button class="rail-button" type="button" :class="{ active: inNotes }" :aria-pressed="inNotes" title="笔记" aria-label="笔记" @click="showNotes">
         <AppIcon name="notes" :size="20" /><span class="rail-label">笔记</span>
       </button>
+      <button class="rail-button" type="button" data-view="knowledge-bases" :class="{ active: ui.view === 'knowledge-bases' }" :aria-pressed="ui.view === 'knowledge-bases'" title="知识库" aria-label="知识库" @click="showKnowledgeBases()"><AppIcon name="book" :size="20" /><span class="rail-label">知识库</span></button>
       <button class="rail-button" type="button" data-view="stats" :class="{ active: statsOpen }" aria-haspopup="dialog" :aria-expanded="statsOpen" title="记录统计" aria-label="记录统计" @click="openOverlay('stats')">
         <AppIcon name="chart" :size="20" /><span class="rail-label">统计</span>
       </button>
@@ -246,7 +247,7 @@ watch(() => ui.drawerOpen, (open) => { if (!open) menuGroup.value = null })
           :aria-label="syncTitle"
           :aria-busy="ui.syncing"
           :disabled="ui.syncing"
-          @click="syncNow()"
+          @click="retrySyncNow()"
         >
           <svg v-if="ui.syncing" class="sync-spinner" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
             <circle cx="12" cy="12" r="9" opacity="0.25" />

@@ -4,7 +4,8 @@ import type { MetricsData } from '../../shared/types'
 export class ApiError extends Error {
   constructor(
     public status: number,
-    message: string
+    message: string,
+    public data?: unknown,
   ) {
     super(message)
     this.name = 'ApiError'
@@ -40,7 +41,8 @@ async function request(path: string, init: RequestInit): Promise<Response> {
   }
 
   if (!res.ok) {
-    throw new ApiError(res.status, `request failed: ${res.status}`)
+    const data = await res.json().catch(() => undefined)
+    throw new ApiError(res.status, `request failed: ${res.status}`, data)
   }
 
   return res

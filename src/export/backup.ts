@@ -3,13 +3,17 @@ import type { LocalNote, NoteBody } from '../../shared/types'
 import type { Zippable } from 'fflate'
 import { apiBlob, apiFetch } from '../api/client'
 import { db } from '../db/schema'
-import { createNote } from '../db/repo'
+import { createNote, trashNote } from '../db/repo'
+import { createKnowledgeBase, metadata, knowledgeBaseTables, snapshotIn } from '../db/knowledge-base-repo'
+import { validId, validateKnowledgeBaseMeta, validateToc } from '../../shared/knowledge-base'
+import type { KnowledgeBaseMeta, TocNode } from '../../shared/knowledge-base'
+import type { KnowledgeBaseHistory } from '../db/knowledge-base-types'
 import { uploadImage } from '../editor/image-upload'
 import { useGroupsStore } from '../stores/groups'
 import { useNotesStore } from '../stores/notes'
 
 /** 备份包的格式版本；将来结构有不兼容变化时靠它决定怎么读。 */
-export const BACKUP_FORMAT = 1
+export const BACKUP_FORMAT = 2
 export const INDEX_FILE = 'index.json'
 export const IMAGES_DIR = 'images'
 /** 未分组笔记在包内的文件夹名。 */
@@ -43,6 +47,15 @@ export interface BackupNote {
   update_time: number
   /** 笔记在包内的路径，导入时按它把 index.json 和正文对上 */
   file: string
+  /** Format 2 includes referenced trashed notes without restoring them as active. */
+  invalid?: 0 | 1
+}
+
+export interface BackupKnowledgeBase extends KnowledgeBaseMeta {
+  id: string
+  create_time: number
+  nodes: TocNode[]
+  note_states: Record<string, 'available' | 'trash' | 'purged'>
 }
 
 export interface BackupIndex {
@@ -51,6 +64,8 @@ export interface BackupIndex {
   exported_at: number
   groups: BackupGroup[]
   notes: BackupNote[]
+  knowledge_bases?: BackupKnowledgeBase[]
+  knowledge_base_histories?: KnowledgeBaseHistory[]
 }
 
 export interface BackupProgress {
@@ -151,7 +166,7 @@ export function mimeOfFile(name: string): string | null {
  * 备份包里少一条正文等于数据丢了，所以这里失败就冒泡，让调用方提示用户重试。
  */
 async function fillBodies(notes: LocalNote[], report: ProgressReporter): Promise<void> {
-  const missing = notes.filter((n) => n.body_version === 0).map((n) => n.id)
+  const missing = notes.filter((n) => n.body_version === 0 && n.dirty !== 'body' && n.dirty !== 'both').map((n) => n.id)
   if (missing.length === 0) return
 
   const byId = new Map(notes.map((n) => [n.id, n]))
@@ -166,6 +181,7 @@ async function fillBodies(notes: LocalNote[], report: ProgressReporter): Promise
       const note = byId.get(body.note_id)
       if (note) note.body = body.content
     }
+    if (missing.slice(i, i + BATCH).some(id => !response.bodies.some(b => b.note_id === id))) throw new Error('部分笔记正文尚未下载，无法完成备份')
   }
 }
 
@@ -176,6 +192,7 @@ export interface BackupBundle {
   images: number
   /** 有图片没能下载下来时给出数量，界面上要如实告诉用户 */
   missingImages: number
+  knowledgeBases: number
 }
 
 /**
@@ -183,10 +200,15 @@ export interface BackupBundle {
  * 图片下载后放进 images/ 并把正文里的引用改写成相对路径。
  * zip 库按需加载，不进首屏。
  */
-export async function buildBackup(report: ProgressReporter = () => {}): Promise<BackupBundle> {
+export async function buildBackup(report: ProgressReporter = () => {}, format: 1 | 2 = BACKUP_FORMAT): Promise<BackupBundle> {
   const { strToU8, zipSync } = await import('fflate')
 
-  const all = (await db.notes.toArray()).filter((n) => n.invalid === 0)
+  const snapshot = await db.transaction('r', [db.notes, ...knowledgeBaseTables()], async () => ({
+    notes: await db.notes.toArray(), books: await db.knowledgeBases.toArray(), tocs: await db.knowledgeBaseTocs.toArray(),
+    states: await db.knowledgeBaseNoteStates.toArray(), history: await db.knowledgeBaseTocHistory.toArray(),
+  }))
+  const referenced = new Set([...snapshot.tocs, ...snapshot.history].flatMap(t => t.nodes.flatMap(n => n.note_id ? [n.note_id] : [])))
+  const all = snapshot.notes.filter(n => n.invalid === 0 || format === 2 && n.invalid === 1 && referenced.has(n.id))
   const groups = (await db.groups.toArray()).filter((g) => g.invalid === 0).sort((a, b) => a.ord - b.ord)
 
   report({ done: 0, total: all.length, label: '正在整理笔记' })
@@ -201,7 +223,7 @@ export async function buildBackup(report: ProgressReporter = () => {}): Promise<
   const files: Zippable = {}
   const index: BackupIndex = {
     app: 'snotes',
-    format: BACKUP_FORMAT,
+    format,
     exported_at: Date.now(),
     groups: groups.map((g) => ({
       group_id: g.group_id,
@@ -212,6 +234,12 @@ export async function buildBackup(report: ProgressReporter = () => {}): Promise<
       update_time: g.update_time,
     })),
     notes: [],
+    ...(format === 2 ? {
+      knowledge_bases: snapshot.books.map(book => ({ ...metadata(book), id: book.id, create_time: book.create_time,
+        nodes: snapshot.tocs.find(t => t.knowledge_base_id === book.id)?.nodes ?? [],
+        note_states: Object.fromEntries(snapshot.states.map(s => [s.id, s.state])),
+      })), knowledge_base_histories: snapshot.history,
+    } : {}),
   }
 
   // 先扫一遍所有正文，把图片引用收齐——同一张图可能被多条笔记引用，只下载一次。
@@ -266,6 +294,7 @@ export async function buildBackup(report: ProgressReporter = () => {}): Promise<
       create_time: note.create_time,
       update_time: note.update_time,
       file: path,
+      ...(format === 2 ? { invalid: note.invalid as 0 | 1 } : {}),
     })
     report({ done: i + 1, total: sorted.length, label: '正在写入笔记' })
   })
@@ -279,6 +308,7 @@ export async function buildBackup(report: ProgressReporter = () => {}): Promise<
     groups: groups.length,
     images: imagePaths.size,
     missingImages,
+    knowledgeBases: format === 2 ? snapshot.books.length : 0,
   }
 }
 
@@ -291,6 +321,9 @@ export interface ImportResult {
   groups: number
   images: number
   failedImages: number
+  knowledgeBases: number
+  knowledgeBaseConflicts: number
+  missingReferences: number
 }
 
 interface StagedNote {
@@ -303,13 +336,30 @@ interface StagedNote {
 function readIndex(entries: Record<string, Uint8Array>, strFromU8: (d: Uint8Array) => string): BackupIndex | null {
   const raw = entries[INDEX_FILE]
   if (!raw) return null
-  try {
-    const parsed = JSON.parse(strFromU8(raw)) as BackupIndex
-    if (parsed?.app !== 'snotes' || !Array.isArray(parsed.notes)) return null
-    return parsed
-  } catch {
-    return null
+  const parsed = JSON.parse(strFromU8(raw)) as BackupIndex
+  if (parsed?.app !== 'snotes') return null
+  if (parsed.format !== 1 && parsed.format !== 2) throw new Error('不支持的备份格式，请升级应用后导入')
+  if (!Array.isArray(parsed.notes) || !Array.isArray(parsed.groups)) throw new Error('备份索引不完整')
+  for (const note of parsed.notes) {
+    if (!validId(note.id) || typeof note.file !== 'string' || !entries[note.file] || note.invalid !== undefined && note.invalid !== 0 && note.invalid !== 1) throw new Error('备份笔记索引或正文不完整')
   }
+  if (parsed.format === 2) {
+    if (!Array.isArray(parsed.knowledge_bases) || !Array.isArray(parsed.knowledge_base_histories)) throw new Error('知识库备份不完整')
+    const ids = new Set<string>()
+    for (const book of parsed.knowledge_bases) {
+      if (!validId(book.id) || ids.has(book.id) || !Number.isSafeInteger(book.create_time) || book.create_time < 0) throw new Error('知识库备份信息无效')
+      ids.add(book.id)
+      validateKnowledgeBaseMeta(book)
+      validateToc(book.nodes)
+      if (!book.note_states || typeof book.note_states !== 'object' || Object.entries(book.note_states).some(([id, state]) => !validId(id) || !['available', 'trash', 'purged'].includes(state))) throw new Error('笔记引用状态无效')
+    }
+    for (const h of parsed.knowledge_base_histories) {
+      if (!validId(h.id) || !ids.has(h.book_id) || !Number.isSafeInteger(h.time) || !['confirmed', 'conflict', 'discarded'].includes(h.source)) throw new Error('知识库快照无效')
+      validateToc(h.nodes)
+      if (h.meta) validateKnowledgeBaseMeta(h.meta)
+    }
+  }
+  return parsed
 }
 
 /**
@@ -322,7 +372,7 @@ export async function importBackup(
   picked: File[],
   report: ProgressReporter = () => {}
 ): Promise<ImportResult> {
-  const result: ImportResult = { notes: 0, noteIds: [], skipped: 0, groups: 0, images: 0, failedImages: 0 }
+  const result: ImportResult = { notes: 0, noteIds: [], skipped: 0, groups: 0, images: 0, failedImages: 0, knowledgeBases: 0, knowledgeBaseConflicts: 0, missingReferences: 0 }
 
   const staged: StagedNote[] = []
   /** 包内路径 → 图片字节，导入时按需上传 */
@@ -340,7 +390,9 @@ export async function importBackup(
     // 普通 Markdown 无需加载 ZIP 解压库。
     const { strFromU8, unzipSync } = await import('fflate')
     const entries = unzipSync(new Uint8Array(await file.arrayBuffer()))
-    index = readIndex(entries, strFromU8) ?? index
+    const parsed = readIndex(entries, strFromU8)
+    if (parsed && index) throw new Error('请一次导入一个带索引的备份包')
+    index = parsed ?? index
     for (const [path, data] of Object.entries(entries)) {
       if (path.endsWith('/')) continue
       if (/\.md$/i.test(path)) {
@@ -411,7 +463,31 @@ export async function importBackup(
     })
     result.notes++
     result.noteIds.push(id)
+    if (meta?.invalid === 1) await trashNote(id)
   }
+
+  for (const book of index?.knowledge_bases ?? []) {
+    const existing = await db.knowledgeBases.get(book.id)
+    const toc = await db.knowledgeBaseTocs.get(book.id)
+    if (!existing) {
+      await createKnowledgeBase(validateKnowledgeBaseMeta(book), book.id, book.nodes, true)
+      await db.knowledgeBases.update(book.id, { create_time: book.create_time })
+      result.knowledgeBases++
+    } else if (JSON.stringify(toc?.nodes ?? []) !== JSON.stringify(book.nodes) || JSON.stringify(metadata(existing)) !== JSON.stringify(validateKnowledgeBaseMeta(book))) {
+      // Keep the existing library; retain the imported alternative for review.
+      await db.transaction('rw', knowledgeBaseTables(), async () => {
+        const previous = await db.knowledgeBaseTocHistory.where('book_id').equals(book.id).toArray()
+        if (!previous.some(h => h.source === 'conflict' && JSON.stringify(h.nodes) === JSON.stringify(book.nodes) && JSON.stringify(h.meta) === JSON.stringify(validateKnowledgeBaseMeta(book)))) {
+          await snapshotIn(book.id, book.nodes, 'conflict', validateKnowledgeBaseMeta(book))
+        }
+      })
+      result.knowledgeBaseConflicts++
+    }
+    const missing = book.nodes.flatMap(n => n.note_id ? [n.note_id] : []).filter(id => !index!.notes.some(n => n.id === id))
+    for (const id of missing) if (!await db.notes.get(id)) result.missingReferences++
+    await db.knowledgeBaseNoteStates.bulkPut(Object.entries(book.note_states).map(([id, state]) => ({ id, state })))
+  }
+  for (const h of index?.knowledge_base_histories ?? []) if (!await db.knowledgeBaseTocHistory.get(h.id)) await db.knowledgeBaseTocHistory.add(h)
 
   report({ done: total, total, label: '正在刷新列表' })
   await useNotesStore().load()

@@ -10,7 +10,7 @@ import { notify } from '../notify'
 import { useGroupsStore } from '../stores/groups'
 
 const syncNow = vi.hoisted(() => vi.fn())
-vi.mock('../sync/engine', () => ({ syncNow }))
+vi.mock('../sync/engine', () => ({ retrySyncNow: syncNow }))
 vi.mock('../notify', () => ({ notify: vi.fn() }))
 
 beforeEach(async () => {

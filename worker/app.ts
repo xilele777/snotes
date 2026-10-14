@@ -1,6 +1,7 @@
 import { Hono } from 'hono'
 import { auth } from './auth'
 import { groupsRoutes } from './routes/groups'
+import { knowledgeBasesRoutes } from './routes/knowledge-bases'
 import { imagesRoutes } from './routes/images'
 import { metricsRoutes } from './routes/metrics'
 import { notesRoutes } from './routes/notes'
@@ -20,6 +21,7 @@ export function createApp() {
   app.route('/', notesRoutes)
   app.route('/', opensRoutes)
   app.route('/', groupsRoutes)
+  app.route('/', knowledgeBasesRoutes)
   app.route('/', syncRoutes)
   app.route('/', trashRoutes)
   app.route('/', imagesRoutes)

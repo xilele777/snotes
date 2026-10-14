@@ -14,11 +14,13 @@ import { useMediaQuery } from './components/useMediaQuery'
 import { backToList, initNavigation, isMobile, openOverlay, pushNav } from './navigation'
 import { useNotesStore } from './stores/notes'
 import { useUiStore } from './stores/ui'
-import { syncNow } from './sync/engine'
+import { retrySyncNow } from './sync/engine'
 
 const notes = useNotesStore()
 const ui = useUiStore()
 const MetricsView = defineAsyncComponent(() => import('./components/MetricsView.vue'))
+const KnowledgeBaseWorkspace = defineAsyncComponent(() => import('./components/KnowledgeBaseWorkspace.vue'))
+const KnowledgeBaseHome = defineAsyncComponent(() => import('./components/KnowledgeBaseHome.vue'))
 /** ≤1020px 侧栏是抽屉 */
 const compact = useMediaQuery('(max-width: 1020px)')
 let drawerTrigger: HTMLElement | null = null
@@ -60,6 +62,7 @@ async function focusSearch() {
     ui.mobilePane = 'list'
   }
   await nextTick()
+  if (ui.view === 'knowledge-bases') { document.querySelector<HTMLInputElement>('.kb-search input')?.focus(); return }
   document.querySelector<HTMLInputElement>('.note-search input')?.focus()
 }
 
@@ -129,7 +132,7 @@ async function runShortcut(action: ShortcutAction) {
     case 'nextNote': stepNote(1); return
     case 'prevNote': stepNote(-1); return
     case 'toggleFocus': if (editable) ui.focusMode = !ui.focusMode; return
-    case 'syncNow': await syncNow(); return
+    case 'syncNow': await retrySyncNow(); return
     case 'openSettings': openOverlay('settings'); return
   }
 }
@@ -148,7 +151,7 @@ onUnmounted(() => {
 <template>
   <TokenGate v-if="!hasToken" />
 
-  <div v-else class="layout" :class="{ 'is-focused': ui.focusMode }" :data-mobile-pane="ui.mobilePane" :data-view="ui.view" :inert="ui.overlay !== null">
+  <div v-else class="layout" :class="{ 'is-focused': ui.focusMode, 'is-library-list': ui.view === 'knowledge-bases' && !ui.activeKnowledgeBaseId }" :data-mobile-pane="ui.mobilePane" :data-view="ui.view" :inert="ui.overlay !== null">
     <!-- 窄屏将分组导航收进抽屉，搜索仍留在笔记列表上方。 -->
     <aside class="sidebar-pane" :class="{ 'is-open': ui.drawerOpen }" :inert="compact && !ui.drawerOpen">
       <GroupSidebar />
@@ -158,6 +161,7 @@ onUnmounted(() => {
     <section class="list-pane" aria-label="便签目录" :inert="compact && ui.drawerOpen">
       <MetricsView v-if="ui.view === 'metrics'" />
       <TrashView v-else-if="ui.view === 'trash'" />
+      <KnowledgeBaseWorkspace v-else-if="ui.view === 'knowledge-bases'" />
       <NoteList v-else />
     </section>
 
@@ -166,8 +170,9 @@ onUnmounted(() => {
       key 区分两者：ProseMirror 的 editable 在建实例时读一次，不重挂就切不干净。
       监控页没有笔记详情；统计与设置弹窗都不卸载当前工作区。
     -->
+    <KnowledgeBaseHome v-if="ui.view === 'knowledge-bases' && ui.activeKnowledgeBaseId && !notes.currentId" :inert="compact && ui.drawerOpen" />
     <NoteDetail
-      v-if="ui.view !== 'metrics'"
+      v-else-if="ui.view !== 'metrics' && !(ui.view === 'knowledge-bases' && !ui.activeKnowledgeBaseId)"
       :key="ui.view === 'trash' ? 'trash' : 'main'"
       :readonly="ui.view === 'trash'"
       :inert="compact && ui.drawerOpen"
