@@ -7,18 +7,27 @@ import { nextTick, onUnmounted, watch, type Ref } from 'vue'
  */
 export function useDialogFocus(open: () => boolean, panel: Ref<HTMLElement | null>, close: () => void, returnFocus?: (previous: HTMLElement | null) => HTMLElement | null) {
   let previousFocus: HTMLElement | null = null
+  let pointerStart: { target: EventTarget | null; x: number; y: number } | null = null
+  let pointerCancelled = false
   const focusable = () => Array.from(panel.value?.querySelectorAll<HTMLElement>(
-    'button:not(:disabled):not([tabindex="-1"]), input:not(:disabled):not([tabindex="-1"]), a[href], [tabindex]:not([tabindex="-1"])',
-  ) ?? [])
+    'button, input, textarea, select, a[href], [tabindex]',
+  ) ?? []).filter(element => {
+    if (element.matches(':disabled, [tabindex="-1"], input[type="hidden"]')) return false
+    for (let ancestor: HTMLElement | null = element; ancestor; ancestor = ancestor.parentElement) {
+      const style = getComputedStyle(ancestor)
+      if (ancestor.hidden || ancestor.hasAttribute('inert') || style.display === 'none' || style.visibility === 'hidden') return false
+    }
+    return true
+  })
 
   /** 后打开的弹窗 Teleport 到 body 末尾，文档顺序最后的那个就是最上层 */
   function topmost(): boolean {
-    const modals = document.querySelectorAll<HTMLElement>('[aria-modal="true"]')
+    const modals = document.querySelectorAll<HTMLElement>('[aria-modal="true"]:not([inert])')
     return modals.length === 0 || modals[modals.length - 1] === panel.value
   }
 
   function onKeydown(event: KeyboardEvent) {
-    if (!topmost()) return
+    if (!topmost() || event.isComposing) return
     if (event.key === 'Escape') {
       event.preventDefault()
       event.stopPropagation()
@@ -42,17 +51,49 @@ export function useDialogFocus(open: () => boolean, panel: Ref<HTMLElement | nul
     }
   }
 
+  // Browsers dispatch a click on the common ancestor after dragging from a
+  // field onto the backdrop. Only a gesture that starts and ends outside closes.
+  function onPointerDown(event: PointerEvent) {
+    pointerStart = { target: event.target, x: event.clientX, y: event.clientY }
+    pointerCancelled = event.button !== 0
+  }
+  function onPointerCancel() { pointerCancelled = true }
+  function onBackdropClick(event: MouseEvent) {
+    if (topmost() && event.target === panel.value?.parentElement && (pointerCancelled || pointerStart && (
+      pointerStart.target !== event.target || Math.hypot(event.clientX - pointerStart.x, event.clientY - pointerStart.y) > 6
+    ))) {
+      event.preventDefault()
+      event.stopImmediatePropagation()
+    }
+    pointerStart = null
+    pointerCancelled = false
+  }
+  function listen(on: boolean) {
+    const method = on ? 'addEventListener' : 'removeEventListener'
+    window[method]('keydown', onKeydown as EventListener, true)
+    window[method]('pointerdown', onPointerDown as EventListener, true)
+    window[method]('pointercancel', onPointerCancel, true)
+    window[method]('click', onBackdropClick as EventListener, true)
+  }
+
   watch(open, async (value) => {
     if (value) {
       previousFocus = document.activeElement as HTMLElement | null
-      window.addEventListener('keydown', onKeydown, true)
+      pointerStart = null
+      pointerCancelled = false
+      listen(true)
       await nextTick()
       if (!open()) return
+      panel.value?.removeAttribute('inert')
+      panel.value?.setAttribute('aria-modal', 'true')
       const target = panel.value?.querySelector<HTMLElement>('[data-autofocus]') ?? focusable()[0]
       target?.focus()
       if (target instanceof HTMLInputElement) target.select()
     } else {
-      window.removeEventListener('keydown', onKeydown, true)
+      listen(false)
+      // Leave animations must not trap focus or keep global shortcuts blocked.
+      panel.value?.setAttribute('inert', '')
+      panel.value?.setAttribute('aria-modal', 'false')
       await nextTick()
       if (open() || !previousFocus) return
       const target = returnFocus?.(previousFocus) ?? previousFocus
@@ -61,5 +102,5 @@ export function useDialogFocus(open: () => boolean, panel: Ref<HTMLElement | nul
     }
   }, { immediate: true })
 
-  onUnmounted(() => window.removeEventListener('keydown', onKeydown, true))
+  onUnmounted(() => listen(false))
 }

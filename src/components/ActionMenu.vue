@@ -14,12 +14,16 @@ const props = defineProps<{
   label: string
   /** 附加在菜单根元素上的类名，供各处微调宽度 */
   menuClass?: string
+  focusChecked?: boolean
 }>()
 
 const emit = defineEmits<{ close: [] }>()
 
 const panel = ref<HTMLElement | null>(null)
 const position = ref({ top: 0, left: 0 })
+// Callers may clear their selection and anchor together when closing a menu.
+let trigger: HTMLElement | null = null
+let returnFocus = true
 
 /** 默认在按钮下方右对齐；贴近视口边缘时向内收，底部放不下就翻到上方。 */
 function place() {
@@ -45,12 +49,12 @@ function onKeydown(event: KeyboardEvent) {
     emit('close')
     return
   }
-  if (event.key !== 'ArrowDown' && event.key !== 'ArrowUp') return
+  if (!['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key)) return
   const list = items()
   if (list.length === 0) return
   event.preventDefault()
   const index = list.indexOf(document.activeElement as HTMLElement)
-  const next = event.key === 'ArrowDown' ? (index + 1) % list.length : (index - 1 + list.length) % list.length
+  const next = event.key === 'Home' ? 0 : event.key === 'End' ? list.length - 1 : event.key === 'ArrowDown' ? (index + 1) % list.length : (index - 1 + list.length) % list.length
   list[next]!.focus()
 }
 
@@ -58,6 +62,8 @@ function onKeydown(event: KeyboardEvent) {
 function onDocumentClick(event: Event) {
   const target = event.target as Node
   if (panel.value?.contains(target) || props.anchor?.contains(target)) return
+  // A click in a field or another control already moved focus there.
+  returnFocus = !!panel.value?.contains(document.activeElement) || document.activeElement === document.body
   emit('close')
 }
 
@@ -70,16 +76,23 @@ function listen(on: boolean) {
 }
 
 watch(() => props.open, async (open, previous) => {
-  if (open && !previous) listen(true)
+  if (open && !previous) { trigger = props.anchor; returnFocus = true; listen(true) }
   else if (!open && previous) {
     listen(false)
+    panel.value?.setAttribute('inert', '')
+    panel.value?.removeAttribute('role')
     // 同步归还焦点：随后打开的弹窗会把它记为「打开前的焦点」，关闭后仍回到这颗按钮
-    props.anchor?.focus({ preventScroll: true })
+    if (returnFocus) trigger?.focus({ preventScroll: true })
   }
   if (!open) return
   await nextTick()
+  if (!props.open) return
+  panel.value?.removeAttribute('inert')
+  panel.value?.setAttribute('role', 'menu')
   place()
-  items()[0]?.focus()
+  const list = items()
+  const first = props.focusChecked ? list.find(item => item.getAttribute('aria-checked') === 'true') ?? list[0] : list[0]
+  first?.focus()
 })
 
 onUnmounted(() => listen(false))
@@ -87,16 +100,18 @@ onUnmounted(() => listen(false))
 
 <template>
   <Teleport to="body">
-    <div
-      v-if="open"
-      ref="panel"
-      class="action-menu"
-      :class="menuClass"
-      role="menu"
-      :aria-label="label"
-      :style="{ top: `${position.top}px`, left: `${position.left}px` }"
-    >
-      <slot />
-    </div>
+    <Transition name="menu">
+      <div
+        v-if="open"
+        ref="panel"
+        class="action-menu"
+        :class="menuClass"
+        role="menu"
+        :aria-label="label"
+        :style="{ top: `${position.top}px`, left: `${position.left}px` }"
+      >
+        <slot />
+      </div>
+    </Transition>
   </Teleport>
 </template>

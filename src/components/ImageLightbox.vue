@@ -118,74 +118,76 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown))
 
 <template>
   <Teleport to="body">
-    <div v-if="open" class="lightbox-mask" @click.self="emit('close')">
-      <div ref="panel" class="lightbox" role="dialog" aria-modal="true" aria-label="查看图片">
-        <div class="lightbox-bar">
-          <button
-            class="lightbox-btn"
-            data-op="prev"
-            :disabled="!hasPrev"
-            title="上一张 (←)"
-            aria-label="上一张"
-            @click="step(-1)"
-          >
-            <AppIcon name="back" :size="20" />
-          </button>
-          <button class="lightbox-btn" data-op="zoom-in" title="放大 (+)" aria-label="放大" @click="zoom(1.25)">
-            <AppIcon name="zoomIn" :size="20" />
-          </button>
-          <button class="lightbox-btn" data-op="zoom-out" title="缩小 (-)" aria-label="缩小" @click="zoom(1 / 1.25)">
-            <AppIcon name="zoomOut" :size="20" />
-          </button>
-          <button
-            class="lightbox-btn"
-            data-op="fit"
-            title="适应屏幕 (0)"
-            aria-label="适应屏幕"
-            @click="fit"
-          >
-            <AppIcon name="fit" :size="20" />
-          </button>
-          <button class="lightbox-btn" data-op="download" title="下载原图" aria-label="下载原图" @click="download">
-            <AppIcon name="download" :size="20" />
-          </button>
+    <Transition name="dialog">
+      <div v-if="open" class="lightbox-mask" @click.self="emit('close')">
+        <div ref="panel" class="lightbox" role="dialog" aria-modal="true" aria-label="查看图片">
+          <div class="lightbox-bar">
+            <button
+              class="lightbox-btn"
+              data-op="prev"
+              :disabled="!hasPrev"
+              title="上一张 (←)"
+              aria-label="上一张"
+              @click="step(-1)"
+            >
+              <AppIcon name="back" :size="20" />
+            </button>
+            <button class="lightbox-btn" data-op="zoom-in" title="放大 (+)" aria-label="放大" @click="zoom(1.25)">
+              <AppIcon name="zoomIn" :size="20" />
+            </button>
+            <button class="lightbox-btn" data-op="zoom-out" title="缩小 (-)" aria-label="缩小" @click="zoom(1 / 1.25)">
+              <AppIcon name="zoomOut" :size="20" />
+            </button>
+            <button
+              class="lightbox-btn"
+              data-op="fit"
+              title="适应屏幕 (0)"
+              aria-label="适应屏幕"
+              @click="fit"
+            >
+              <AppIcon name="fit" :size="20" />
+            </button>
+            <button class="lightbox-btn" data-op="download" title="下载原图" aria-label="下载原图" @click="download">
+              <AppIcon name="download" :size="20" />
+            </button>
 
-          <span v-if="multi" class="lightbox-counter" role="status">{{ index + 1 }} / {{ images.length }}</span>
+            <span v-if="multi" class="lightbox-counter" role="status">{{ index + 1 }} / {{ images.length }}</span>
 
-          <button
-            class="lightbox-btn"
-            data-op="next"
-            :disabled="!hasNext"
-            title="下一张 (→)"
-            aria-label="下一张"
-            @click="step(1)"
-          >
-            <AppIcon name="chevron" :size="20" />
-          </button>
-          <button class="lightbox-btn" data-op="close" title="关闭 (Esc)" aria-label="关闭" @click="emit('close')">
-            <AppIcon name="close" :size="20" />
-          </button>
-        </div>
+            <button
+              class="lightbox-btn"
+              data-op="next"
+              :disabled="!hasNext"
+              title="下一张 (→)"
+              aria-label="下一张"
+              @click="step(1)"
+            >
+              <AppIcon name="chevron" :size="20" />
+            </button>
+            <button class="lightbox-btn" data-op="close" title="关闭 (Esc)" aria-label="关闭" @click="emit('close')">
+              <AppIcon name="close" :size="20" />
+            </button>
+          </div>
 
-        <div
-          ref="frame"
-          class="lightbox-stage"
-          :class="{ 'is-panning': panning }"
-          @wheel="onWheel"
-          @pointerdown="onPointerDown"
-          @pointermove="onPointerMove"
-          @pointerup="onPointerUp"
-          @pointercancel="onPointerUp"
-        >
-          <img
-            v-if="current"
-            :src="current"
-            alt=""
-            draggable="false"
-            :style="{ transform: `translate(${offset.x}px, ${offset.y}px) scale(${scale})` }"
+          <div
+            ref="frame"
+            class="lightbox-stage"
+            :class="{ 'is-panning': panning }"
+            @wheel="onWheel"
+            @pointerdown="onPointerDown"
+            @pointermove="onPointerMove"
+            @pointerup="onPointerUp"
+            @pointercancel="onPointerUp"
           >
+            <img
+              v-if="current"
+              :src="current"
+              alt=""
+              draggable="false"
+              :style="{ transform: `translate(${offset.x}px, ${offset.y}px) scale(${scale})` }"
+            >
+          </div>
         </div>
       </div>
-    </div>
+    </Transition>
   </Teleport>
 </template>

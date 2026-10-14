@@ -17,7 +17,7 @@ for (const width of [1440, 320]) {
 
     if (width < 1020) await page.getByRole('button', { name: '打开侧栏' }).click()
     // 入口在图标栏底部，抽屉里带文字标签
-    const entry = page.locator('.app-rail').getByRole('button', { name: '设置', exact: true })
+    const entry = page.locator('.sidebar-footer').getByRole('button', { name: '设置', exact: true })
     await entry.click()
     const dialog = page.getByRole('dialog', { name: '设置', exact: true })
     await expect(dialog.getByRole('tab', { name: '外观' })).toHaveAttribute('aria-selected', 'true')

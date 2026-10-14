@@ -30,24 +30,26 @@ function submit(event?: Event) {
     并且相对侧栏而不是视口定位。
   -->
   <Teleport to="body">
-    <div v-if="open" class="dialog-mask" @click.self="$emit('close')">
-      <div ref="panel" class="dialog" role="dialog" aria-modal="true" :aria-label="title">
-        <p class="dialog-title">{{ title }}</p>
+    <Transition name="dialog">
+      <div v-if="open" class="dialog-mask" @click.self="$emit('close')">
+        <div ref="panel" class="dialog" role="dialog" aria-modal="true" :aria-label="title">
+          <p class="dialog-title">{{ title }}</p>
 
-        <input
-          v-model="value"
-          class="dialog-input"
-          type="text"
-          aria-label="分组名称"
-          placeholder="分组名称"
-          @keydown.enter="submit"
-        />
+          <input
+            v-model="value"
+            class="dialog-input"
+            type="text"
+            aria-label="分组名称"
+            placeholder="分组名称"
+            @keydown.enter="submit"
+          />
 
-        <div class="dialog-footer">
-          <button class="dialog-btn cancel" @click="$emit('close')">取消</button>
-          <button class="dialog-btn ok" :disabled="!value.trim()" @click="submit">确定</button>
+          <div class="dialog-footer">
+            <button class="dialog-btn cancel" @click="$emit('close')">取消</button>
+            <button class="dialog-btn ok" :disabled="!value.trim()" @click="submit">确定</button>
+          </div>
         </div>
       </div>
-    </div>
+    </Transition>
   </Teleport>
 </template>

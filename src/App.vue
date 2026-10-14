@@ -15,6 +15,7 @@ import { backToList, initNavigation, isMobile, openOverlay, pushNav } from './na
 import { useNotesStore } from './stores/notes'
 import { useUiStore } from './stores/ui'
 import { retrySyncNow } from './sync/engine'
+import { workspacePreferences as preferences } from './workspace-preferences'
 
 const notes = useNotesStore()
 const ui = useUiStore()
@@ -151,14 +152,14 @@ onUnmounted(() => {
 <template>
   <TokenGate v-if="!hasToken" />
 
-  <div v-else class="layout" :class="{ 'is-focused': ui.focusMode, 'is-library-list': ui.view === 'knowledge-bases' && !ui.activeKnowledgeBaseId }" :data-mobile-pane="ui.mobilePane" :data-view="ui.view" :inert="ui.overlay !== null">
+  <div v-else class="layout" :class="{ 'is-focused': ui.focusMode, 'is-sidebar-collapsed': preferences.sidebarCollapsed, 'is-library-list': ui.view === 'knowledge-bases' && !ui.activeKnowledgeBaseId }" :data-mobile-pane="ui.mobilePane" :data-view="ui.view" :inert="ui.overlay !== null">
     <!-- 窄屏将分组导航收进抽屉，搜索仍留在笔记列表上方。 -->
     <aside class="sidebar-pane" :class="{ 'is-open': ui.drawerOpen }" :inert="compact && !ui.drawerOpen">
       <GroupSidebar />
     </aside>
-    <div v-if="ui.drawerOpen" class="drawer-mask" @click="ui.drawerOpen = false"></div>
+    <Transition name="veil"><div v-if="ui.drawerOpen" class="drawer-mask" @click="ui.drawerOpen = false"></div></Transition>
 
-    <section class="list-pane" aria-label="便签目录" :inert="compact && ui.drawerOpen">
+    <section class="list-pane" :aria-label="ui.view === 'knowledge-bases' ? '知识库工作区' : '便签目录'" :inert="compact && ui.drawerOpen">
       <MetricsView v-if="ui.view === 'metrics'" />
       <TrashView v-else-if="ui.view === 'trash'" />
       <KnowledgeBaseWorkspace v-else-if="ui.view === 'knowledge-bases'" />

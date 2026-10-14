@@ -52,20 +52,22 @@ const rows = computed(() => {
 
 <template>
   <Teleport to="body">
-    <div v-if="open" class="dialog-mask" @click.self="emit('close')">
-      <div ref="panel" class="dialog info-dialog" role="dialog" aria-modal="true" aria-label="文档信息">
-        <h3 class="dialog-title">文档信息</h3>
-        <ul class="info-list">
-          <li v-for="r in rows" :key="r.label">
-            <span class="info-label">{{ r.label }}</span>
-            <span class="info-value">{{ r.value }}</span>
-            <span v-if="r.sub" class="info-sub">{{ r.sub }}</span>
-          </li>
-        </ul>
-        <div class="dialog-footer">
-          <button class="dialog-btn ok" @click="emit('close')">关闭</button>
+    <Transition name="dialog">
+      <div v-if="open" class="dialog-mask" @click.self="emit('close')">
+        <div ref="panel" class="dialog info-dialog" role="dialog" aria-modal="true" aria-label="文档信息">
+          <h3 class="dialog-title">文档信息</h3>
+          <ul class="info-list">
+            <li v-for="r in rows" :key="r.label">
+              <span class="info-label">{{ r.label }}</span>
+              <span class="info-value">{{ r.value }}</span>
+              <span v-if="r.sub" class="info-sub">{{ r.sub }}</span>
+            </li>
+          </ul>
+          <div class="dialog-footer">
+            <button class="dialog-btn ok" @click="emit('close')">关闭</button>
+          </div>
         </div>
       </div>
-    </div>
+    </Transition>
   </Teleport>
 </template>

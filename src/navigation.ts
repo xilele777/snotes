@@ -3,6 +3,7 @@ import { useUiStore } from './stores/ui'
 import type { Overlay, SettingsTab, UiView, WorkspacePosition } from './stores/ui'
 import type { ListView } from './db/repo'
 import { getNote, isNoteHiddenFromHome } from './db/repo'
+import { nextTick } from 'vue'
 
 /**
  * Bug 2 手机端返回：用 History API 撑起一层轻量 in-app 导航栈，不引 vue-router。
@@ -29,6 +30,7 @@ function snapshot(): NavSnapshot {
     view: ui.view,
     activeGroupId: ui.activeGroupId,
     activeKnowledgeBaseId: ui.activeKnowledgeBaseId,
+    knowledgeBaseFilter: ui.knowledgeBaseFilter,
     activeTocNodeId: ui.activeTocNodeId,
     collapsedKnowledgeBaseNodes: [...ui.collapsedKnowledgeBaseNodes],
     knowledgeBaseScroll: document.querySelector('.knowledge-base-tree')?.scrollTop ?? 0,
@@ -39,7 +41,7 @@ function snapshot(): NavSnapshot {
     scroll: {
       list: document.querySelector('.note-list')?.scrollTop ?? 0,
       editor: document.querySelector('.editor-body')?.scrollTop ?? 0,
-      groups: document.querySelector('.groups')?.scrollTop ?? 0,
+      groups: document.querySelector('.sidebar-scroll, .groups')?.scrollTop ?? 0,
     },
   }
 }
@@ -57,11 +59,14 @@ export async function switchListView(view: ListView, groupId: string | null = nu
   }
   if (isNotesView(ui.view)) ui.lastNotesPosition = snapshot()
   pushNav()
-  if (ui.view === 'trash' || view === 'trash') ui.query = ''
+  if (ui.view === 'trash' || view === 'trash' || ui.view === 'knowledge-bases') ui.query = ''
   ui.restorePosition = null
   ui.view = view
   ui.activeGroupId = groupId
+  ui.activeKnowledgeBaseId = null
+  ui.activeTocNodeId = null
   ui.drawerOpen = false
+  if (isMobile()) { useNotesStore().currentId = null; ui.mobilePane = 'list' }
   await useNotesStore().load()
 }
 
@@ -84,19 +89,48 @@ export async function showNotes() {
 
 export async function showKnowledgeBases(id: string | null = null) {
   const ui = useUiStore()
-  if (ui.view === 'knowledge-bases' && ui.activeKnowledgeBaseId === id) { ui.drawerOpen = false; return }
+  if (ui.view === 'knowledge-bases' && ui.activeKnowledgeBaseId === id && ui.knowledgeBaseFilter === 'active') { ui.drawerOpen = false; return }
   if (isNotesView(ui.view)) ui.lastNotesPosition = snapshot()
   pushNav()
   ui.focusMode = false
   ui.readingMode = false
   ui.view = 'knowledge-bases'
   ui.activeKnowledgeBaseId = id
+  ui.activeGroupId = null
+  ui.knowledgeBaseFilter = 'active'
   ui.activeTocNodeId = null
   ui.query = ''
   ui.drawerOpen = false
   ui.restorePosition = null
   useNotesStore().currentId = null
+  ui.mobilePane = 'list'
   await useNotesStore().load()
+}
+
+/** A management link replaces the settings layer so Back returns to its original workspace. */
+export async function openManagedView(target: 'hidden' | 'trash' | 'removed-knowledge-bases') {
+  const ui = useUiStore()
+  const notes = useNotesStore()
+  if (!ui.overlay) pushNav()
+  ui.overlay = null
+  ui.focusMode = false
+  ui.readingMode = false
+  ui.drawerOpen = false
+  ui.restorePosition = null
+  ui.query = ''
+  ui.activeGroupId = null
+  ui.activeKnowledgeBaseId = null
+  ui.activeTocNodeId = null
+  ui.knowledgeBaseFilter = target === 'removed-knowledge-bases' ? 'removed' : 'active'
+  ui.view = target === 'removed-knowledge-bases' ? 'knowledge-bases' : target
+  notes.currentId = null
+  ui.mobilePane = 'list'
+  await notes.load()
+  if (!ui.overlay && ui.view === (target === 'removed-knowledge-bases' ? 'knowledge-bases' : target)) {
+    history.replaceState(snapshot(), '')
+    await nextTick()
+    document.querySelector<HTMLElement>('.list-pane .header-title, .kb-header h2')?.focus({ preventScroll: true })
+  }
 }
 
 /**
@@ -202,6 +236,7 @@ function restore(s: NavSnapshot) {
   ui.view = s.view
   ui.activeGroupId = s.activeGroupId
   ui.activeKnowledgeBaseId = s.activeKnowledgeBaseId ?? null
+  ui.knowledgeBaseFilter = s.knowledgeBaseFilter ?? 'active'
   ui.activeTocNodeId = s.activeTocNodeId ?? null
   ui.collapsedKnowledgeBaseNodes = s.collapsedKnowledgeBaseNodes ?? []
   ui.query = s.query ?? ''

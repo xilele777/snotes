@@ -9,6 +9,7 @@ import { useUiStore } from './ui'
 import { matchesAll, splitTerms } from '../components/SearchBar'
 import { db } from '../db/schema'
 import { addKnowledgeBaseNode } from '../db/knowledge-base-repo'
+import { workspacePreferences } from '../workspace-preferences'
 
 export const useNotesStore = defineStore('notes', () => {
   const ui = useUiStore()
@@ -72,8 +73,11 @@ export const useNotesStore = defineStore('notes', () => {
    * 全部关键词都落在标题里的排最前，其余按更新时间倒序。
    */
   const visible = computed(() => {
+    const sort = workspacePreferences.value.noteSort
+    const compare = (a: LocalNote, b: LocalNote) => b.top - a.top ||
+      (sort === 'title' ? (a.title || '无标题').localeCompare(b.title || '无标题', 'zh-CN') : sort === 'created' ? b.create_time - a.create_time : b.update_time - a.update_time) || a.id.localeCompare(b.id)
     const terms = splitTerms(ui.query)
-    if (terms.length === 0) return notes.value
+    if (terms.length === 0) return ui.view === 'trash' || ui.view === 'knowledge-bases' ? notes.value : [...notes.value].sort(compare)
 
     const scored = notes.value
       .map((note) => {
@@ -85,7 +89,7 @@ ${note.body}`, terms)
       .filter((x) => x.rank >= 0)
 
     return scored
-      .sort((a, b) => a.rank - b.rank || b.note.update_time - a.note.update_time)
+      .sort((a, b) => a.rank - b.rank || compare(a.note, b.note))
       .map((x) => x.note)
   })
 
@@ -122,14 +126,14 @@ ${note.body}`, terms)
     return null
   }
 
-  async function create() {
+  async function create(options?: { knowledgeBaseParentId?: string | null }) {
     const groupId = createGroupId()
     const note = await repo.createNote('', groupId ? { group_id: groupId } : {})
     if (ui.view === 'knowledge-bases' && ui.activeKnowledgeBaseId) {
-      const toc = await db.knowledgeBaseTocs.get(ui.activeKnowledgeBaseId)
-      const selected = toc?.nodes.find(n => n.id === ui.activeTocNodeId)
-      const parent = selected?.kind === 'folder' ? selected.id : selected?.parent_id ?? null
+      // Creation location comes from the action, never from the row being browsed.
+      const parent = options?.knowledgeBaseParentId ?? null
       ui.activeTocNodeId = await addKnowledgeBaseNode(ui.activeKnowledgeBaseId, { kind: 'note', note_id: note.id, title: null }, parent)
+      ui.collapsedKnowledgeBaseNodes = ui.collapsedKnowledgeBaseNodes.filter(id => id !== parent)
       if (isMobile()) pushNav()
       ui.query = ''
       await load()

@@ -1,0 +1,38 @@
+/* Shared timing for navigation, fields and overlays. Editor content stays still. */
+:root {
+  --motion-fast: 140ms;
+  --motion-normal: 200ms;
+  --motion-ease: cubic-bezier(.2, .7, .2, 1);
+}
+button, .views li, .groups li, .kb-tree-row {
+  transition: background-color var(--motion-fast) ease, color var(--motion-fast) ease, border-color var(--motion-fast) ease;
+}
+.dialog-input, .token-card input, .note-search, .kb-search {
+  transition: border-color var(--motion-fast) ease, box-shadow var(--motion-fast) ease, background-color var(--motion-fast) ease;
+}
+.kb-card { transition: border-color var(--motion-fast) ease, box-shadow var(--motion-fast) ease; }
+.section-toggle .app-icon, .kb-node-link .app-icon, .sort-chevron, .kb-mobile-overview summary .app-icon { transition: transform var(--motion-normal) var(--motion-ease); }
+.library-pin, .kb-node-menu, .group-menu-btn { transition: opacity var(--motion-fast) ease, background-color var(--motion-fast) ease; }
+
+.dialog-enter-active, .dialog-leave-active, .veil-enter-active, .veil-leave-active { transition: opacity var(--motion-normal) ease; }
+.dialog-enter-active > .dialog, .dialog-leave-active > .dialog { transition: transform var(--motion-normal) var(--motion-ease); }
+.dialog-enter-from, .dialog-leave-to, .veil-enter-from, .veil-leave-to { opacity: 0; }
+.dialog-enter-from > .dialog, .dialog-leave-to > .dialog { transform: translateY(8px) scale(.99); }
+.dialog-leave-active, .menu-leave-active, .veil-leave-active { pointer-events: none; }
+.dialog-leave-active, .dialog-leave-active > .dialog, .veil-leave-active { transition-duration: var(--motion-fast); }
+.menu-enter-active, .menu-leave-active { transition: opacity var(--motion-fast) ease, transform var(--motion-fast) var(--motion-ease); }
+.menu-enter-from, .menu-leave-to { opacity: 0; transform: translateY(-3px); }
+.toast-enter-active, .toast-leave-active { transition: opacity var(--motion-normal) ease, transform var(--motion-normal) var(--motion-ease); }
+.toast-enter-from, .toast-leave-to { opacity: 0; transform: translateY(-6px); }
+
+@media (min-width: 1021px) {
+  .layout { transition: grid-template-columns var(--motion-normal) var(--motion-ease); }
+  .layout.is-focused { transition: none; }
+}
+@media (max-width: 1020px) {
+  .sidebar-pane { transition: transform var(--motion-normal) var(--motion-ease), visibility 0s linear var(--motion-normal); }
+  .sidebar-pane.is-open { transition-delay: 0s; }
+}
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { transition: none !important; animation: none !important; scroll-behavior: auto !important; }
+}

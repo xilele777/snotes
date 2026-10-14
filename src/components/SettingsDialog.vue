@@ -34,7 +34,7 @@ const visible = (element: HTMLElement | null | undefined) =>
 useDialogFocus(() => props.open, panel, closeOverlay, (previous) => {
   // 桌面回到触发它的图标栏按钮或版本号；手机抽屉在打开设置时已经收起，回到可见的入口。
   if (visible(previous)) return previous
-  const candidates = document.querySelectorAll<HTMLElement>('[data-view="settings"].rail-button, .drawer-btn, .back-btn')
+  const candidates = document.querySelectorAll<HTMLElement>('[data-view="settings"].sidebar-tool, .drawer-btn, .back-btn')
   return Array.from(candidates).find(visible) ?? null
 })
 
@@ -61,37 +61,39 @@ function onTabKeydown(event: KeyboardEvent) {
 
 <template>
   <Teleport to="body">
-    <div v-if="open" class="dialog-mask settings-mask" @click.self="closeOverlay">
-      <div ref="panel" class="dialog settings-dialog" role="dialog" aria-modal="true" aria-label="设置">
-        <div class="settings-dialog-header">
-          <h2 class="dialog-title">设置</h2>
-          <button type="button" class="icon-button" aria-label="关闭设置" title="关闭设置" @click="closeOverlay"><AppIcon name="close" :size="20" /></button>
-        </div>
-        <div class="settings-body">
-          <div class="settings-tabs" role="tablist" aria-label="设置分页" @keydown="onTabKeydown">
-            <button
-              v-for="tab in tabs"
-              :id="`settings-tab-${tab.id}`"
-              :key="tab.id"
-              type="button"
-              role="tab"
-              class="settings-tab"
-              :class="{ 'has-update': tab.id === 'about' && hasUpdate }"
-              :data-tab="tab.id"
-              :aria-selected="ui.settingsTab === tab.id"
-              :aria-controls="`settings-pane-${tab.id}`"
-              :tabindex="ui.settingsTab === tab.id ? 0 : -1"
-              :data-autofocus="ui.settingsTab === tab.id ? '' : undefined"
-              @click="selectTab(tab.id)"
-            >
-              <AppIcon :name="tab.icon" :size="16" /><span>{{ tab.label }}</span>
-            </button>
+    <Transition name="dialog">
+      <div v-if="open" class="dialog-mask settings-mask" @click.self="closeOverlay">
+        <div ref="panel" class="dialog settings-dialog" role="dialog" aria-modal="true" aria-label="设置">
+          <div class="settings-dialog-header">
+            <h2 class="dialog-title">设置</h2>
+            <button type="button" class="icon-button" aria-label="关闭设置" title="关闭设置" @click="closeOverlay"><AppIcon name="close" :size="20" /></button>
           </div>
-          <div :id="`settings-pane-${ui.settingsTab}`" class="settings-pane" role="tabpanel" :aria-labelledby="`settings-tab-${ui.settingsTab}`">
-            <component :is="panes[ui.settingsTab]" />
+          <div class="settings-body">
+            <div class="settings-tabs" role="tablist" aria-label="设置分页" @keydown="onTabKeydown">
+              <button
+                v-for="tab in tabs"
+                :id="`settings-tab-${tab.id}`"
+                :key="tab.id"
+                type="button"
+                role="tab"
+                class="settings-tab"
+                :class="{ 'has-update': tab.id === 'about' && hasUpdate }"
+                :data-tab="tab.id"
+                :aria-selected="ui.settingsTab === tab.id"
+                :aria-controls="`settings-pane-${tab.id}`"
+                :tabindex="ui.settingsTab === tab.id ? 0 : -1"
+                :data-autofocus="ui.settingsTab === tab.id ? '' : undefined"
+                @click="selectTab(tab.id)"
+              >
+                <AppIcon :name="tab.icon" :size="16" /><span>{{ tab.label }}</span>
+              </button>
+            </div>
+            <div :id="`settings-pane-${ui.settingsTab}`" class="settings-pane" role="tabpanel" :aria-labelledby="`settings-tab-${ui.settingsTab}`">
+              <component :is="panes[ui.settingsTab]" />
+            </div>
           </div>
         </div>
       </div>
-    </div>
+    </Transition>
   </Teleport>
 </template>

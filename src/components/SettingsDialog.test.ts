@@ -52,7 +52,7 @@ async function mountOpen(tabId: 'appearance' | 'data' | 'shortcuts' | 'about' = 
 }
 
 describe('SettingsDialog 分页壳', () => {
-  it('四个分页按顺序渲染，默认停在外观，当前值处于选中态', async () => {
+  it('四个分页，默认停在外观，当前值处于选中态', async () => {
     const { wrapper } = await mountOpen()
 
     expect(dialog()).not.toBeNull()
@@ -156,6 +156,7 @@ describe('SettingsDialog 数据页', () => {
 
     document.querySelector<HTMLButtonElement>('[data-action="export"]')!.click()
     await vi.waitFor(() => expect(downloadBlob).toHaveBeenCalledTimes(1))
+    expect(buildBackup).toHaveBeenCalledWith(expect.any(Function), 2)
     expect(String(downloadBlob.mock.calls[0]![1])).toMatch(/^snotes-backup-\d{8}\.zip$/)
     await vi.waitFor(() => expect(document.querySelector('.backup-progress')!.textContent).toContain('已导出 3 条笔记、1 个分组、2 张图片'))
     expect(document.querySelector('.backup-progress')!.classList.contains('failed')).toBe(false)

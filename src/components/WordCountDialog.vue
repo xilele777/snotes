@@ -12,27 +12,29 @@ useDialogFocus(() => props.open, panel, () => emit('close'))
 
 <template>
   <Teleport to="body">
-    <div v-if="open" class="dialog-mask" @click.self="emit('close')">
-      <div ref="panel" class="dialog wordcount-dialog" role="dialog" aria-modal="true" aria-label="字数统计">
-        <h3 class="dialog-title">字数统计</h3>
-        <ul class="wordcount-list">
-          <li class="wordcount-item primary">
-            <span class="wordcount-num">{{ count.words }}</span>
-            <span class="wordcount-label">字</span>
-          </li>
-          <li class="wordcount-item">
-            <span class="wordcount-num">{{ count.lines }}</span>
-            <span class="wordcount-label">非空行</span>
-          </li>
-          <li class="wordcount-item">
-            <span class="wordcount-num">{{ count.chars }}</span>
-            <span class="wordcount-label">可见字符</span>
-          </li>
-        </ul>
-        <div class="dialog-footer">
-          <button class="dialog-btn ok" @click="emit('close')">关闭</button>
+    <Transition name="dialog">
+      <div v-if="open" class="dialog-mask" @click.self="emit('close')">
+        <div ref="panel" class="dialog wordcount-dialog" role="dialog" aria-modal="true" aria-label="字数统计">
+          <h3 class="dialog-title">字数统计</h3>
+          <ul class="wordcount-list">
+            <li class="wordcount-item primary">
+              <span class="wordcount-num">{{ count.words }}</span>
+              <span class="wordcount-label">字</span>
+            </li>
+            <li class="wordcount-item">
+              <span class="wordcount-num">{{ count.lines }}</span>
+              <span class="wordcount-label">非空行</span>
+            </li>
+            <li class="wordcount-item">
+              <span class="wordcount-num">{{ count.chars }}</span>
+              <span class="wordcount-label">可见字符</span>
+            </li>
+          </ul>
+          <div class="dialog-footer">
+            <button class="dialog-btn ok" @click="emit('close')">关闭</button>
+          </div>
         </div>
       </div>
-    </div>
+    </Transition>
   </Teleport>
 </template>

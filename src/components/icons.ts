@@ -27,6 +27,7 @@ export const iconPaths = {
   collapse: ['M3 8h5V3M21 8h-5V3M8 21v-5H3M16 21v-5h5'],
   info: ['M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0', 'M12 11v5M12 7h.01'],
   menu: ['M4 6h16M4 12h16M4 18h16'],
+  sidebar: ['M4 4h16v16H4Z', 'M9 4v16'],
   more: ['M5 12h.01M12 12h.01M19 12h.01'],
   keyboard: ['M4 5h16a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2Z', 'M6 9h.01M10 9h.01M14 9h.01M18 9h.01M6 13h.01M10 13h.01M14 13h.01M18 13h.01M8 16h8'],
   sort: ['M4 6h16M4 12h11M4 18h6'],

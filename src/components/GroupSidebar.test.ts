@@ -9,6 +9,7 @@ import { useNotesStore } from '../stores/notes'
 import { useUiStore } from '../stores/ui'
 import GroupSidebar from './GroupSidebar.vue'
 import { updateInfo } from '../update-check'
+import { parseWorkspacePreferences, workspacePreferences } from '../workspace-preferences'
 
 const syncNow = vi.hoisted(() => vi.fn())
 vi.mock('../sync/engine', () => ({ retrySyncNow: syncNow }))
@@ -20,6 +21,7 @@ vi.mock('../update-check', async (importOriginal) => ({
 }))
 
 beforeEach(async () => {
+  workspacePreferences.value = parseWorkspacePreferences(null)
   setActivePinia(createPinia())
   await db.delete()
   await db.open()
@@ -44,13 +46,13 @@ async function typeName(name: string) {
 }
 
 describe('GroupSidebar', () => {
-  it('图标栏底部有「设置」入口，点开走 overlay 并落在外观页；底部不再有备份与设置图标钮', async () => {
+  it('侧栏底部有「设置」入口，点开走 overlay 并落在外观页', async () => {
     const ui = useUiStore()
     ui.drawerOpen = true
     const wrapper = mount(GroupSidebar)
     await wrapper.vm.$nextTick()
 
-    const button = wrapper.find('.app-rail [data-view="settings"]')
+    const button = wrapper.find('.sidebar-footer [data-view="settings"]')
     expect(button.exists()).toBe(true)
     expect(button.text()).toBe('设置')
     expect(button.attributes('aria-haspopup')).toBe('dialog')
@@ -103,7 +105,7 @@ describe('GroupSidebar', () => {
     expect(ui.activeGroupId).toBe(g.group_id)
   })
 
-  it('回收站位于星标下面，切换后保留相同的笔记导航', async () => {
+  it('回收站位于侧栏底部，切换后保留相同导航', async () => {
     const ui = useUiStore()
     const wrapper = mount(GroupSidebar)
     await wrapper.vm.$nextTick()
@@ -112,23 +114,31 @@ describe('GroupSidebar', () => {
 
     expect(ui.view).toBe('trash')
     expect(wrapper.find('.sidebar-content').exists()).toBe(true)
-    // 「已隐藏」是 v0.18 新增的第三个筛选视图，排在星标与回收站之间
-    expect(wrapper.findAll('.views > li').map(item => item.attributes('data-view'))).toEqual(['all', 'star', 'hidden', 'trash'])
-    expect(wrapper.find('.app-rail [data-view="trash"]').exists()).toBe(false)
-    expect(wrapper.get('[data-view="trash"] button').attributes('aria-current')).toBe('page')
+    expect(wrapper.findAll('.sidebar-content > .views > li').map(item => item.attributes('data-view'))).toEqual(['all', 'star', 'hidden', 'knowledge-bases'])
+    expect(wrapper.find('.sidebar-footer [data-view="trash"]').exists()).toBe(true)
+    expect(wrapper.get('[data-view="trash"]').attributes('aria-current')).toBe('page')
     wrapper.unmount()
   })
 
-  it('「已隐藏」入口切到只列不上首页笔记的视图', async () => {
-    const ui = useUiStore()
+  it('侧栏折叠可逆，隐藏笔记可以直接访问', async () => {
     const wrapper = mount(GroupSidebar)
-    await wrapper.vm.$nextTick()
+    await wrapper.get('[data-view="hidden"]').trigger('click')
+    expect(useUiStore().view).toBe('hidden')
+    expect(wrapper.get('[aria-label="已隐藏笔记"]').attributes('aria-current')).toBe('page')
+    await wrapper.get('[aria-label="收起侧栏"]').trigger('click')
+    expect(workspacePreferences.value.sidebarCollapsed).toBe(true)
+    await wrapper.get('[aria-label="展开侧栏"]').trigger('click')
+    expect(workspacePreferences.value.sidebarCollapsed).toBe(false)
+    wrapper.unmount()
+  })
 
-    await wrapper.find('[data-view="hidden"]').trigger('click')
-
-    expect(ui.view).toBe('hidden')
-    expect(ui.activeGroupId).toBeNull()
-    expect(wrapper.get('[data-view="hidden"] button').attributes('aria-current')).toBe('page')
+  it('知识库同步失败也反映在共用云朵入口', async () => {
+    useUiStore().knowledgeBaseSyncError = '目录同步失败'
+    const wrapper = mount(GroupSidebar)
+    expect(wrapper.get('.sync-idle').attributes('title')).toContain('目录同步失败')
+    expect(wrapper.get('.sync-label').text()).toBe('同步待重试')
+    await wrapper.get('.sync-idle').trigger('click')
+    expect(syncNow).toHaveBeenCalledTimes(1)
     wrapper.unmount()
   })
 
@@ -176,14 +186,14 @@ describe('GroupSidebar', () => {
     ui.drawerOpen = true
 
     const wrapper = mount(GroupSidebar)
-    expect(wrapper.find('.sidebar-content').exists()).toBe(view === 'trash')
-    await wrapper.get('.rail-button[aria-label="笔记"]').trigger('click')
+    expect(wrapper.find('.sidebar-content').exists()).toBe(true)
+    await wrapper.get('.brand-home[aria-label="笔记"]').trigger('click')
     await flushPromises()
 
     expect(ui.view).toBe('all')
     expect(ui.activeGroupId).toBeNull()
     expect(ui.drawerOpen).toBe(false)
-    expect(wrapper.get('.rail-button[aria-label="笔记"]').attributes('aria-pressed')).toBe('true')
+    expect(wrapper.get('[data-view="all"] button').attributes('aria-current')).toBe('page')
     expect(wrapper.find('.sidebar-content').exists()).toBe(true)
     wrapper.unmount()
   })
@@ -195,7 +205,7 @@ describe('GroupSidebar', () => {
     ui.drawerOpen = true
     const wrapper = mount(GroupSidebar)
 
-    await wrapper.get('.rail-button[aria-label="笔记"]').trigger('click')
+    await wrapper.get('.brand-home[aria-label="笔记"]').trigger('click')
 
     expect(ui.view).toBe('group')
     expect(ui.activeGroupId).toBe('work')

@@ -1,7 +1,7 @@
 import { createPinia, setActivePinia } from 'pinia'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { db } from './db/schema'
-import { backToList, closeOverlay, initNavigation, isMobile, openDrawer, openOverlay, openStatsNote, popNav, pushNav, showNotes, switchListView } from './navigation'
+import { backToList, closeOverlay, initNavigation, isMobile, openDrawer, openOverlay, openStatsNote, openManagedView, popNav, pushNav, showKnowledgeBases, showNotes, switchListView } from './navigation'
 import { useNotesStore } from './stores/notes'
 import { useUiStore } from './stores/ui'
 import { useGroupsStore } from './stores/groups'
@@ -16,6 +16,54 @@ beforeEach(async () => {
 })
 
 describe('navigation 导航栈', () => {
+  it('隐藏笔记入口替换设置层，返回保留原笔记与搜索', async () => {
+    const ui = useUiStore()
+    const notes = useNotesStore()
+    const note = await notes.create()
+    ui.query = '原来的搜索'
+    initNavigation()
+    const previous = window.history.state
+    openOverlay('settings', 'data')
+    const length = window.history.length
+    await openManagedView('hidden')
+    expect(ui.overlay).toBeNull()
+    expect(ui.view).toBe('hidden')
+    expect(ui.query).toBe('')
+    expect(window.history.length).toBe(length)
+    expect(window.history.state.view).toBe('hidden')
+    window.dispatchEvent(new PopStateEvent('popstate', { state: previous }))
+    expect(ui.view).toBe('all')
+    expect(notes.currentId).toBe(note.id)
+    expect(ui.query).toBe('原来的搜索')
+  })
+
+  it('已移除知识库的导航状态可以恢复，总览入口回到正常知识库', async () => {
+    const ui = useUiStore()
+    initNavigation()
+    await showKnowledgeBases()
+    await openManagedView('removed-knowledge-bases')
+    const removed = window.history.state
+    expect(ui.knowledgeBaseFilter).toBe('removed')
+    await showKnowledgeBases()
+    expect(ui.knowledgeBaseFilter).toBe('active')
+    window.dispatchEvent(new PopStateEvent('popstate', { state: removed }))
+    expect(ui.view).toBe('knowledge-bases')
+    expect(ui.knowledgeBaseFilter).toBe('removed')
+  })
+
+  it('知识库与分组切换时清除另一种目录上下文', async () => {
+    const ui = useUiStore()
+    ui.view = 'group'
+    ui.activeGroupId = 'work'
+    await showKnowledgeBases('book')
+    expect(ui.activeGroupId).toBeNull()
+    ui.query = '库内搜索'
+    ui.activeTocNodeId = 'chapter'
+    await switchListView('all')
+    expect(ui.activeKnowledgeBaseId).toBeNull()
+    expect(ui.activeTocNodeId).toBeNull()
+    expect(ui.query).toBe('')
+  })
   it('initNavigation 把根快照写进 history 顶层', () => {
     initNavigation()
 
@@ -24,6 +72,7 @@ describe('navigation 导航栈', () => {
       view: 'all',
       activeGroupId: null,
       activeKnowledgeBaseId: null,
+      knowledgeBaseFilter: 'active',
       activeTocNodeId: null,
       collapsedKnowledgeBaseNodes: [],
       knowledgeBaseScroll: 0,

@@ -36,13 +36,25 @@ async function openMenu(wrapper: ReturnType<typeof mount>) {
 }
 
 describe('ActionMenu', () => {
+  it('宿主同时清空 anchor 与 open 时仍把焦点还给原触发按钮', async () => {
+    const trigger = document.createElement('button')
+    document.body.append(trigger)
+    const wrapper = mount(ActionMenu, { props: { open: false, anchor: trigger, label: '菜单' }, slots: { default: '<button role="menuitem">编辑</button>' }, attachTo: document.body })
+    await wrapper.setProps({ open: true })
+    await nextTick()
+    expect(document.activeElement?.getAttribute('role')).toBe('menuitem')
+    await wrapper.setProps({ open: false, anchor: null })
+    expect(document.activeElement).toBe(trigger)
+    wrapper.unmount()
+  })
   it('打开后 Teleport 到 body，带 aria-label 与自定义类名，首个条目获得焦点', async () => {
     const wrapper = mount(Host, { attachTo: document.body })
     expect(menu()).toBeNull()
     await openMenu(wrapper)
 
     expect(menu()).not.toBeNull()
-    expect(menu()!.parentElement).toBe(document.body)
+    expect(document.body.contains(menu())).toBe(true)
+    expect(wrapper.element.contains(menu())).toBe(false)
     expect(menu()!.getAttribute('aria-label')).toBe('测试菜单')
     expect(menu()!.classList.contains('action-menu')).toBe(true)
     expect(menu()!.classList.contains('test-menu')).toBe(true)

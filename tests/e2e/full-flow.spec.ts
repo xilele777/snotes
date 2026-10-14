@@ -75,7 +75,7 @@ async function seedNavigationNotes(page: Page) {
   if (page.viewportSize()!.width <= 1020) await page.getByRole('button', { name: '打开侧栏' }).click()
   await page.locator(`.groups [data-group-id="${groupId}"] .group-link`).click()
   await expect(page.locator('.note-item')).toHaveCount(24)
-  await page.getByPlaceholder('搜索笔记').fill('项目')
+  await page.getByRole('searchbox', { name: '搜索笔记', exact: true }).fill('项目')
   return groupId
 }
 
@@ -188,7 +188,7 @@ test('编辑内容后刷新仍在——数据落在本地', async ({ page }) => 
 test('创建分组并按分组筛选', async ({ page }) => {
   await createGroup(page, '工作')
 
-  await expect(page.locator('.groups')).toContainText('工作')
+  await expect(page.locator('#sidebar-groups')).toContainText('工作')
 
   await page.locator('.groups li').first().click()
 
@@ -201,7 +201,7 @@ test('分组弹窗可取消，取消后不建分组', async ({ page }) => {
   await page.locator('.dialog-btn.cancel').click()
 
   await expect(page.locator('.dialog')).toHaveCount(0)
-  await expect(page.locator('.groups li')).toHaveCount(0)
+  await expect(page.locator('#sidebar-groups [data-group-id]')).toHaveCount(0)
 })
 
 test('搜索按标题过滤', async ({ page }) => {
@@ -217,7 +217,7 @@ test('搜索按标题过滤', async ({ page }) => {
 
   await expect(page.locator('.note-item')).toHaveCount(2)
 
-  await page.getByPlaceholder('搜索笔记').fill('苹果')
+  await page.getByRole('searchbox', { name: '搜索笔记', exact: true }).fill('苹果')
 
   await expect(page.locator('.note-item')).toHaveCount(1)
   await expect(page.locator('.note-item').first()).toContainText('苹果')
@@ -239,17 +239,17 @@ test('搜索多个关键词取交集，分组视图搜不到时可跳到全部�
   await expect(page.locator('.note-item').first()).toContainText('周会记录 二')
   await expect(page.locator('.note-item')).toHaveCount(2)
 
-  await page.getByPlaceholder('搜索笔记').fill('周会 预算')
+  await page.getByRole('searchbox', { name: '搜索笔记', exact: true }).fill('周会 预算')
   await expect(page.locator('.note-item')).toHaveCount(1)
   await expect(page.locator('.note-item').first()).toContainText('预算')
 
   await createGroup(page, '空组')
   await page.locator('.groups li').first().click()
-  await page.getByPlaceholder('搜索笔记').fill('周会')
+  await page.getByRole('searchbox', { name: '搜索笔记', exact: true }).fill('周会')
   await expect(page.locator('.empty-state .empty-action')).toHaveText('在全部笔记中搜索')
   await page.locator('.empty-state .empty-action').click()
   await expect(page.locator('.header-title')).toHaveText('全部笔记')
-  await expect(page.getByPlaceholder('搜索笔记')).toHaveValue('周会')
+  await expect(page.getByRole('searchbox', { name: '搜索笔记', exact: true })).toHaveValue('周会')
   await expect(page.locator('.note-item')).toHaveCount(2)
 })
 
@@ -655,7 +655,7 @@ test('统计弹窗保留编辑器、撤销和滚动位置，支持焦点循环�
   await expect(page.getByRole('button', { name: '记录统计', exact: true })).toBeFocused()
   await expect(editor).toHaveAttribute('data-preserved-editor', 'yes')
   await expect(page.locator(`.groups [data-group-id="${groupId}"]`)).toHaveClass(/active/)
-  await expect(page.getByPlaceholder('搜索笔记')).toHaveValue('项目')
+  await expect(page.getByRole('searchbox', { name: '搜索笔记', exact: true })).toHaveValue('项目')
   expect(await page.locator('.note-list').evaluate(el => el.scrollTop)).toBe(610)
   expect(await page.locator('.editor-body').evaluate(el => el.scrollTop)).toBe(880)
   await page.locator('[data-op="undo"]').click()
@@ -676,12 +676,12 @@ test('统计弹窗保留编辑器、撤销和滚动位置，支持焦点循环�
   await dialog.locator('.opened-title').filter({ hasText: /^项目记录 13$/ }).click()
   await expect(dialog).toHaveCount(0)
   await expect(page.locator('.layout')).toHaveAttribute('data-view', 'all')
-  await expect(page.getByPlaceholder('搜索笔记')).toHaveValue('')
+  await expect(page.getByRole('searchbox', { name: '搜索笔记', exact: true })).toHaveValue('')
   await expect(page.locator('.ProseMirror h1')).toHaveText('项目记录 13')
   await page.goBack()
   await expect(page.locator('.layout')).toHaveAttribute('data-view', 'group')
   await expect(page.locator('[data-note-id="navigation-12"]')).toHaveClass(/is-active/)
-  await expect(page.getByPlaceholder('搜索笔记')).toHaveValue('项目')
+  await expect(page.getByRole('searchbox', { name: '搜索笔记', exact: true })).toHaveValue('项目')
 })
 
 test('回收站预览与正文对齐，返回后恢复分组、搜索和阅读位置', async ({ page }) => {
@@ -699,7 +699,7 @@ test('回收站预览与正文对齐，返回后恢复分组、搜索和阅读�
   await expect(page.locator('.sidebar-content')).toHaveCount(1)
   expect(await page.locator('.list-pane').boundingBox()).toEqual(beforeList)
   expect(await page.locator('.editor-pane').boundingBox()).toEqual(before)
-  await expect(page.getByPlaceholder('搜索笔记')).toHaveValue('')
+  await expect(page.getByRole('searchbox', { name: '搜索笔记', exact: true })).toHaveValue('')
   await expect(page.locator('.ProseMirror')).toHaveAttribute('contenteditable', 'false')
 
   await openStatsDialog(page)
@@ -711,7 +711,7 @@ test('回收站预览与正文对齐，返回后恢复分组、搜索和阅读�
 
   await expect(page.locator('.layout')).toHaveAttribute('data-view', 'group')
   await expect(page.locator(`.groups [data-group-id="${groupId}"]`)).toHaveClass(/active/)
-  await expect(page.getByPlaceholder('搜索笔记')).toHaveValue('项目')
+  await expect(page.getByRole('searchbox', { name: '搜索笔记', exact: true })).toHaveValue('项目')
   await expect(page.locator('[data-note-id="navigation-12"]')).toHaveClass(/is-active/)
   await expect(page.locator('.ProseMirror')).toHaveAttribute('contenteditable', 'true')
   expect(await page.locator('.editor-pane').boundingBox()).toEqual(before)
@@ -849,7 +849,7 @@ for (const width of [390, 320]) {
     await page.reload()
     await page.getByRole('button', { name: '打开侧栏' }).click()
     await page.locator(`.groups [data-group-id="${groupId}"] .group-link`).click()
-    await page.getByPlaceholder('搜索笔记').fill('项目')
+    await page.getByRole('searchbox', { name: '搜索笔记', exact: true }).fill('项目')
     await page.locator('.note-list').evaluate(el => { el.scrollTop = 420 })
 
     await openStatsDialog(page)
@@ -875,7 +875,7 @@ for (const width of [390, 320]) {
     await expect(page.locator('.list-pane')).toBeVisible()
     await page.getByRole('button', { name: '打开侧栏' }).click()
     await page.getByRole('button', { name: '笔记', exact: true }).click()
-    await expect(page.getByPlaceholder('搜索笔记')).toHaveValue('项目')
+    await expect(page.getByRole('searchbox', { name: '搜索笔记', exact: true })).toHaveValue('项目')
     await expect(page.locator('.list-pane')).toBeVisible()
     await expect(page.getByRole('button', { name: '打开侧栏' })).toBeFocused()
     await expect.poll(() => page.locator('.note-list').evaluate(el => el.scrollTop)).toBe(420)

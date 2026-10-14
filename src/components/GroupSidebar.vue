@@ -8,6 +8,11 @@ import AppIcon from './AppIcon.vue'
 import ConfirmDialog from './ConfirmDialog.vue'
 import GroupDialog from './GroupDialog.vue'
 import GroupMenu from './GroupMenu.vue'
+import KnowledgeBaseForm from './KnowledgeBaseForm.vue'
+import { createKnowledgeBase } from '../db/knowledge-base-repo'
+import type { KnowledgeBaseMeta } from '../../shared/knowledge-base'
+import { useKnowledgeBasesStore } from '../stores/knowledge-bases'
+import { workspacePreferences as preferences, updateWorkspacePreferences, togglePinnedKnowledgeBase } from '../workspace-preferences'
 import type { Group } from '../../shared/types'
 import { useGroupsStore } from '../stores/groups'
 import { useNotesStore } from '../stores/notes'
@@ -17,20 +22,42 @@ import { useWorkspaceScroll } from './useWorkspaceScroll'
 const groups = useGroupsStore()
 const notes = useNotesStore()
 const ui = useUiStore()
+const libraries = useKnowledgeBasesStore()
 const brandIconUrl = `${import.meta.env.BASE_URL}snotes.svg`
-const inNotes = computed(() => ui.view !== 'metrics' && ui.view !== 'knowledge-bases')
 const groupList = ref<HTMLElement | null>(null)
 useWorkspaceScroll(groupList, 'groups')
+const books = computed(() => libraries.books.filter(b => !b.invalid).sort((a, b) =>
+  Number(preferences.value.pinnedKnowledgeBaseIds.includes(b.id)) - Number(preferences.value.pinnedKnowledgeBaseIds.includes(a.id)) || a.ord - b.ord || a.name.localeCompare(b.name, 'zh-CN')))
+const bookFormOpen = ref(false)
+const bookBusy = ref(false)
+const bookError = ref('')
+let catalog: ReturnType<typeof libraries.subscribeCatalog> | undefined
+onMounted(() => { catalog = libraries.subscribeCatalog() })
+onUnmounted(() => catalog?.unsubscribe())
+function newBook() { bookError.value = ''; bookFormOpen.value = true }
+async function saveBook(meta: KnowledgeBaseMeta) {
+  if (bookBusy.value) return
+  bookBusy.value = true
+  bookError.value = ''
+  try {
+    const book = await createKnowledgeBase({ ...meta, ord: libraries.books.length })
+    updateWorkspacePreferences({ librariesCollapsed: false })
+    bookFormOpen.value = false
+    await showKnowledgeBases(book.id)
+  } catch (e) { bookError.value = e instanceof Error ? e.message : String(e) }
+  finally { bookBusy.value = false }
+}
 
-/** 更新提示点挂在图标栏「设置」上；版本号本身在设置的「关于」页里看 */
+/** 更新提示点挂在侧栏「设置」上；版本号在设置的「关于」页里看。 */
 const hasUpdate = computed(() => updateInfo.value?.hasUpdate === true)
 const latestLabel = computed(() => (updateInfo.value ? `v${updateInfo.value.latest}` : null))
 const settingsOpen = computed(() => ui.overlay === 'settings')
 const statsOpen = computed(() => ui.overlay === 'stats')
+const syncError = computed(() => ui.lastSyncError || ui.knowledgeBaseSyncError)
 
 const syncTitle = computed(() => {
   if (ui.syncing) return '正在同步…'
-  if (ui.lastSyncError) return `同步失败：${ui.lastSyncError}，点击重试`
+  if (syncError.value) return `同步失败：${syncError.value}，点击重试`
   if (ui.failedCount > 0) return `${ui.failedCount} 条改动未推送，点击同步`
   return '立即同步'
 })
@@ -49,7 +76,7 @@ onUnmounted(() => {
 const syncLabel = computed(() => {
   if (!online.value) return '离线可用'
   if (ui.syncing) return '正在同步'
-  if (ui.failedCount > 0 || ui.lastSyncError) return '同步待重试'
+  if (ui.failedCount > 0 || syncError.value) return '同步待重试'
   return '自动同步'
 })
 
@@ -154,72 +181,45 @@ watch(() => ui.drawerOpen, (open) => { if (!open) menuGroup.value = null })
 </script>
 
 <template>
-  <nav class="group-sidebar" :class="{ 'rail-only': !inNotes }" aria-label="便签导航">
-    <div class="app-rail">
-      <img class="brand-mark" :src="brandIconUrl" alt="" width="30" height="30" />
-      <button v-if="!inNotes" class="sidebar-close rail-close icon-button" aria-label="关闭侧栏" title="关闭侧栏" @click="ui.drawerOpen = false"><AppIcon name="close" /></button>
-      <button class="rail-button" type="button" :class="{ active: inNotes }" :aria-pressed="inNotes" title="笔记" aria-label="笔记" @click="showNotes">
-        <AppIcon name="notes" :size="20" /><span class="rail-label">笔记</span>
-      </button>
-      <button class="rail-button" type="button" data-view="knowledge-bases" :class="{ active: ui.view === 'knowledge-bases' }" :aria-pressed="ui.view === 'knowledge-bases'" title="知识库" aria-label="知识库" @click="showKnowledgeBases()"><AppIcon name="book" :size="20" /><span class="rail-label">知识库</span></button>
-      <button class="rail-button" type="button" data-view="stats" :class="{ active: statsOpen }" aria-haspopup="dialog" :aria-expanded="statsOpen" title="记录统计" aria-label="记录统计" @click="openOverlay('stats')">
-        <AppIcon name="chart" :size="20" /><span class="rail-label">统计</span>
-      </button>
-      <!-- 应用级入口放在栏底：与「统计」同级，不混进上面的笔记筛选项；抽屉里带文字标签 -->
-      <button
-        class="rail-button rail-settings"
-        type="button"
-        data-view="settings"
-        :class="{ active: settingsOpen, 'has-update': hasUpdate }"
-        aria-haspopup="dialog"
-        :aria-expanded="settingsOpen"
-        :title="hasUpdate ? `设置（有新版本 ${latestLabel} 可用）` : '设置'"
-        aria-label="设置"
-        @click="openOverlay('settings')"
-      >
-        <AppIcon name="sliders" :size="20" /><span class="rail-label">设置</span>
-      </button>
-    </div>
-
-    <div v-if="inNotes" class="sidebar-content">
+  <nav class="group-sidebar" aria-label="便签导航">
+    <div class="sidebar-content">
       <div class="sidebar-brand">
-        <span class="brand-name">snotes</span>
+        <button class="brand-home" aria-label="笔记" title="回到上次的笔记位置" @click="showNotes"><img class="brand-mark" :src="brandIconUrl" alt="" width="26" height="26" /><span class="brand-name">snotes</span></button>
+        <button class="sidebar-toggle icon-button" :aria-label="preferences.sidebarCollapsed ? '展开侧栏' : '收起侧栏'" :title="preferences.sidebarCollapsed ? '展开侧栏' : '收起侧栏'" :aria-expanded="!preferences.sidebarCollapsed" @click="updateWorkspacePreferences({ sidebarCollapsed: !preferences.sidebarCollapsed })"><AppIcon name="sidebar" :size="18" /></button>
         <button class="sidebar-close icon-button" aria-label="关闭侧栏" title="关闭侧栏" @click="ui.drawerOpen = false"><AppIcon name="close" /></button>
       </div>
 
       <ul class="views">
         <li data-view="all" :class="{ active: ui.view === 'all' }" @click="switchListView('all')">
-          <button type="button" :aria-current="ui.view === 'all' ? 'page' : undefined"><AppIcon name="notes" /><span>全部笔记</span><span v-if="ui.view === 'all' && !notes.stale" class="nav-count">{{ notes.notes.length }}</span></button>
+          <button type="button" aria-label="全部笔记" title="全部笔记" :aria-current="ui.view === 'all' ? 'page' : undefined"><AppIcon name="notes" /><span>全部笔记</span><span v-if="ui.view === 'all' && !notes.stale" class="nav-count">{{ notes.notes.length }}</span></button>
         </li>
         <li data-view="star" :class="{ active: ui.view === 'star' }" @click="switchListView('star')">
-          <button type="button" :aria-current="ui.view === 'star' ? 'page' : undefined"><AppIcon name="star" /><span>星标笔记</span></button>
+          <button type="button" aria-label="星标笔记" title="星标笔记" :aria-current="ui.view === 'star' ? 'page' : undefined"><AppIcon name="star" /><span>星标笔记</span></button>
         </li>
-        <!-- 不上首页的笔记集中在这里：分组级与笔记级设置都汇总到这一个入口，
-             保证「隐藏」过的笔记永远找得回来 -->
         <li data-view="hidden" :class="{ active: ui.view === 'hidden' }" @click="switchListView('hidden')">
-          <button type="button" title="不上首页信息流的笔记" :aria-current="ui.view === 'hidden' ? 'page' : undefined"><AppIcon name="eyeOff" /><span>已隐藏</span></button>
+          <button type="button" aria-label="已隐藏笔记" title="已隐藏笔记" :aria-current="ui.view === 'hidden' ? 'page' : undefined"><AppIcon name="eyeOff" /><span>已隐藏笔记</span></button>
         </li>
-        <li data-view="trash" :class="{ active: ui.view === 'trash' }" @click="switchListView('trash')">
-          <button type="button" :aria-current="ui.view === 'trash' ? 'page' : undefined"><AppIcon name="trash" /><span>回收站</span></button>
+        <li data-view="knowledge-bases" :class="{ active: ui.view === 'knowledge-bases' && !ui.activeKnowledgeBaseId && ui.knowledgeBaseFilter === 'active' }" @click="showKnowledgeBases()">
+          <button type="button" aria-label="知识库" title="知识库" :aria-current="ui.view === 'knowledge-bases' && !ui.activeKnowledgeBaseId && ui.knowledgeBaseFilter === 'active' ? 'page' : undefined"><AppIcon name="book" /><span>知识库</span><span v-if="books.length" class="nav-count">{{ books.length }}</span></button>
         </li>
       </ul>
-
+      <div ref="groupList" class="sidebar-scroll">
       <div class="group-header">
-        <span>分组</span>
+        <button class="section-toggle" :aria-expanded="!preferences.groupsCollapsed" aria-controls="sidebar-groups" :aria-label="preferences.groupsCollapsed ? '展开分组' : '折叠分组'" @click="updateWorkspacePreferences({ groupsCollapsed: !preferences.groupsCollapsed })"><AppIcon name="chevron" :size="12" :class="{ expanded: !preferences.groupsCollapsed }" /><span>分组</span><span class="section-count">{{ groups.groups.length }}</span></button>
         <button class="group-add" title="新建分组" aria-label="新建分组" @click="openCreate">
           <AppIcon name="plus" :size="15" />
         </button>
       </div>
 
-      <ul ref="groupList" class="groups">
+      <ul v-show="!preferences.groupsCollapsed" id="sidebar-groups" class="groups">
         <li
           v-for="group in groups.groups"
           :key="group.group_id"
           :data-group-id="group.group_id"
-          :class="{ active: ui.activeGroupId === group.group_id, 'menu-open': menuGroup?.group_id === group.group_id }"
+          :class="{ active: ui.view === 'group' && ui.activeGroupId === group.group_id, 'menu-open': menuGroup?.group_id === group.group_id }"
           @click="switchListView('group', group.group_id)"
         >
-          <button class="group-link" type="button" :aria-current="ui.activeGroupId === group.group_id ? 'page' : undefined">
+          <button class="group-link" type="button" :title="group.name" :aria-current="ui.view === 'group' && ui.activeGroupId === group.group_id ? 'page' : undefined">
             <AppIcon name="folder" :size="16" class="group-icon" :style="group.color ? { color: group.color } : undefined" />
             <span class="group-name">{{ group.name }}</span>
           </button>
@@ -235,14 +235,33 @@ watch(() => ui.drawerOpen, (open) => { if (!open) menuGroup.value = null })
             <AppIcon name="more" :size="16" />
           </button>
         </li>
+        <li v-if="!groups.groups.length" class="sidebar-empty">用分组整理日常记录</li>
       </ul>
+      <div class="group-header">
+        <button class="section-toggle" :aria-expanded="!preferences.librariesCollapsed" aria-controls="sidebar-libraries" :aria-label="preferences.librariesCollapsed ? '展开知识库列表' : '折叠知识库列表'" @click="updateWorkspacePreferences({ librariesCollapsed: !preferences.librariesCollapsed })"><AppIcon name="chevron" :size="12" :class="{ expanded: !preferences.librariesCollapsed }" /><span>我的知识库</span><span class="section-count">{{ books.length }}</span></button>
+        <button class="section-add" title="新建知识库" aria-label="创建知识库" @click="newBook"><AppIcon name="plus" :size="15" /></button>
+      </div>
+      <ul v-show="!preferences.librariesCollapsed" id="sidebar-libraries" class="groups sidebar-libraries">
+        <li v-for="b in books" :key="b.id" :data-library-id="b.id" :class="{ active: ui.view === 'knowledge-bases' && ui.activeKnowledgeBaseId === b.id }">
+          <button class="group-link" :title="b.name" :aria-current="ui.view === 'knowledge-bases' && ui.activeKnowledgeBaseId === b.id ? 'page' : undefined" @click="showKnowledgeBases(b.id)"><span v-if="b.icon" class="library-mark" aria-hidden="true">{{ b.icon }}</span><AppIcon v-else name="book" :size="16" /><span class="group-name">{{ b.name }}</span></button>
+          <button class="library-pin" :class="{ pinned: preferences.pinnedKnowledgeBaseIds.includes(b.id) }" :aria-label="`${preferences.pinnedKnowledgeBaseIds.includes(b.id) ? '取消固定' : '固定'}知识库「${b.name}」`" :aria-pressed="preferences.pinnedKnowledgeBaseIds.includes(b.id)" :title="preferences.pinnedKnowledgeBaseIds.includes(b.id) ? '取消固定' : '固定到前面'" @click="togglePinnedKnowledgeBase(b.id)"><AppIcon name="pin" :size="13" /></button>
+        </li>
+        <li v-if="!books.length" class="sidebar-empty">用知识库串联相关笔记</li>
+      </ul>
+      </div>
+      <div class="sidebar-footer">
+        <div class="sidebar-tools">
+          <button class="sidebar-tool" data-view="trash" :class="{ active: ui.view === 'trash' }" aria-label="回收站" title="回收站" :aria-current="ui.view === 'trash' ? 'page' : undefined" @click="switchListView('trash')"><AppIcon name="trash" :size="16" /><span>回收站</span></button>
+          <button class="sidebar-tool" data-view="stats" :class="{ active: statsOpen }" aria-label="记录统计" title="记录统计" aria-haspopup="dialog" :aria-expanded="statsOpen" @click="openOverlay('stats')"><AppIcon name="chart" :size="16" /><span>记录统计</span></button>
+          <button class="sidebar-tool" data-view="settings" :class="{ active: settingsOpen, 'has-update': hasUpdate }" aria-label="设置" aria-haspopup="dialog" :aria-expanded="settingsOpen" :title="hasUpdate ? `设置（有新版本 ${latestLabel} 可用）` : '设置'" @click="openOverlay('settings')"><AppIcon name="sliders" :size="16" /><span>设置</span></button>
+        </div>
 
-      <!-- 底部只留同步状态与版本号；导出导入、外观等都进了图标栏的「设置」 -->
+      <!-- 同步状态在所有工作区保持可见。 -->
       <div class="user-area">
         <button
           type="button"
           class="sync-idle"
-          :class="{ 'has-failed': ui.failedCount > 0 || ui.lastSyncError, 'is-syncing': ui.syncing }"
+          :class="{ 'has-failed': ui.failedCount > 0 || syncError, 'is-syncing': ui.syncing }"
           :title="syncTitle"
           :aria-label="syncTitle"
           :aria-busy="ui.syncing"
@@ -259,7 +278,10 @@ watch(() => ui.drawerOpen, (open) => { if (!open) menuGroup.value = null })
         </button>
 
       </div>
+      </div>
     </div>
+
+    <KnowledgeBaseForm :open="bookFormOpen" :busy="bookBusy" :error="bookError" @save="saveBook" @close="bookFormOpen = false" />
 
     <GroupDialog
       :open="dialogOpen"

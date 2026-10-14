@@ -21,6 +21,7 @@ export interface WorkspacePosition {
   activeTocNodeId?: string | null
   collapsedKnowledgeBaseNodes?: string[]
   knowledgeBaseScroll?: number
+  knowledgeBaseFilter?: 'active' | 'removed'
   currentId: string | null
   query: string
   mobilePane: MobilePane
@@ -44,6 +45,7 @@ export const useUiStore = defineStore('ui', () => {
   const view = ref<UiView>('all')
   const activeGroupId = ref<string | null>(null)
   const activeKnowledgeBaseId = ref<string | null>(null)
+  const knowledgeBaseFilter = ref<'active' | 'removed'>('active')
   const activeTocNodeId = ref<string | null>(null)
   const collapsedKnowledgeBaseNodes = ref<string[]>([])
   const knowledgeBaseSyncError = ref<string | null>(null)
@@ -82,5 +84,5 @@ export const useUiStore = defineStore('ui', () => {
   const lastNotesPosition = ref<WorkspacePosition | null>(null)
   const restorePosition = ref<WorkspacePosition | null>(null)
 
-  return { view, activeGroupId, activeKnowledgeBaseId, activeTocNodeId, collapsedKnowledgeBaseNodes, knowledgeBaseSyncError, query, syncing, lastSyncError, failedCount, drawerOpen, mobilePane, focusMode, readingMode, overlay, settingsTab, trashRequest, readingRequest, trashRetentionDays, lastNotesPosition, restorePosition }
+  return { view, activeGroupId, activeKnowledgeBaseId, knowledgeBaseFilter, activeTocNodeId, collapsedKnowledgeBaseNodes, knowledgeBaseSyncError, query, syncing, lastSyncError, failedCount, drawerOpen, mobilePane, focusMode, readingMode, overlay, settingsTab, trashRequest, readingRequest, trashRetentionDays, lastNotesPosition, restorePosition }
 })

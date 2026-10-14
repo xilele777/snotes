@@ -21,16 +21,18 @@ useDialogFocus(() => props.open, panel, () => emit('cancel'))
 </script>
 
 <template>
-  <div v-if="open" class="dialog-mask" @click.self="emit('cancel')">
-    <div ref="panel" class="dialog confirm-dialog" role="alertdialog" aria-modal="true" :aria-label="title">
-      <h3 class="dialog-title">{{ title }}</h3>
-      <p v-if="message" class="confirm-message">{{ message }}</p>
-      <div class="dialog-footer">
-        <button class="dialog-btn cancel" data-op="cancel" data-autofocus @click="emit('cancel')">取消</button>
-        <button class="dialog-btn ok" data-op="confirm" @click="emit('confirm')">
-          {{ confirmText }}
-        </button>
+  <Transition name="dialog">
+    <div v-if="open" class="dialog-mask" @click.self="emit('cancel')">
+      <div ref="panel" class="dialog confirm-dialog" role="alertdialog" aria-modal="true" :aria-label="title">
+        <h3 class="dialog-title">{{ title }}</h3>
+        <p v-if="message" class="confirm-message">{{ message }}</p>
+        <div class="dialog-footer">
+          <button class="dialog-btn cancel" data-op="cancel" data-autofocus @click="emit('cancel')">取消</button>
+          <button class="dialog-btn ok" data-op="confirm" @click="emit('confirm')">
+            {{ confirmText }}
+          </button>
+        </div>
       </div>
     </div>
-  </div>
+  </Transition>
 </template>

@@ -14,6 +14,13 @@ export const useKnowledgeBasesStore = defineStore('knowledge-bases', () => {
   const noteStates = ref<KnowledgeBaseNoteState[]>([])
   const histories = ref<KnowledgeBaseHistory[]>([])
   const error = ref<string | null>(null)
+  // The persistent sidebar only needs metadata; do not load note bodies/history there.
+  function subscribeCatalog() {
+    return liveQuery(() => db.knowledgeBases.toArray()).subscribe({
+      next(data) { books.value = data },
+      error(e) { error.value = e instanceof Error ? e.message : String(e) },
+    })
+  }
   function subscribe() {
     return liveQuery(async () => {
       const [books, tocs, tasks, noteStates, histories] = await Promise.all([
@@ -25,5 +32,5 @@ export const useKnowledgeBasesStore = defineStore('knowledge-bases', () => {
     }).subscribe({ next(data) { books.value = data.books; tocs.value = data.tocs; tasks.value = data.tasks; notes.value = data.notes; noteStates.value = data.noteStates; histories.value = data.histories; error.value = null },
       error(e) { error.value = e instanceof Error ? e.message : String(e) } })
   }
-  return { books, tocs, tasks, notes, noteStates, histories, error, subscribe }
+  return { books, tocs, tasks, notes, noteStates, histories, error, subscribe, subscribeCatalog }
 })

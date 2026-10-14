@@ -59,29 +59,31 @@ const sourceLabel = (entry: MergedHistoryEntry) => entry.sources.map((s) => (s =
 
 <template>
   <Teleport to="body">
-    <div v-if="open" class="dialog-mask" @click.self="emit('close')">
-      <div ref="panel" class="dialog history-dialog" role="dialog" aria-modal="true" aria-label="历史版本">
-        <h3 class="dialog-title">历史版本<span v-if="history.length" class="history-count">{{ history.length }} 条</span></h3>
-        <p v-if="loadingCloud" class="history-hint">正在读取云端…</p>
-        <section class="history" aria-label="历史版本列表">
-          <p v-if="history.length === 0" class="history-empty">暂无历史版本。</p>
-          <ul v-else class="history-list">
-            <li v-for="entry in history" :key="entry.key" class="history-item" :class="{ open: previewId === entry.key }" :data-sources="entry.sources.join(' ')">
-              <div class="history-row">
-                <span class="history-time" :title="fmtFull(entry.time)">{{ fmtRelative(entry.time) }}</span>
-                <span class="history-source">{{ sourceLabel(entry) }}</span>
-                <span class="history-words">{{ words(entry.body) }} 字</span>
-                <button class="history-btn" type="button" :aria-expanded="previewId === entry.key" @click="togglePreview(entry.key)">{{ previewId === entry.key ? '收起' : '预览' }}</button>
-                <button v-if="!readonly" class="history-btn restore" type="button" data-op="restore" @click="emit('restore', entry.body)">恢复</button>
-              </div>
-              <pre v-if="previewId === entry.key" class="history-preview">{{ entry.body }}</pre>
-            </li>
-          </ul>
-        </section>
-        <div class="dialog-footer">
-          <button class="dialog-btn ok" @click="emit('close')">关闭</button>
+    <Transition name="dialog">
+      <div v-if="open" class="dialog-mask" @click.self="emit('close')">
+        <div ref="panel" class="dialog history-dialog" role="dialog" aria-modal="true" aria-label="历史版本">
+          <h3 class="dialog-title">历史版本<span v-if="history.length" class="history-count">{{ history.length }} 条</span></h3>
+          <p v-if="loadingCloud" class="history-hint">正在读取云端…</p>
+          <section class="history" aria-label="历史版本列表">
+            <p v-if="history.length === 0" class="history-empty">暂无历史版本。</p>
+            <ul v-else class="history-list">
+              <li v-for="entry in history" :key="entry.key" class="history-item" :class="{ open: previewId === entry.key }" :data-sources="entry.sources.join(' ')">
+                <div class="history-row">
+                  <span class="history-time" :title="fmtFull(entry.time)">{{ fmtRelative(entry.time) }}</span>
+                  <span class="history-source">{{ sourceLabel(entry) }}</span>
+                  <span class="history-words">{{ words(entry.body) }} 字</span>
+                  <button class="history-btn" type="button" :aria-expanded="previewId === entry.key" @click="togglePreview(entry.key)">{{ previewId === entry.key ? '收起' : '预览' }}</button>
+                  <button v-if="!readonly" class="history-btn restore" type="button" data-op="restore" @click="emit('restore', entry.body)">恢复</button>
+                </div>
+                <pre v-if="previewId === entry.key" class="history-preview">{{ entry.body }}</pre>
+              </li>
+            </ul>
+          </section>
+          <div class="dialog-footer">
+            <button class="dialog-btn ok" @click="emit('close')">关闭</button>
+          </div>
         </div>
       </div>
-    </div>
+    </Transition>
   </Teleport>
 </template>

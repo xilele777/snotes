@@ -7,6 +7,7 @@ import NoteListItem from './NoteListItem.vue'
 import ConfirmDialog from './ConfirmDialog.vue'
 import AppIcon from './AppIcon.vue'
 import NoteSearch from './NoteSearch.vue'
+import SortMenu from './SortMenu.vue'
 import { useNotesStore } from '../stores/notes'
 import { useUiStore } from '../stores/ui'
 import { useGroupsStore } from '../stores/groups'
@@ -16,6 +17,7 @@ import { useWorkspaceScroll } from './useWorkspaceScroll'
 import { retrySyncNow } from '../sync/engine'
 import { hasToken } from '../api/token'
 import { notify } from '../notify'
+import { workspacePreferences as preferences, updateWorkspacePreferences, type NoteSort } from '../workspace-preferences'
 
 const notes = useNotesStore()
 const groups = useGroupsStore()
@@ -150,10 +152,10 @@ const empty = computed(() => {
     }
   }
   if (ui.view === 'star') {
-    return { title: '没有星标笔记', hint: '在笔记顶栏点 ☆ 收藏常用的笔记', action: '' }
+    return { title: '没有星标笔记', hint: '', action: '' }
   }
   if (ui.view === 'hidden') {
-    return { title: '没有不上首页的笔记', hint: '在分组菜单里让整组不上首页，或在笔记「更多操作」里单独设置', action: '' }
+    return { title: '没有已隐藏的笔记', hint: '', action: '' }
   }
   if (ui.view === 'group') {
     return { title: `「${viewTitle.value}」里还没有笔记`, hint: '', action: '新建笔记' }
@@ -161,7 +163,7 @@ const empty = computed(() => {
   return {
     title: '还没有笔记',
     // 全部笔记为空也可能是因为笔记都被设成了不上首页，顺手给出找回它们的入口
-    hint: '记点什么吧；设成「不上首页」的笔记在左侧「已隐藏」里',
+    hint: '记点什么吧',
     action: '新建笔记',
   }
 })
@@ -193,7 +195,7 @@ watch(
         <AppIcon name="menu" />
       </button>
 
-      <span class="header-title">{{ viewTitle }}</span>
+      <span class="header-title" tabindex="-1" :title="viewTitle">{{ viewTitle }}</span>
       <span v-if="!notes.stale" class="header-count">{{ notes.visible.length }}</span>
 
       <button
@@ -213,7 +215,10 @@ watch(
       </button>
     </div>
 
-    <NoteSearch @first="focusFirst" />
+    <div class="list-search-tools">
+      <NoteSearch @first="focusFirst" />
+      <SortMenu label="笔记排序" :model-value="preferences.noteSort" :options="[{ value: 'updated', label: '最近更新' }, { value: 'created', label: '最近创建' }, { value: 'title', label: '标题顺序' }]" @update:model-value="updateWorkspacePreferences({ noteSort: $event as NoteSort })" />
+    </div>
     <div v-if="ui.query.trim()" class="list-caption" aria-live="polite">
       <span>找到 {{ notes.visible.length }} 条笔记</span><button @click="ui.query = ''">清除筛选</button>
     </div>
