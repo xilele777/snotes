@@ -304,3 +304,8 @@
   - 验证：前端单测 688 项（50 文件）、Worker 测试 155 项、服务器测试 24 项全部通过；浏览器回归 49 项（约 4.9 分钟）覆盖 1440px / 1020px / 720px / 390px / 320px 的统计弹窗、320px 顶栏溢出、阅读模式、首页信息流开关、打开榜跳转、撤销不跨笔记，以及原有全部编辑器与同步用例；类型检查与生产构建通过。
   - 发布结果：提交 ecf3254（功能）与 9a3474c（版本）；标签 v0.18.0；Cloudflare Version ID 205005ca-0458-486d-84c7-66202cdb648f（100% 流量）；生产 D1 已应用迁移 0005_home_feed.sql；GitHub Release https://github.com/xilele777/snotes/releases/tag/v0.18.0。
   - 上线核验限制：正式域名和 workers.dev 均在 Cloudflare Access 后面，未登录会话被重定向到登录页，因此未完成线上 `/api/health` 与静态资源比对；部署成功、迁移结果与 100% 流量均已通过 Wrangler 确认。
+- 2026-10-14：v0.19.0 个人知识库 P0 已本地提交并部署。独立首页与章节目录、已有笔记引用及库内新建、移动排序与库内搜索、离线同步及冲突快照、移除与恢复、备份格式 2；不包含权限管理和协作功能。使用与升级说明见 [knowledge-bases.md](knowledge-bases.md)。
+  - 验证：本次上线前 `npm run test:all` 共 899 项通过（客户端/领域 706、Worker 162、Node/SQLite 31），`npm run build` 与部署中的再次构建通过。开发阶段另有 Node 浏览器全量 54 项及 Cloudflare 本地知识库浏览器 5 项通过。
+  - 部署结果：本地发布提交 `d51aa83`；本地标签 `v0.19.0`；生产 D1 已应用 `0006_knowledge_bases.sql`，复查无待执行迁移；Cloudflare Version ID `94b720a4-43fe-4d98-9f5a-51b733b12dab`，经 `wrangler deployments list` 确认承接 100% 流量；正式站点 https://note.alover.me。
+  - 用户明确要求不 push：本次没有推送提交或标签，也没有创建 GitHub Release，远端发布记录尚未包含此版本。
+  - 上线核验限制：正式域名的首页及 `/api/health` 均返回 302 至 Cloudflare Access；未登录验证会话无法完成线上界面、健康响应或静态资源比对。workers.dev 的本次 HTTP 检查发生连接超时。未绕过访问控制；部署和数据库结果已通过 Wrangler 核实。
