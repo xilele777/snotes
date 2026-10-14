@@ -38,7 +38,11 @@ watch(() => ui.drawerOpen, async (open) => {
 })
 
 watch(() => [notes.currentId, ui.view], () => {
-  if (!notes.currentId || ui.view === 'metrics' || ui.view === 'trash') ui.focusMode = false
+  // 阅读模式是「正在读的这篇」的状态：没有正文可读（无选中 / 回收站 / 监控页）就退出
+  if (!notes.currentId || ui.view === 'metrics' || ui.view === 'trash') {
+    ui.focusMode = false
+    ui.readingMode = false
+  }
 })
 
 async function focusSearch() {
@@ -73,10 +77,12 @@ watch(
 function onKeydown(e: KeyboardEvent) {
   // 弹窗和菜单打开时把键盘交给它们：Esc 该关的是浮层，不是抽屉或搜索词
   if (!hasToken.value || ui.overlay || e.defaultPrevented || e.isComposing || document.querySelector('[aria-modal="true"], [role="menu"]')) return
-  if (e.key === 'Escape' && (ui.drawerOpen || ui.focusMode)) {
+  if (e.key === 'Escape' && (ui.drawerOpen || ui.focusMode || ui.readingMode)) {
     e.preventDefault()
     e.stopPropagation()
+    // 由外到内：抽屉 -> 阅读模式 -> 专注模式
     if (ui.drawerOpen) ui.drawerOpen = false
+    else if (ui.readingMode) ui.readingMode = false
     else ui.focusMode = false
     return
   }
@@ -104,7 +110,7 @@ function stepNote(delta: number) {
   const next = index === -1 ? 0 : Math.min(list.length - 1, Math.max(0, index + delta))
   if (list[next].id === notes.currentId) return
   if (isMobile() && ui.mobilePane === 'list') pushNav()
-  notes.currentId = list[next].id
+  notes.open(list[next].id)
 }
 
 async function runShortcut(action: ShortcutAction) {
@@ -116,6 +122,8 @@ async function runShortcut(action: ShortcutAction) {
     case 'clearQuery': ui.query = ''; return
     case 'toggleStar': if (editable) await notes.setProps(current.id, { star: current.star === 1 ? 0 : 1 }); return
     case 'togglePin': if (editable) await notes.setProps(current.id, { top: current.top === 1 ? 0 : 1 }); return
+    // 阅读模式是纯界面状态；只加请求计数，由 NoteDetail 负责「先落盘再只读」
+    case 'toggleReading': if (editable) ui.readingRequest += 1; return
     // 删除仍要走确认弹窗：计数加一，NoteDetail 监听到就弹出与鼠标路径相同的确认框
     case 'trash': if (editable) ui.trashRequest += 1; return
     case 'nextNote': stepNote(1); return

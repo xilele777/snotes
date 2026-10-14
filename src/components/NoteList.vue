@@ -10,6 +10,8 @@ import NoteSearch from './NoteSearch.vue'
 import { useNotesStore } from '../stores/notes'
 import { useUiStore } from '../stores/ui'
 import { useGroupsStore } from '../stores/groups'
+import { homeHiddenGroupIds, isHiddenFromHome } from '../../shared/home-feed'
+import type { LocalNote } from '../../shared/types'
 import { useWorkspaceScroll } from './useWorkspaceScroll'
 import { syncNow } from '../sync/engine'
 import { hasToken } from '../api/token'
@@ -90,7 +92,8 @@ function selectNote(id: string) {
   if (suppressClick) { suppressClick = false; return }
   if (swipedId.value) { swipedId.value = null; return }
   if (isMobile() && ui.mobilePane === 'list') pushNav()
-  notes.currentId = id
+  // open() 而不是直接写 currentId：只有用户点开才算一次「打开」，计入统计
+  notes.open(id)
   if (isMobile()) ui.mobilePane = 'editor'
 }
 
@@ -116,12 +119,21 @@ function onListKeydown(event: KeyboardEvent) {
 // 列表 header 视图标题：全部笔记 / 星标 / 分组名
 const viewTitle = computed(() => {
   if (ui.view === 'star') return '星标'
+  if (ui.view === 'hidden') return '已隐藏'
   if (ui.view === 'group') {
     const g = groups.groups.find((x) => x.group_id === ui.activeGroupId)
     return g?.name ?? '分组'
   }
   return '全部笔记'
 })
+
+/** 「不上首页」的分组集合；笔记是否隐藏由它和笔记自己的三态覆盖共同决定 */
+const hiddenGroups = computed(() => homeHiddenGroupIds(groups.groups))
+
+/** 列表里给不上首页的笔记打一个标记（「已隐藏」视图里全是它们，不重复标） */
+function homeHiddenOf(note: LocalNote): boolean {
+  return ui.view !== 'hidden' && isHiddenFromHome(note, hiddenGroups.value)
+}
 
 /**
  * 空态分五种：搜索无结果与「这个视图本来就没东西」是两回事，
@@ -130,7 +142,7 @@ const viewTitle = computed(() => {
 const empty = computed(() => {
   if (ui.query.trim()) {
     // 分组和星标视图只搜当前范围；搜不到时给一个跳去全部笔记继续找的出口
-    const scoped = ui.view === 'group' || ui.view === 'star'
+    const scoped = ui.view === 'group' || ui.view === 'star' || ui.view === 'hidden'
     return {
       title: `没有匹配「${ui.query.trim()}」的笔记`,
       hint: scoped ? `当前只在「${viewTitle.value}」里搜索` : '换个词试试，多个词用空格隔开',
@@ -140,10 +152,18 @@ const empty = computed(() => {
   if (ui.view === 'star') {
     return { title: '没有星标笔记', hint: '在笔记顶栏点 ☆ 收藏常用的笔记', action: '' }
   }
+  if (ui.view === 'hidden') {
+    return { title: '没有不上首页的笔记', hint: '在分组菜单里让整组不上首页，或在笔记「更多操作」里单独设置', action: '' }
+  }
   if (ui.view === 'group') {
     return { title: `「${viewTitle.value}」里还没有笔记`, hint: '', action: '新建笔记' }
   }
-  return { title: '还没有笔记', hint: '记点什么吧', action: '新建笔记' }
+  return {
+    title: '还没有笔记',
+    // 全部笔记为空也可能是因为笔记都被设成了不上首页，顺手给出找回它们的入口
+    hint: '记点什么吧；设成「不上首页」的笔记在左侧「已隐藏」里',
+    action: '新建笔记',
+  }
 })
 
 async function onEmptyAction() {
@@ -216,6 +236,7 @@ watch(
         :active="note.id === notes.currentId"
         :swiped="swipedId === note.id"
         :query="ui.query"
+        :home-hidden="homeHiddenOf(note)"
         :group-name="note.group_id ? groupNames.get(note.group_id) : undefined"
         @click="selectNote(note.id)"
         @pointerdown="onPointerDown"

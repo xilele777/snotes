@@ -1,4 +1,5 @@
 import { TITLE_MAX, derive, extractTitle } from '../../shared/derive'
+import { homeHiddenGroupIds, isHiddenFromHome } from '../../shared/home-feed'
 import { mergeTask } from '../../shared/outbox'
 import type { LocalNote, NoteMeta, OutboxTask } from '../../shared/types'
 import { emitLocalWrite } from '../sync/signal'
@@ -6,21 +7,21 @@ import { scheduleOpensSync } from '../sync/opens'
 import { db } from './schema'
 import { deleteHistoryIn, getHistoryEntry, maybeSnapshotIn, recordSnapshotIn } from './history'
 
-export type ListView = 'all' | 'trash' | 'star' | 'group'
+export type ListView = 'all' | 'trash' | 'star' | 'group' | 'hidden'
 
 export interface ListFilter {
   view: ListView
   groupId?: string | null
 }
 
-export type NoteProps = Partial<Pick<NoteMeta, 'group_id' | 'star' | 'top' | 'skin_color'>>
+export type NoteProps = Partial<Pick<NoteMeta, 'group_id' | 'star' | 'top' | 'skin_color' | 'home_hidden'>>
 
 /**
  * 新建笔记时可预先指定的属性。分组视图里新建，笔记就该落在这个分组；
  * 导入备份时还要还原星标、置顶、颜色与创建时间，并允许调用方先定好 id
  * （图片得先按 note_id 上传，正文里才有正式地址可写）。
  */
-export type CreateOptions = Partial<Pick<NoteMeta, 'id' | 'group_id' | 'star' | 'top' | 'skin_color' | 'create_time'>>
+export type CreateOptions = Partial<Pick<NoteMeta, 'id' | 'group_id' | 'star' | 'top' | 'skin_color' | 'home_hidden' | 'create_time'>>
 
 export const CONFLICT_SUFFIX = '（冲突副本）'
 
@@ -67,6 +68,8 @@ function buildNote(content: string, options: CreateOptions): LocalNote {
     star: options.star ?? 0,
     top: options.top ?? 0,
     skin_color: options.skin_color ?? null,
+    // null = 跟随分组：新建时不把分组当前的默认值抄下来，分组设置改了要能立刻跟着变
+    home_hidden: options.home_hidden ?? null,
     invalid: 0,
     create_time: options.create_time ?? now,
     update_time: now,
@@ -98,6 +101,7 @@ async function insertNoteIn(note: LocalNote): Promise<void> {
         star: note.star,
         top: note.top,
         skin_color: note.skin_color,
+        home_hidden: note.home_hidden ?? null,
       },
     })
   )
@@ -344,11 +348,36 @@ export async function listNotes(filter: ListFilter): Promise<LocalNote[]> {
     return true
   })
 
+  // 首页信息流（全部笔记）里滤掉「不上首页」的笔记，这些笔记集中到 hidden 视图，
+  // 保证它们永远有地方能看到、能放回首页。分组视图要能就地看到它们（否则用户没法
+  // 把它们放回首页），星标是明确的收藏，回收站更不该被可见性影响。
+  // 过滤规则与统计页共用 shared/home-feed.ts。
+  let visible = matched
+  if (filter.view === 'all' || filter.view === 'hidden') {
+    const hiddenGroups = await homeHiddenGroups(matched)
+    visible = filter.view === 'all'
+      ? matched.filter((n) => !isHiddenFromHome(n, hiddenGroups))
+      : matched.filter((n) => isHiddenFromHome(n, hiddenGroups))
+  }
+
   // id 兜底是为了确定性：同一毫秒创建的多条笔记 update_time 相同，
   // 少了这一级比较，列表顺序会随 Dexie 的返回顺序漂移，界面和测试都会抖。
-  return matched.sort(
+  return visible.sort(
     (a, b) => b.top - a.top || b.update_time - a.update_time || a.id.localeCompare(b.id)
   )
+}
+
+/** 当前这批笔记涉及到的「默认不上首页」分组。只有存在跟随分组的笔记时才要读表。 */
+async function homeHiddenGroups(notes: LocalNote[]): Promise<Set<string>> {
+  if (!notes.some((n) => n.home_hidden == null)) return new Set()
+  return homeHiddenGroupIds(await db.groups.toArray())
+}
+
+/** 一条笔记此刻是否不上首页（分组默认 + 笔记覆盖）。弹窗、跳转等处需要单条判定。 */
+export async function isNoteHiddenFromHome(note: LocalNote): Promise<boolean> {
+  if (note.home_hidden === 1) return true
+  if (note.home_hidden === 0) return false
+  return isHiddenFromHome(note, homeHiddenGroupIds(await db.groups.toArray()))
 }
 
 export async function getMeta<T>(key: string): Promise<T | undefined> {

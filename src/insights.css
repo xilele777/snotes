@@ -193,35 +193,65 @@
 
 
 /* === 统计弹窗内容（按容器宽度适配） === */
+/* 统计页的结构：一排 KPI 卡 + 6 个面板。KPI 的副标题承担次要指标（回收站、置顶、
+   历史最长…），因此不再为每个数字单开一个面板——旧版把同一个「活跃度」在热力图、
+   近 7 天、近 30 天里画了三遍，这里只留热力图与近 30 天。 */
 .stats-view { flex: 1; min-height: 0; container-type: inline-size; }
 .stats-view .metrics-body { max-width: 1320px; padding: 24px 32px 32px; }
-.stats-overview { display: flex; align-items: center; gap: 12px; min-height: 40px; margin-bottom: 20px; }
 
-.stats-grid { display: grid; grid-template-columns: repeat(12, minmax(0, 1fr)); gap: 16px; }
-.stats-numbers { min-height: 42px; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; color: var(--text-secondary); font-size: 13px; font-variant-numeric: tabular-nums; }
-.stats-numbers b { color: var(--text-primary); font-size: 16px; }.stats-numbers i { color: var(--text-disabled); font-style: normal; }
-.stats-panel { border: 1px solid var(--border-light); border-radius: 8px; padding: 18px 20px; background: var(--bg-surface); min-width: 0; }
-.stats-panel .chart-title { margin: 0 0 12px; }.chart-title small { font-size: 11px; color: var(--text-tertiary); font-weight: 400; }
-.chart-heading { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }.chart-heading .chart-title { min-width: 0; }.chart-total { flex: none; color: var(--text-tertiary); font-size: 11px; font-variant-numeric: tabular-nums; white-space: nowrap; }.chart-empty { height: 120px; display: flex; align-items: center; justify-content: center; margin: 0; color: var(--text-tertiary); font-size: 12px; }
-.stats-heatmap { grid-column: span 8; margin: 0; }.writing-hours { grid-column: span 4; }.stats-daily { grid-column: span 12; }.length-panel, .group-panel { grid-column: span 3; }.opened-panel { grid-column: span 6; }
-.heatmap-streak { margin-left: auto; }.hour-bars, .daily-bars { height: 120px; display: flex; align-items: end; gap: 3px; }
-.hour-bar-col, .daily-bar-col { height: 100%; flex: 1; min-width: 0; display: flex; flex-direction: column; justify-content: end; align-items: center; position: relative; }
-.hour-bar { width: 75%; min-height: 2px; border-radius: 3px 3px 0 0; background: #8ea5f4; }.hour-bar-col small, .daily-bar-col small { position: absolute; bottom: -16px; font-size: 10px; color: var(--text-tertiary); }
-.chart-foot { margin: 20px 0 0; font-size: 11px; color: var(--text-tertiary); }.daily-bars { gap: 4px; }.daily-bar { display: block; width: 86%; min-height: 1px; }.daily-bar.created, .legend-created { background: var(--accent); }.daily-bar.updated, .legend-updated { background: #ccd6fb; }.legend-created, .legend-updated { width: 8px; height: 8px; display: inline-block; margin: 0 4px 0 10px; }
-.length-bars { display: flex; flex-direction: column; gap: 10px; }.length-row { display: grid; grid-template-columns: 52px 1fr 20px; gap: 8px; align-items: center; font-size: 11px; color: var(--text-secondary); }.length-row > div { height: 7px; overflow: hidden; background: var(--bg-press); }.length-row i { display: block; height: 100%; background: var(--accent); }.length-row b { text-align: right; color: var(--text-primary); }.length-panel .chart-foot button, .most-opened-title { border: 0; background: transparent; padding: 0; color: var(--accent); cursor: pointer; text-align: left; font: inherit; }
-.opened-heading { display: flex; justify-content: space-between; align-items: start; }.opened-tabs { display: flex; gap: 2px; background: var(--bg-app); border-radius: 6px; padding: 2px; }.opened-tabs button { border: 0; border-radius: 4px; background: transparent; color: var(--text-secondary); font-size: 11px; padding: 3px 7px; cursor: pointer; }.opened-tabs button.active { background: var(--selected-bg); color: var(--selected-text); }
+.stats-kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(132px, 1fr)); gap: 12px; margin-bottom: 14px; }
+.kpi-card { border: 1px solid var(--border-light); border-radius: 12px; padding: 14px 16px; background: var(--bg-surface); display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.kpi-label { font-size: 12px; color: var(--text-tertiary); }
+.kpi-value { margin: 2px 0 0; display: flex; align-items: baseline; gap: 3px; color: var(--text-primary); }
+.kpi-value b { font-size: 24px; font-weight: 700; line-height: 1.15; letter-spacing: -.5px; font-variant-numeric: tabular-nums; }
+.kpi-value i { font-size: 12px; font-style: normal; color: var(--text-secondary); }
+.kpi-sub { font-size: 11px; color: var(--text-tertiary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
-/* 更新热力图：53 周 × 7 天，列宽随可用空间收缩，不产生横向滚动。 */
-.heatmap-scroll { overflow: hidden; }
-.heatmap-grid { display: grid; grid-template-columns: repeat(53, minmax(0, 1fr)); gap: 1px; width: 100%; max-width: 688px; }
-.heatmap-col { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
-/* 单色顺序色阶：OKLCH 亮度约 0.95 → 0.85 → 0.74 → 0.57 → 0.48，相邻级之间的差距肉眼可辨；
+.stats-grid { display: grid; grid-template-columns: repeat(12, minmax(0, 1fr)); gap: 14px; }
+.stats-panel { border: 1px solid var(--border-light); border-radius: 12px; padding: 16px 18px; background: var(--bg-surface); min-width: 0; display: flex; flex-direction: column; }
+.panel-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; min-width: 0; margin-bottom: 14px; }
+.panel-title { margin: 0; font-size: 13px; font-weight: 600; color: var(--text-primary); white-space: nowrap; }
+.panel-title small { margin-left: 6px; font-size: 11px; font-weight: 400; color: var(--text-tertiary); }
+.panel-meta { flex: none; font-size: 11px; color: var(--text-tertiary); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.panel-foot { margin: 14px 0 0; font-size: 11px; color: var(--text-tertiary); }
+.panel-empty { flex: 1; min-height: 96px; display: flex; align-items: center; justify-content: center; margin: 0; font-size: 12px; color: var(--text-tertiary); }
+.link-button { border: 0; padding: 0; background: transparent; color: var(--accent); font: inherit; cursor: pointer; }
+.link-button:hover { text-decoration: underline; }
+
+.panel-heatmap { grid-column: span 8; }
+.panel-hours { grid-column: span 4; }
+.panel-daily { grid-column: span 7; }
+.panel-opened { grid-column: span 5; }
+.panel-group, .panel-length { grid-column: span 6; }
+
+/* 写作时段：24 根柱，高峰那根用强调色点出来。
+   margin-bottom 是给绝对定位在柱底的刻度留位置，否则会和面板底部的说明文字叠上。 */
+.hour-bars, .daily-bars { height: 116px; display: flex; align-items: flex-end; gap: 3px; margin-bottom: 16px; }
+.hour-col, .daily-col { position: relative; height: 100%; flex: 1; min-width: 0; display: flex; flex-direction: column; justify-content: flex-end; align-items: center; gap: 1px; }
+.hour-bar { width: 72%; min-height: 2px; border-radius: 3px 3px 0 0; background: #b9c6f5; transition: background .15s ease-in-out; }
+.hour-col[data-peak='true'] .hour-bar { background: var(--accent); }
+.hour-col:hover .hour-bar, .daily-col:hover .daily-bar { opacity: .72; }
+.hour-col small, .daily-col small { position: absolute; bottom: -15px; font-size: 10px; color: var(--text-tertiary); font-variant-numeric: tabular-nums; }
+
+/* 近 30 天：创建 / 更新双色柱共用一个比例尺 */
+.daily-bar { display: block; width: 80%; min-height: 1px; border-radius: 2px; }
+.daily-bar.created { background: var(--accent); }
+.daily-bar.updated { background: #ccd6fb; }
+.legend-dot { width: 8px; height: 8px; display: inline-block; border-radius: 2px; margin: 0 4px 0 12px; }
+.legend-dot:first-child { margin-left: 0; }
+.legend-dot.created { background: var(--accent); }
+.legend-dot.updated { background: #ccd6fb; }
+
+/* 更新热力图：53 周 × 7 天，列宽随可用空间收缩，不产生横向滚动。
+   单色顺序色阶：OKLCH 亮度约 0.95 → 0.85 → 0.74 → 0.57 → 0.48，相邻级之间的差距肉眼可辨；
    0 级用中性灰而不是浅蓝，避免「无更新」与「少量更新」混在一起。 */
+.heatmap-grid { display: grid; grid-template-columns: repeat(53, minmax(0, 1fr)); gap: 2px; width: 100%; }
+.heatmap-col { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
 .heatmap-cell {
   width: 100%;
   height: auto;
   aspect-ratio: 1;
-  border-radius: 1px;
+  border-radius: 2px;
   background: var(--bg-press);
   box-shadow: inset 0 0 0 1px rgb(20 22 28 / 4%);
   transition: background 0.15s ease-in-out;
@@ -230,44 +260,62 @@
 .heatmap-cell[data-level='2'] { background: #86a4f7; box-shadow: none; }
 .heatmap-cell[data-level='3'] { background: var(--accent); box-shadow: none; }
 .heatmap-cell[data-level='4'] { background: #314ec7; box-shadow: none; }
-.heatmap-legend { display: flex; align-items: center; flex-wrap: wrap; gap: 4px; margin-top: 10px; font-size: 11px; color: var(--text-tertiary); }
+.heatmap-legend { display: flex; align-items: center; gap: 4px; }
 .heatmap-legend .heatmap-cell { width: 12px; height: 12px; aspect-ratio: auto; }
 
-/* 分组分布条 */
-.group-bars { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 12px; }
-.group-bar { display: flex; align-items: center; gap: 10px; }
-.group-dot { width: 10px; height: 10px; border-radius: 50%; flex: none; background: var(--text-disabled); }
-.group-bar-name { font-size: 13px; color: var(--text-primary); min-width: 72px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.group-bar-track { flex: 1; height: 8px; border-radius: 4px; background: var(--bg-press); overflow: hidden; }
-.group-bar-fill { height: 100%; border-radius: 4px; background: var(--accent); transition: width 0.3s ease-in-out; }
-.group-bar-count { font-size: 12px; color: var(--text-secondary); min-width: 28px; text-align: right; }
+/* 打开榜：底部长条按次数占比，一眼看出哪几篇被反复翻 */
+.opened-tabs { display: flex; flex: none; gap: 2px; padding: 2px; border-radius: 7px; background: var(--bg-app); }
+.opened-tabs button { border: 0; border-radius: 5px; padding: 3px 9px; background: transparent; color: var(--text-secondary); font-size: 11px; cursor: pointer; }
+.opened-tabs button.active { background: var(--selected-bg); color: var(--selected-text); }
+.opened-list { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 9px; }
+.opened-item { position: relative; display: grid; grid-template-columns: 20px minmax(0, 1fr) auto; align-items: center; gap: 10px; min-height: 22px; padding-bottom: 4px; }
+.opened-rank { position: relative; z-index: 1; width: 20px; height: 20px; border-radius: 50%; background: var(--bg-press); color: var(--text-secondary); font-size: 11px; font-weight: 600; display: flex; align-items: center; justify-content: center; }
+.opened-track { position: absolute; left: 30px; right: 0; bottom: 0; height: 3px; border-radius: 2px; background: var(--bg-app); overflow: hidden; }
+.opened-track i { display: block; height: 100%; border-radius: 2px; background: var(--accent-soft); }
+.opened-title { position: relative; z-index: 1; grid-column: 2; min-width: 0; border: 0; padding: 0; background: transparent; color: var(--text-primary); font: inherit; font-size: 13px; text-align: left; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; cursor: pointer; }
+.opened-title:hover { color: var(--accent); }
+.opened-value { position: relative; z-index: 1; font-size: 12px; color: var(--text-tertiary); font-variant-numeric: tabular-nums; }
 
-/* 最常打开 */
-.most-opened { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 10px; }
-.most-opened-item { display: flex; align-items: center; gap: 10px; }
-.most-opened-item .rank { width: 20px; height: 20px; border-radius: 50%; background: var(--bg-press); color: var(--text-secondary); font-size: 11px; font-weight: 600; display: flex; align-items: center; justify-content: center; flex: none; }
-.most-opened-title { flex: 1; font-size: 13px; color: var(--text-primary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.most-opened-count { font-size: 12px; color: var(--text-tertiary); }
+/* 分组分布：行数多时面板内滚动，不把弹窗撑长 */
+.group-bars { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 10px; max-height: 210px; overflow-y: auto; }
+.group-row { display: grid; grid-template-columns: 10px minmax(0, 96px) minmax(0, 1fr) 32px; align-items: center; gap: 10px; }
+.group-dot { width: 10px; height: 10px; border-radius: 50%; flex: none; background: var(--text-disabled); }
+.group-name { font-size: 13px; color: var(--text-primary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.group-track { height: 8px; border-radius: 4px; background: var(--bg-press); overflow: hidden; }
+.group-track i { display: block; height: 100%; border-radius: 4px; background: var(--accent); transition: width 0.3s ease-in-out; }
+.group-count { font-size: 12px; color: var(--text-secondary); text-align: right; font-variant-numeric: tabular-nums; }
+
+/* 篇幅分布 */
+.length-bars { display: flex; flex-direction: column; gap: 10px; }
+.length-row { display: grid; grid-template-columns: 60px minmax(0, 1fr) 28px; gap: 10px; align-items: center; font-size: 11px; color: var(--text-secondary); }
+.length-label { font-variant-numeric: tabular-nums; }
+.length-track { height: 8px; border-radius: 4px; background: var(--bg-press); overflow: hidden; }
+.length-track i { display: block; height: 100%; border-radius: 4px; background: var(--accent); transition: width 0.3s ease-in-out; }
+.length-row b { text-align: right; color: var(--text-primary); font-variant-numeric: tabular-nums; }
 
 @media (prefers-reduced-motion: reduce) {
-  .heatmap-cell, .group-bar-fill, .quota-fill { transition: none !important; }
+  .heatmap-cell, .group-track i, .length-track i, .quota-fill { transition: none !important; }
   .skeleton-line { animation: none; }
 }
 
 @container (max-width: 960px) {
   .stats-grid { grid-template-columns: repeat(6, minmax(0, 1fr)); }
-  .stats-heatmap, .writing-hours, .stats-daily, .opened-panel { grid-column: span 6; }
-  .length-panel, .group-panel { grid-column: span 3; }
+  .panel-heatmap, .panel-hours, .panel-daily, .panel-opened { grid-column: span 6; }
+  .panel-group, .panel-length { grid-column: span 3; }
 }
 @media (max-width: 720px) {
   .metrics-topbar { min-height: 64px; padding: 0 16px; }
   .metrics-body, .stats-view .metrics-body { padding: 16px; }
-  .stats-panel { padding: 16px; }
-  .stats-grid { gap: 12px; }
+  .stats-panel { padding: 14px; }
+  .stats-grid, .stats-kpis { gap: 10px; }
 }
 @container (max-width: 620px) {
-  .stats-overview { align-items: start; gap: 8px; }
-  .stats-grid { grid-template-columns: 1fr; }.stats-panel { grid-column: span 1; }.stats-numbers { gap: 6px; }.heatmap-streak { width: 100%; margin-left: 0; }.hour-bars, .daily-bars, .chart-empty { height: 100px; }.chart-heading { align-items: start; flex-direction: column; gap: 0; }.heatmap-col { gap: 1px; }
+  .stats-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .stats-grid { grid-template-columns: 1fr; }
+  .stats-panel { grid-column: span 1; }
+  .hour-bars, .daily-bars { height: 96px; }
+  .panel-empty { min-height: 72px; }
+  .group-bars { max-height: none; overflow-y: visible; }
 }
 
 /* 深色：热力图与状态色单独校准，保持 5 级色阶肉眼可辨 */
@@ -276,7 +324,8 @@
 [data-theme="dark"] .heatmap-cell[data-level='2'] { background: #4560ab; }
 [data-theme="dark"] .heatmap-cell[data-level='4'] { background: #b3c3f8; }
 [data-theme="dark"] .hour-bar { background: #6b84d6; }
-[data-theme="dark"] .daily-bar.updated, [data-theme="dark"] .legend-updated { background: #4b5c93; }
+[data-theme="dark"] .daily-bar.updated, [data-theme="dark"] .legend-dot.updated { background: #4b5c93; }
+[data-theme="dark"] .opened-track, [data-theme="dark"] .opened-rank { background: var(--bg-press); }
 [data-theme="dark"] .ov-card[data-tone='up'] .ov-sub, [data-theme="dark"] .quota-hero[data-status='safe'] .hero-title { color: #62c98d; }
 [data-theme="dark"] .quota-hero[data-status='safe'] { border-left-color: #62c98d; }
 [data-theme="dark"] .quota-hero[data-status='warning'] .hero-title { color: #ffbf47; }

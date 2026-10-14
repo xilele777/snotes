@@ -60,3 +60,59 @@ describe('syncOpens', () => {
     await flushOpensSync()
   })
 })
+
+describe('syncOpens 补齐未知的聚合值', () => {
+  const note = (over: Record<string, unknown> = {}) => ({
+    id: 'n1', group_id: null, title: '', summary: '', thumbnail: null, version: 1, prop_version: 1,
+    star: 0, top: 0, skin_color: null, invalid: 0, create_time: 1, update_time: 1, body: '',
+    body_version: 1, dirty: 'none', open_count: 2, last_open_time: 10, ...over,
+  })
+
+  const sentBody = () => JSON.parse((apiFetch.mock.calls[0][1] as RequestInit).body as string)
+
+  it('open_others 未知的笔记会被点名，并按服务端的回答写回', async () => {
+    await db.notes.add(note() as never)
+    await setMeta('device_id', 'device-a')
+    await setMeta('opens_dirty', ['n1'])
+    apiFetch.mockResolvedValue({ opens: [{ note_id: 'n1', others_count: 6, others_last_open_time: 60 }], server_time: 9 })
+
+    await syncOpens()
+
+    expect(sentBody().want).toEqual(['n1'])
+    expect(await db.notes.get('n1')).toMatchObject({ open_others: 6, open_others_time: 60 })
+  })
+
+  it('已经知道聚合值的笔记不再点名', async () => {
+    await db.notes.add(note({ open_others: 0, open_others_time: 0 }) as never)
+    await setMeta('device_id', 'device-a')
+    await setMeta('opens_dirty', ['n1'])
+    apiFetch.mockResolvedValue({ opens: [], server_time: 9 })
+
+    await syncOpens()
+
+    expect(sentBody().want).toEqual([])
+  })
+
+  it('服务端没回答的笔记保持未知，下一轮继续点名', async () => {
+    await db.notes.add(note() as never)
+    await setMeta('device_id', 'device-a')
+    await setMeta('opens_dirty', ['n1'])
+    // 旧服务端不认识 want：什么都不回
+    apiFetch.mockResolvedValue({ opens: [], server_time: 9 })
+
+    await syncOpens()
+
+    expect(await db.notes.get('n1')).not.toHaveProperty('open_others', 0)
+    expect((await db.notes.get('n1'))!.open_others).toBeUndefined()
+  })
+
+  it('墓碑笔记不点名', async () => {
+    await db.notes.add(note({ id: 'n2', invalid: 2 }) as never)
+    await setMeta('device_id', 'device-a')
+    apiFetch.mockResolvedValue({ opens: [], server_time: 9 })
+
+    await syncOpens()
+
+    expect(sentBody().want).toEqual([])
+  })
+})

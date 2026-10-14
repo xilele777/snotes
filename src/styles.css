@@ -149,6 +149,8 @@ kbd { font-family: inherit; font-size: 10px; line-height: 20px; white-space: now
 .menu-item:disabled { opacity: .4; cursor: default; }
 .menu-item.danger:hover:enabled { color: var(--danger); background: var(--danger-bg); }
 .menu-item.danger:hover:enabled .app-icon { color: var(--danger); }
+/* 勾选态菜单项（分组「不上首页信息流」）：勾号推到最右，一眼看出当前是开是关 */
+.menu-item .menu-check { margin-left: auto; color: var(--accent); }
 .menu-colors { display: flex; gap: 8px; padding: 8px 10px; }
 .menu-separator { display: block; height: 1px; margin: 4px 0; background: var(--border-light); }
 .user-area { margin-top: auto; min-height: 48px; padding: 6px 0; padding-bottom: max(6px, env(safe-area-inset-bottom)); display: flex; align-items: center; gap: 4px; border-top: 1px solid var(--border-light); flex: none; }
@@ -205,6 +207,8 @@ kbd { font-family: inherit; font-size: 10px; line-height: 20px; white-space: now
 .note-pin, .note-star { display: inline-flex; color: var(--text-tertiary); }
 .note-star .app-icon { color: var(--accent); fill: var(--accent); }
 .note-group-label { max-width: 100px; margin-left: auto; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font-size: 11px; }
+/* 「不上首页」标记：放在分组名之前，避免和悬停时出现的删除按钮抢位置 */
+.note-hidden { display: inline-flex; color: var(--text-disabled); }
 .note-item .thumb { grid-column: 2; grid-row: 1 / span 2; align-self: center; width: 44px; height: 44px; border: 1px solid var(--border-light); border-radius: 4px; object-fit: cover; }
 .note-title .hit, .note-summary .hit { color: var(--accent-press); background: var(--focus-ring); border-radius: 2px; }
 .note-item .delete { position: absolute; display: flex; align-items: center; justify-content: center; bottom: 7px; right: 8px; width: 26px; height: 26px; padding: 0; border: 0; border-radius: 4px; color: var(--text-secondary); background: var(--bg-surface); opacity: 0; pointer-events: none; }
@@ -229,6 +233,14 @@ kbd { font-family: inherit; font-size: 10px; line-height: 20px; white-space: now
 .op-btn.selected { color: var(--accent); background: var(--accent-soft); }
 .op-btn[data-op='star'].selected .app-icon { fill: var(--accent); }
 .op-btn.danger:hover { color: var(--danger); background: var(--danger-bg); }
+/* 阅读模式：正文只读，提示条给出明确出口，退出按钮点一下就回到编辑 */
+.reading-banner { flex: none; display: flex; align-items: center; gap: 8px; min-height: 34px; padding: 0 24px; border-bottom: 1px solid var(--border-light); background: var(--accent-soft); color: var(--text-secondary); font-size: 12px; }
+.reading-banner .app-icon { color: var(--accent); flex: none; }
+.reading-banner span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.reading-exit { margin-left: auto; flex: none; height: 24px; padding: 0 10px; border: 1px solid var(--border-default); border-radius: 12px; background: var(--bg-surface); color: var(--text-primary); font-size: 12px; cursor: pointer; }
+.reading-exit:hover { border-color: var(--accent); color: var(--accent); }
+.editor-body.is-reading .ProseMirror { caret-color: transparent; }
+.editor-body.is-reading .milkdown img { cursor: zoom-in; }
 .op-separator { width: 1px; height: 14px; background: var(--border-light); margin: 0 4px; }
 .image-input { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
 .op-dot { width: 15px; height: 15px; display: block; border: 1px solid var(--border-default); border-radius: 50%; }
@@ -645,7 +657,7 @@ kbd { font-family: inherit; font-size: 10px; line-height: 20px; white-space: now
   html, body, #app { height: auto; }
   body { background: #fff; }
   .layout { display: block; height: auto; overflow: visible; padding: 0; }
-  .sidebar-pane, .list-pane, .drawer-mask, .editor-top-bar, .format-bar, .link-tooltip, .lightbox-mask, .dialog-mask, .editor-welcome, .task-checkbox, .toast-host, .action-menu { display: none !important; }
+  .sidebar-pane, .list-pane, .drawer-mask, .editor-top-bar, .format-bar, .reading-banner, .link-tooltip, .lightbox-mask, .dialog-mask, .editor-welcome, .task-checkbox, .toast-host, .action-menu { display: none !important; }
   .editor-pane { display: block; height: auto; overflow: visible; background: #fff; }
   .editor-body { overflow: visible; }
   .editor-body .milkdown, .editor-body .milkdown-mock { max-width: none; min-height: 0; margin: 0; padding: 0; font-size: 12pt; line-height: 1.6; }

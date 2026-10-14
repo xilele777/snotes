@@ -316,7 +316,7 @@ describe('NoteDetail 顶栏操作条', () => {
     wrapper.unmount()
   })
 
-  it('桌面「⋯」菜单列复制、下载、导入、打印；文档信息、历史、字数与删除都不在菜单里，首项获得焦点', async () => {
+  it('桌面「⋯」菜单列首页信息流开关、复制、下载、导入、打印；文档信息、历史、字数与删除都不在菜单里，首项获得焦点', async () => {
     const notes = useNotesStore()
     const note = await notes.create()
     notes.currentId = note.id
@@ -328,12 +328,12 @@ describe('NoteDetail 顶栏操作条', () => {
 
     expect(menu()).not.toBeNull()
     expect(op(wrapper, 'more').attributes('aria-expanded')).toBe('true')
-    for (const name of ['copy', 'download', 'import', 'print']) expect(menuAction(name)).not.toBeNull()
+    for (const name of ['home-feed', 'copy', 'download', 'import', 'print']) expect(menuAction(name)).not.toBeNull()
     expect(menuAction('import')!.previousElementSibling).toBe(menuAction('download'))
     for (const name of ['info', 'history', 'wordcount', 'trash']) expect(menuAction(name)).toBeNull()
     // jsdom 没有 navigator.share，不给分享入口
     expect(menuAction('share')).toBeNull()
-    expect(document.activeElement).toBe(menuAction('copy'))
+    expect(document.activeElement).toBe(menuAction('home-feed'))
 
     // Esc 关闭并把焦点还给 ⋯
     window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }))
@@ -827,6 +827,169 @@ describe('NoteDetail 把编辑器的基线交给 store', () => {
     // 少了基线，数据层就无法发现库里正文已被远端改写
     expect(save).toHaveBeenCalledWith(note.id, '新正文', '旧正文')
     expect(save).toHaveBeenCalledWith(note.id, '切走前的正文', '新正文')
+    wrapper.unmount()
+  })
+})
+
+describe('NoteDetail 阅读模式', () => {
+  it('开启后编辑器只读、提示条出现、编辑工具收起，退出后恢复可编辑', async () => {
+    const notes = useNotesStore()
+    const ui = useUiStore()
+    const note = await notes.create()
+    await notes.saveBody(note.id, '要读的正文')
+    notes.currentId = note.id
+
+    const wrapper = mount(NoteDetail, { attachTo: document.body })
+    await wrapper.vm.$nextTick()
+    await flushPromises()
+
+    expect(wrapper.findComponent(MilkdownEditor).props('editable')).toBe(true)
+    expect(wrapper.find('.format-bar').exists()).toBe(true)
+    expect(wrapper.find('.reading-banner').exists()).toBe(false)
+
+    await op(wrapper, 'reading').trigger('click')
+    await wrapper.vm.$nextTick()
+
+    expect(ui.readingMode).toBe(true)
+    expect(wrapper.findComponent(MilkdownEditor).props('editable')).toBe(false)
+    expect(wrapper.find('.format-bar').exists()).toBe(false)
+    expect(wrapper.find('.reading-banner').exists()).toBe(true)
+    // 编辑类按钮在阅读模式下不渲染；置顶/星标这类元信息仍可用
+    for (const name of ['undo', 'redo', 'image', 'trash']) expect(op(wrapper, name).exists()).toBe(false)
+    for (const name of ['star', 'top', 'more']) expect(op(wrapper, name).exists()).toBe(true)
+
+    await wrapper.find('.reading-exit').trigger('click')
+    await wrapper.vm.$nextTick()
+
+    expect(ui.readingMode).toBe(false)
+    expect(wrapper.findComponent(MilkdownEditor).props('editable')).toBe(true)
+    expect(wrapper.find('.format-bar').exists()).toBe(true)
+    wrapper.unmount()
+  })
+
+  it('进入阅读模式前先把编辑器里待保存的内容交出去', async () => {
+    const notes = useNotesStore()
+    const note = await notes.create()
+    notes.currentId = note.id
+
+    const wrapper = mount(NoteDetail, { attachTo: document.body })
+    await wrapper.vm.$nextTick()
+    await flushPromises()
+
+    const exposed = wrapper.findComponent(MilkdownEditor).vm.$.exposed as { flush: () => void }
+    const flush = vi.spyOn(exposed, 'flush')
+
+    await op(wrapper, 'reading').trigger('click')
+
+    // 少了这一步，debounce 中的最后几个字会被随后的只读判断挡掉
+    expect(flush).toHaveBeenCalledTimes(1)
+    wrapper.unmount()
+  })
+
+  it('快捷键请求（readingRequest）走同一条路径', async () => {
+    const notes = useNotesStore()
+    const ui = useUiStore()
+    const note = await notes.create()
+    notes.currentId = note.id
+
+    const wrapper = mount(NoteDetail, { attachTo: document.body })
+    await wrapper.vm.$nextTick()
+
+    ui.readingRequest += 1
+    await wrapper.vm.$nextTick()
+    expect(ui.readingMode).toBe(true)
+
+    ui.readingRequest += 1
+    await wrapper.vm.$nextTick()
+    expect(ui.readingMode).toBe(false)
+    wrapper.unmount()
+  })
+
+  it('阅读模式下删除快捷键不再弹确认', async () => {
+    const notes = useNotesStore()
+    const ui = useUiStore()
+    const note = await notes.create()
+    notes.currentId = note.id
+
+    const wrapper = mount(NoteDetail, { attachTo: document.body })
+    await wrapper.vm.$nextTick()
+
+    ui.readingMode = true
+    await wrapper.vm.$nextTick()
+    ui.trashRequest += 1
+    await wrapper.vm.$nextTick()
+
+    expect(wrapper.find('.confirm-dialog').exists()).toBe(false)
+    wrapper.unmount()
+  })
+})
+
+describe('NoteDetail 首页信息流开关', () => {
+  it('菜单项把笔记设为不上首页，并跟着切到「已隐藏」视图', async () => {
+    const notes = useNotesStore()
+    const ui = useUiStore()
+    const note = await notes.create()
+    await notes.saveBody(note.id, '归档内容')
+    notes.currentId = note.id
+
+    const wrapper = mount(NoteDetail, { attachTo: document.body })
+    await wrapper.vm.$nextTick()
+    await openMore(wrapper)
+
+    expect(menuAction('home-feed')!.textContent).toContain('不在首页信息流显示')
+    menuAction('home-feed')!.click()
+    // switchListView 里还有一次 load()，等整条链走完
+    await vi.waitFor(async () => {
+      expect((await db.notes.get(note.id))!.home_hidden).toBe(1)
+      expect(ui.view).toBe('hidden')
+    })
+    // 首页视图按可见性筛选，改完必须停在能看到它的那个视图里
+    expect(notes.currentId).toBe(note.id)
+    wrapper.unmount()
+  })
+
+  it('再点一次放回首页，视图切回全部笔记', async () => {
+    const notes = useNotesStore()
+    const ui = useUiStore()
+    const note = await notes.create()
+    await db.notes.update(note.id, { home_hidden: 1 })
+    ui.view = 'hidden'
+    await notes.load()
+    notes.currentId = note.id
+
+    const wrapper = mount(NoteDetail, { attachTo: document.body })
+    await wrapper.vm.$nextTick()
+    await openMore(wrapper)
+
+    expect(menuAction('home-feed')!.textContent).toContain('在首页信息流显示')
+    menuAction('home-feed')!.click()
+    await vi.waitFor(async () => {
+      expect((await db.notes.get(note.id))!.home_hidden).toBe(0)
+      expect(ui.view).toBe('all')
+    })
+    wrapper.unmount()
+  })
+
+  it('所属分组默认不上首页时，给出「恢复跟随分组设置」', async () => {
+    const notes = useNotesStore()
+    const groups = useGroupsStore()
+    const group = await groups.create('归档')
+    await groups.setHomeFeedHidden(group.group_id, true)
+    const note = await notes.create()
+    await notes.saveBody(note.id, '归档内容')
+    await notes.setProps(note.id, { group_id: group.group_id })
+    // 单独设过覆盖值，才有「跟随分组」可恢复
+    await notes.setProps(note.id, { home_hidden: 0 })
+    notes.currentId = note.id
+
+    const wrapper = mount(NoteDetail, { attachTo: document.body })
+    await wrapper.vm.$nextTick()
+    await openMore(wrapper)
+
+    menuAction('home-follow')!.click()
+    await vi.waitFor(async () => {
+      expect((await db.notes.get(note.id))!.home_hidden).toBeNull()
+    })
     wrapper.unmount()
   })
 })

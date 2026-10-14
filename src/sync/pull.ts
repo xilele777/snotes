@@ -31,10 +31,11 @@ export interface PullResult {
 }
 
 function toLocalNote(meta: NoteMeta): LocalNote {
-  // 打开统计不属于笔记内容同步，新拉下来的笔记从本设备 / 其它设备统计 0 起算。
+  // 打开统计不属于笔记内容同步，新拉下来的笔记从本设备 0 次起算。
+  // open_others 刻意不写：undefined 表示「还没问过服务端」，下一次 opens 同步会
+  // 点名补上别的设备的旧计数；写成 0 就等于把这条笔记的聚合值永远钉在 0 了。
   return {
     ...meta, body: '', body_version: 0, dirty: 'none', open_count: 0, last_open_time: 0,
-    open_others: 0, open_others_time: 0,
   }
 }
 
@@ -142,6 +143,7 @@ export async function pullOnce(): Promise<PullResult> {
         star: note.star,
         top: note.top,
         skin_color: note.skin_color,
+        home_hidden: note.home_hidden ?? null,
         invalid: note.invalid,
         prop_version: note.prop_version,
         update_time: note.update_time,

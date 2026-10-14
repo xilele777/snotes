@@ -31,11 +31,20 @@ useDialogFocus(() => props.open, panel, () => emit('close'))
 const rows = computed(() => {
   const n = props.note
   if (!n) return []
+  // 打开次数按「本机 + 其它设备」的合计显示：只看本机值的话，换台设备看这条
+  // 笔记的次数会莫名变小（那台设备确实没打开过几次），和统计页的榜单也对不上。
+  const local = n.open_count ?? 0
+  const others = n.open_others
+  const lastOpen = Math.max(n.last_open_time ?? 0, n.open_others_time ?? 0)
   return [
     { label: '创建时间', value: fmtFull(n.create_time), sub: fmtRelative(n.create_time) },
     { label: '更新时间', value: fmtFull(n.update_time), sub: fmtRelative(n.update_time) },
-    { label: '最近打开', value: fmtRelative(n.last_open_time), sub: fmtFull(n.last_open_time) },
-    { label: '打开次数', value: String(n.open_count ?? 0), sub: '' },
+    { label: '最近打开', value: fmtRelative(lastOpen), sub: fmtFull(lastOpen) },
+    {
+      label: '打开次数',
+      value: others === undefined ? String(local) : String(local + others),
+      sub: others === undefined ? `本机 ${local} 次` : `本机 ${local} 次 · 其他设备 ${others} 次`,
+    },
     { label: '内容版本', value: String(n.version), sub: n.body_version ? `正文 v${n.body_version}` : '' },
   ]
 })

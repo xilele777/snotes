@@ -123,6 +123,25 @@ describe('POST /api/sync/pull', () => {
     expect(body.groups).toEqual([])
   })
 
+  it('分组带回「不上首页信息流」默认值，笔记带回三态覆盖值', async () => {
+    await json('/api/groups', 'POST', { group_id: 'g1', name: '归档', hide_from_home: 1 })
+    const plain = noteReq()
+    await json('/api/notes', 'POST', plain)
+    const hidden = noteReq()
+    await json('/api/notes', 'POST', { ...hidden, home_hidden: 1 })
+    const shown = noteReq()
+    await json('/api/notes', 'POST', { ...shown, home_hidden: 0 })
+
+    const body = await pull({ since: 0 })
+
+    expect(body.groups.find((g) => g.group_id === 'g1')?.hide_from_home).toBe(1)
+    const meta = (id: string) => body.notes.find((n) => n.id === id)
+    // 没设过 = null，表示跟随分组；0 与 1 是显式覆盖
+    expect(meta(plain.id)?.home_hidden).toBeNull()
+    expect(meta(hidden.id)?.home_hidden).toBe(1)
+    expect(meta(shown.id)?.home_hidden).toBe(0)
+  })
+
   it('limit 超过 500 被夹到 500', async () => {
     await seed('a', 100)
     const body = await pull({ since: 0, limit: 9999 })

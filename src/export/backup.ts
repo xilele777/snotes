@@ -25,6 +25,8 @@ export interface BackupGroup {
   name: string
   ord: number
   color: string | null
+  /** 组内笔记默认不上首页信息流；旧备份没有这个字段，按 0 处理 */
+  hide_from_home?: 0 | 1
   update_time: number
 }
 
@@ -35,6 +37,8 @@ export interface BackupNote {
   star: 0 | 1
   top: 0 | 1
   skin_color: string | null
+  /** 首页信息流覆盖值：0 / 1 是显式设置，null / 缺失表示跟随分组 */
+  home_hidden?: 0 | 1 | null
   create_time: number
   update_time: number
   /** 笔记在包内的路径，导入时按它把 index.json 和正文对上 */
@@ -204,6 +208,7 @@ export async function buildBackup(report: ProgressReporter = () => {}): Promise<
       name: g.name,
       ord: g.ord,
       color: g.color,
+      hide_from_home: g.hide_from_home ?? 0,
       update_time: g.update_time,
     })),
     notes: [],
@@ -257,6 +262,7 @@ export async function buildBackup(report: ProgressReporter = () => {}): Promise<
       star: note.star,
       top: note.top,
       skin_color: note.skin_color,
+      home_hidden: note.home_hidden ?? null,
       create_time: note.create_time,
       update_time: note.update_time,
       file: path,
@@ -352,10 +358,10 @@ export async function importBackup(
   // 重复导入同一个备份、或备份里的分组与本机重名，都不该再多出一个同名分组。
   const groupIdByName = new Map<string, string>()
   for (const g of groups.groups) groupIdByName.set(g.name, g.group_id)
-  async function ensureGroup(name: string, color?: string | null): Promise<string> {
+  async function ensureGroup(name: string, color?: string | null, hideFromHome?: 0 | 1): Promise<string> {
     const existing = groupIdByName.get(name)
     if (existing) return existing
-    const created = await groups.create(name, { color })
+    const created = await groups.create(name, { color, hide_from_home: hideFromHome })
     groupIdByName.set(name, created.group_id)
     result.groups++
     return created.group_id
@@ -364,7 +370,9 @@ export async function importBackup(
   // index.json 里有记录的分组先对齐好，剩下的按文件夹名现建。
   const groupIdByOldId = new Map<string, string>()
   if (index) {
-    for (const g of index.groups) groupIdByOldId.set(g.group_id, await ensureGroup(g.name, g.color))
+    for (const g of index.groups) {
+      groupIdByOldId.set(g.group_id, await ensureGroup(g.name, g.color, g.hide_from_home ?? 0))
+    }
   }
 
   const urlByImagePath = new Map<string, string>()
@@ -398,6 +406,7 @@ export async function importBackup(
       star: meta?.star ?? 0,
       top: meta?.top ?? 0,
       skin_color: meta?.skin_color ?? null,
+      home_hidden: meta?.home_hidden ?? null,
       create_time: meta?.create_time,
     })
     result.notes++

@@ -17,6 +17,8 @@ const props = defineProps<{
 const emit = defineEmits<{
   rename: []
   color: [string | null]
+  /** 组内笔记是否默认不上首页信息流 */
+  homeFeed: [boolean]
   move: [-1 | 1]
   remove: []
   close: []
@@ -44,6 +46,20 @@ const emit = defineEmits<{
           @click="emit('color', color)"
         />
       </div>
+      <span class="menu-separator" aria-hidden="true"></span>
+      <!-- 分组级默认：组内没有单独设置过的笔记跟着它走 -->
+      <button
+        type="button"
+        role="menuitemcheckbox"
+        class="menu-item"
+        data-action="home-feed"
+        :aria-checked="group.hide_from_home === 1"
+        @click="emit('homeFeed', group.hide_from_home !== 1)"
+      >
+        <AppIcon :name="group.hide_from_home === 1 ? 'eyeOff' : 'eye'" :size="15" />
+        <span>不上首页信息流</span>
+        <AppIcon v-if="group.hide_from_home === 1" name="check" :size="15" class="menu-check" />
+      </button>
       <span class="menu-separator" aria-hidden="true"></span>
       <button type="button" role="menuitem" class="menu-item" data-action="up" :disabled="!canMoveUp" @click="emit('move', -1)">
         <AppIcon name="arrowUp" :size="15" /><span>上移</span>

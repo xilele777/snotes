@@ -3,6 +3,7 @@ import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { checkForUpdate, updateInfo } from '../update-check'
 import { openOverlay, showNotes, switchListView } from '../navigation'
 import { syncNow } from '../sync/engine'
+import { notify } from '../notify'
 import AppIcon from './AppIcon.vue'
 import ConfirmDialog from './ConfirmDialog.vue'
 import GroupDialog from './GroupDialog.vue'
@@ -117,6 +118,16 @@ async function menuColor(color: string | null) {
   if (group) await groups.setColor(group.group_id, color)
 }
 
+/** 分组级「不上首页信息流」：打开状态那一刻的组内笔记会立刻跟着变（笔记级覆盖除外） */
+async function menuHomeFeed(hidden: boolean) {
+  const group = takeMenuGroup()
+  if (!group) return
+  await groups.setHomeFeedHidden(group.group_id, hidden)
+  notify(hidden ? `「${group.name}」的笔记不再上首页` : `「${group.name}」的笔记恢复上首页`)
+  // 首页信息流的筛选结果变了：正看着「全部笔记」或「已隐藏」时要刷新列表
+  if (ui.view === 'all' || ui.view === 'hidden') await notes.load()
+}
+
 async function menuMove(delta: -1 | 1) {
   const group = takeMenuGroup()
   if (group) await groups.move(group.group_id, delta)
@@ -181,6 +192,11 @@ watch(() => ui.drawerOpen, (open) => { if (!open) menuGroup.value = null })
         </li>
         <li data-view="star" :class="{ active: ui.view === 'star' }" @click="switchListView('star')">
           <button type="button" :aria-current="ui.view === 'star' ? 'page' : undefined"><AppIcon name="star" /><span>星标笔记</span></button>
+        </li>
+        <!-- 不上首页的笔记集中在这里：分组级与笔记级设置都汇总到这一个入口，
+             保证「隐藏」过的笔记永远找得回来 -->
+        <li data-view="hidden" :class="{ active: ui.view === 'hidden' }" @click="switchListView('hidden')">
+          <button type="button" title="不上首页信息流的笔记" :aria-current="ui.view === 'hidden' ? 'page' : undefined"><AppIcon name="eyeOff" /><span>已隐藏</span></button>
         </li>
         <li data-view="trash" :class="{ active: ui.view === 'trash' }" @click="switchListView('trash')">
           <button type="button" :aria-current="ui.view === 'trash' ? 'page' : undefined"><AppIcon name="trash" /><span>回收站</span></button>
@@ -259,6 +275,7 @@ watch(() => ui.drawerOpen, (open) => { if (!open) menuGroup.value = null })
       :can-move-down="menuIndex >= 0 && menuIndex < groups.groups.length - 1"
       @rename="menuRename"
       @color="menuColor"
+      @home-feed="menuHomeFeed"
       @move="menuMove"
       @remove="menuRemove"
       @close="closeMenu"

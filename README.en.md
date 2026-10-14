@@ -33,10 +33,12 @@ The in-app update check only queries the latest **stable** GitHub release, cachi
 - **Offline editing**: read and edit notes already synced to the device, then sync when reconnected.
 - **Markdown editor**: headings, numbered lists, task lists, tables, images, and undo/redo, with Markdown stored as the source.
 - **Organization**: groups (rename, color, reorder, delete), stars, pins, color markers; search takes several space-separated keywords and shows the matching excerpt when the hit is in the body.
+- **Home feed**: every note shows up under All Notes by default; a group can be kept out of the feed, and a single note can override that. The Hidden entry collects everything kept out, so nothing gets lost.
+- **Reading mode**: turn the current note read-only in one click, with the editing tools put away, so a long read cannot change the text by accident.
 - **Portable data**: export every note as a Markdown zip (images and properties included) and import `.md` files or a backup zip back in; re-importing never duplicates notes and reuses groups with the same name. Single notes can be copied, downloaded, shared to other apps or printed / saved as PDF.
 - **Dark mode and personalization**: follow the system theme or pick light or dark, adjust body font size and editor width; settings are saved per device.
 - **Trash**: preview and restore deleted notes, each showing how many days remain before automatic deletion (30 by default); permanent deletion and emptying the trash require confirmation.
-- **Writing statistics**: word counts, writing streaks, an activity heatmap, group distribution, and opens across devices.
+- **Writing statistics**: word counts, writing streaks, an activity heatmap, group distribution, and opens across devices; notes kept out of the home feed are counted separately so the totals line up with the note list.
 - **Device sync**: properties and bodies sync separately; concurrent edits produce conflict copies for review and merging.
 - **Body history**: older versions are kept automatically when edits are 5 minutes apart or large, both in the browser and on the server (20 entries, 30 days each); "History" in the editor top bar merges both and restores with one click.
 - **Images and PWA**: paste images to upload to your server, double-click or long-press to zoom, flip and download in a lightbox, view cached images offline, and install the app on desktop or mobile; once installed it accepts shared text and links and offers a "New note" shortcut on the icon.
@@ -44,15 +46,17 @@ The in-app update check only queries the latest **stable** GitHub release, cachi
 
 ## Interface and controls
 
-Desktop uses three columns for navigation, the note list, and the editor. Trash sits below Starred Notes and keeps the same list and preview dimensions. Statistics opens in a large dialog, preserving the editor position and undo history underneath.
+Desktop uses three columns for navigation, the note list, and the editor. Trash sits below Hidden and keeps the same list and preview dimensions. Statistics opens in a large dialog, preserving the editor position and undo history underneath.
 
 | Entry | Behavior |
 | --- | --- |
 | All Notes / Starred / Groups | Filter notes, then select a row to read or edit |
+| Hidden | Collects every note kept out of the home feed (group menu "Keep out of home feed", note "⋯" menu "Hide from home feed") |
 | Trash | Preview, restore, or permanently delete notes; the detail header shows days left before deletion; returning restores the previous filter and reading position |
 | Statistics icon | Open statistics; close with its button, Escape, the backdrop, or system Back |
 | "Settings" at the bottom of the icon rail | A tabbed dialog: **Appearance** (theme, font size, editor width, per device), **Data** (export all, import a backup), **Shortcuts** (including a Markdown cheat sheet), **About** (version, upgrade steps, sign out). Shortcut `Ctrl / Cmd + ,` |
-| Editor top bar | On desktop the word count, document info and history sit directly in the bar; "⋯" holds copy Markdown, download .md, share to other apps (browsers with system share), print / save as PDF. On phones word count, info, history and "Delete" all live in "⋯" |
+| Editor top bar | On desktop the word count, document info and history sit directly in the bar; "⋯" holds copy Markdown, download .md, share to other apps (browsers with system share), print / save as PDF, and "Hide from home feed". On phones word count, info, history and "Delete" all live in "⋯" |
+| Book icon in the top bar | Reading mode: the body becomes read-only and editing tools are hidden; click again or press `Esc` to leave |
 | Action feedback | Copy, download, restore and similar results appear as a short message at the top of the screen and fade after 3.5 seconds |
 
 Mobile opens to the list and switches to the editor when a note is selected. The top-left button opens navigation; the back button or system Back returns to the list. Desktop also supports focus mode.
@@ -63,12 +67,13 @@ Mobile opens to the list and switches to the editor when a note is selected. The
 | `Ctrl / Cmd + ,` | Open settings |
 | `Ctrl / Cmd + K` or `Ctrl / Cmd + F` | Focus note search |
 | `Ctrl / Cmd + Shift + S` / `P` / `D` | Star / pin / delete the current note (delete asks for confirmation) |
+| `Ctrl / Cmd + Shift + E` | Reading mode (read-only body) |
 | `Ctrl / Cmd + Alt + ↑` / `↓` | Previous / next note in the list |
 | `Ctrl / Cmd + Shift + F` | Focus mode |
 | `Ctrl / Cmd + Shift + U` | Sync now |
 | `Ctrl / Cmd + Z` / `Y` | Undo / redo in the editor |
 | `Ctrl / Cmd + P` | Print the current note |
-| `Esc` | Close the current dialog or sidebar, exit focus mode, or clear search |
+| `Esc` | Close the current dialog or sidebar, leave reading or focus mode, or clear search |
 
 The full list, including editor shortcuts and the Markdown cheat sheet, is on the Shortcuts tab in Settings.
 

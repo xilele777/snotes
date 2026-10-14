@@ -60,6 +60,7 @@ syncRoutes.post('/api/sync/pull', async (c) => {
       name: row.name as string,
       ord: Number(row.ord),
       color: (row.color as string | null) ?? null,
+      hide_from_home: Number(row.hide_from_home) === 1 ? 1 : 0,
       invalid: Number(row.invalid) === 1 ? 1 : 0,
       update_time: Number(row.update_time),
     }))

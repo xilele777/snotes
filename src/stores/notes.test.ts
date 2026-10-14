@@ -228,7 +228,7 @@ describe('notes store 移动端默认选中', () => {
 })
 
 describe('notes store 打开跟踪', () => {
-  it('切换 currentId 到非 null 时递增 open_count 且不改 update_time', async () => {
+  it('open() 打开一条笔记时递增 open_count 且不改 update_time', async () => {
     const store = useNotesStore()
     const note = await store.create()
     await store.saveBody(note.id, '内容')
@@ -243,18 +243,54 @@ describe('notes store 打开跟踪', () => {
     expect(before.open_count).toBe(0)
 
     store.currentId = null
-    store.currentId = note.id
-    // watch 默认异步 flush，等它触发后再读内存数组
+    store.open(note.id)
+    // open() 的计数走 sync watcher，落库是异步的，等一拍再读内存数组
     await nextTick()
+    await vi.waitFor(() => {
+      const row = store.notes.find((n) => n.id === note.id)!
+      expect(row.open_count).toBe(1)
+    })
 
     const after = store.notes.find((n) => n.id === note.id)!
-    expect(after.open_count).toBe(1)
     expect(after.update_time).toBe(beforeUpdate)
+  })
 
+  it('自动选中（load 时的默认第一条）不计入打开次数', async () => {
+    const store = useNotesStore()
+    const note = await store.create()
+    await db.notes.update(note.id, { open_count: 0, last_open_time: 0 })
+    store.currentId = null
+    await store.load()
+
+    // 桌面端 load 会替用户选中第一条，但那不是「我打开了这篇文章」
+    expect(store.currentId).toBe(note.id)
+    await nextTick()
+    expect(store.notes.find((n) => n.id === note.id)!.open_count).toBe(0)
+    expect((await db.notes.get(note.id))!.open_count).toBe(0)
+  })
+
+  it('重复打开同一条笔记不再计数', async () => {
+    const store = useNotesStore()
+    const note = await store.create()
+    await db.notes.update(note.id, { open_count: 0, last_open_time: 0 })
+    // load 会默认选中第一条，此时已经在看这条笔记
+    await store.load()
+
+    store.open(note.id)
+    await nextTick()
+    expect((await db.notes.get(note.id))!.open_count).toBe(0)
+
+    // 离开再打开：这一次才是真正的「打开」，计 1
+    store.currentId = null
+    store.open(note.id)
     await vi.waitFor(async () => {
-      const row = await db.notes.get(note.id)
-      expect(row!.open_count).toBe(1)
+      expect((await db.notes.get(note.id))!.open_count).toBe(1)
     })
+
+    // 已经在看这条时再点一次，不产生状态迁移，也就不再计数
+    store.open(note.id)
+    await nextTick()
+    expect((await db.notes.get(note.id))!.open_count).toBe(1)
   })
 
   it('切到 null 不计打开次数', async () => {

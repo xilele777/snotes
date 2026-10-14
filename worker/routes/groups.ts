@@ -3,7 +3,7 @@ import type { CreateGroupRequest, PatchGroupRequest } from '../../shared/types'
 import { nowMs } from '../db'
 import type { Env } from '../types'
 
-const PATCH_FIELDS = ['name', 'ord', 'color'] as const
+const PATCH_FIELDS = ['name', 'ord', 'color', 'hide_from_home'] as const
 
 export const groupsRoutes = new Hono<{ Bindings: Env }>()
 
@@ -17,11 +17,11 @@ groupsRoutes.post('/api/groups', async (c) => {
   const now = nowMs()
 
   await c.env.DB.prepare(
-    `INSERT INTO note_group (group_id, name, ord, color, invalid, update_time)
-     VALUES (?, ?, ?, ?, 0, ?)
+    `INSERT INTO note_group (group_id, name, ord, color, hide_from_home, invalid, update_time)
+     VALUES (?, ?, ?, ?, ?, 0, ?)
      ON CONFLICT(group_id) DO NOTHING`
   )
-    .bind(req.group_id, req.name, req.ord ?? 0, req.color ?? null, now)
+    .bind(req.group_id, req.name, req.ord ?? 0, req.color ?? null, req.hide_from_home ?? 0, now)
     .run()
 
   return c.json({ update_time: now })

@@ -13,6 +13,11 @@ export interface NoteMeta {
   star: 0 | 1
   top: 0 | 1
   skin_color: string | null
+  /**
+   * 首页信息流可见性（三态）：0 = 强制显示，1 = 强制隐藏，null / 缺失 = 跟随所在分组。
+   * 只影响「全部笔记」首页列表；分组视图、星标视图与回收站一律照常显示。
+   */
+  home_hidden?: 0 | 1 | null
   /** 0=正常，1=回收站（可恢复），2=墓碑（已被物理删除，客户端据此删本地副本） */
   invalid: 0 | 1 | 2
   create_time: number
@@ -32,6 +37,8 @@ export interface Group {
   name: string
   ord: number
   color: string | null
+  /** 1 = 加进这个分组的笔记默认不出现在首页信息流（笔记可用 home_hidden 单独覆盖） */
+  hide_from_home?: 0 | 1
   invalid: 0 | 1
   update_time: number
 }
@@ -93,6 +100,7 @@ export interface CreateNoteRequest {
   star?: 0 | 1
   top?: 0 | 1
   skin_color?: string | null
+  home_hidden?: 0 | 1 | null
 }
 
 /** POST /api/notes 响应体。 */
@@ -113,6 +121,7 @@ export interface PatchNoteRequest {
   star?: 0 | 1
   top?: 0 | 1
   skin_color?: string | null
+  home_hidden?: 0 | 1 | null
   base_version?: number
   base_prop_version?: number
 }
@@ -133,6 +142,7 @@ export interface CreateGroupRequest {
   name: string
   ord?: number
   color?: string | null
+  hide_from_home?: 0 | 1
 }
 
 /** PATCH /api/groups/:id 请求体。 */
@@ -140,6 +150,7 @@ export interface PatchGroupRequest {
   name?: string
   ord?: number
   color?: string | null
+  hide_from_home?: 0 | 1
 }
 
 /** POST /api/sync/pull 请求体（规格 §7.1）。 */
@@ -179,6 +190,13 @@ export interface OpensSyncRequest {
   device_id: string
   since: number
   items: { note_id: string; count: number; last_open_time: number }[]
+  /**
+   * 需要「其它设备聚合值」的笔记 id，可选。
+   * since 只能带回最近变过的聚合：一条笔记在本设备第一次见到时，别的设备可能
+   * 几百年前就打开过它，那行的 update_time 早就落在 since 之前，增量查询永远
+   * 补不回来（表现为「换台设备打开次数就变成 0」）。这些 id 走显式点名查询。
+   */
+  want?: string[]
 }
 
 export interface OpenAggregate {
@@ -207,7 +225,11 @@ export interface LocalNote extends NoteMeta {
   open_count?: number
   /** 本设备最近一次打开时间戳。 */
   last_open_time?: number
-  /** 服务端聚合的其它设备打开次数。 */
+  /**
+   * 服务端聚合的其它设备打开次数。
+   * undefined = 还没向服务端问过（新拉下来的笔记就是这种状态），下一次 opens 同步
+   * 会点名查询并写回真实的 0 或聚合值；0 才是「确实没有别的设备打开过」。
+   */
   open_others?: number
   /** 服务端聚合的其它设备最近打开时间。 */
   open_others_time?: number

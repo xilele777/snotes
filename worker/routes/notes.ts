@@ -3,7 +3,7 @@ import type { CreateNoteRequest, PatchNoteRequest, PatchNoteResponse } from '../
 import { listNoteHistory, maybeRecordNoteHistory, nowMs, purgeNotes, recordNoteHistory } from '../db'
 import type { Env } from '../types'
 
-const PROP_FIELDS = ['group_id', 'star', 'top', 'skin_color'] as const
+const PROP_FIELDS = ['group_id', 'star', 'top', 'skin_color', 'home_hidden'] as const
 const BODY_FIELDS = ['content', 'title', 'summary', 'thumbnail'] as const
 
 /**
@@ -45,7 +45,7 @@ notesRoutes.post('/api/notes', async (c) => {
     await c.env.DB.batch([
       c.env.DB.prepare(
         `UPDATE note SET group_id = ?, title = ?, summary = ?, thumbnail = ?, version = ?, prop_version = ?,
-                         star = ?, top = ?, skin_color = ?, invalid = 0, create_time = ?, update_time = ?
+                         star = ?, top = ?, skin_color = ?, home_hidden = ?, invalid = 0, create_time = ?, update_time = ?
          WHERE id = ? AND invalid = 2`
       ).bind(
         req.group_id ?? null,
@@ -57,6 +57,7 @@ notesRoutes.post('/api/notes', async (c) => {
         req.star ?? 0,
         req.top ?? 0,
         req.skin_color ?? null,
+        req.home_hidden ?? null,
         req.create_time,
         now,
         req.id
@@ -72,8 +73,8 @@ notesRoutes.post('/api/notes', async (c) => {
   await c.env.DB.batch([
     c.env.DB.prepare(
       `INSERT INTO note (id, group_id, title, summary, thumbnail, version, prop_version,
-                         star, top, skin_color, invalid, create_time, update_time)
-       VALUES (?, ?, ?, ?, ?, 1, 1, ?, ?, ?, 0, ?, ?)
+                         star, top, skin_color, home_hidden, invalid, create_time, update_time)
+       VALUES (?, ?, ?, ?, ?, 1, 1, ?, ?, ?, ?, 0, ?, ?)
        ON CONFLICT(id) DO NOTHING`
     ).bind(
       req.id,
@@ -84,6 +85,7 @@ notesRoutes.post('/api/notes', async (c) => {
       req.star ?? 0,
       req.top ?? 0,
       req.skin_color ?? null,
+      req.home_hidden ?? null,
       req.create_time,
       now
     ),

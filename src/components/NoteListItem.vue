@@ -13,8 +13,10 @@ const props = withDefaults(
     /** 搜索词，用于标题与摘要的命中高亮。 */
     query?: string
     groupName?: string
+    /** 这条笔记不上首页信息流：列表里给一个可辨认的标记 */
+    homeHidden?: boolean
   }>(),
-  { active: false, swiped: false, query: '' }
+  { active: false, swiped: false, query: '', homeHidden: false }
 )
 
 /** 标题与摘要都没把关键词凑齐时，用正文里命中附近的片段替换普通摘要。 */
@@ -65,6 +67,7 @@ function fmtDate(ts: number): string {
         <time class="note-date" :datetime="new Date(note.update_time).toISOString()" :title="new Date(note.update_time).toLocaleString('zh-CN')">{{ fmtDate(note.update_time) }}</time>
         <span v-if="note.top === 1" class="note-pin" role="img" aria-label="置顶"><AppIcon name="pin" :size="12" /></span>
         <span v-if="note.star === 1" class="note-star" role="img" aria-label="星标"><AppIcon name="star" :size="12" /></span>
+        <span v-if="homeHidden" class="note-hidden" role="img" aria-label="不上首页" title="不上首页信息流"><AppIcon name="eyeOff" :size="12" /></span>
         <span v-if="groupName" class="note-group-label">{{ groupName }}</span>
         <slot name="meta" />
       </div>

@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, defineAsyncComponent, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import { countWords } from '../../shared/derive'
+import { homeHiddenGroupIds, isHiddenFromHome } from '../../shared/home-feed'
 import type MilkdownEditorComponent from '../editor/MilkdownEditor.vue'
 import { useGroupsStore } from '../stores/groups'
 import { useNotesStore } from '../stores/notes'
@@ -23,7 +24,7 @@ import { notify } from '../notify'
 import { trashDaysLeft, useUiStore } from '../stores/ui'
 import { useMediaQuery } from './useMediaQuery'
 import { useWorkspaceScroll } from './useWorkspaceScroll'
-import { pushNav } from '../navigation'
+import { pushNav, isMobile, switchListView } from '../navigation'
 
 const MilkdownEditor = defineAsyncComponent({
   loader: () => import('../editor/MilkdownEditor.vue'),
@@ -43,8 +44,79 @@ watch(() => notes.current, note => { if (!note) editorReady.value = false })
 
 const currentGroup = computed(() => groups.groups.find(group => group.group_id === notes.current?.group_id)?.name ?? '未分组')
 
+/** 「不上首页」的分组集合：判断当前笔记与所属分组的默认值都靠它 */
+const hiddenGroups = computed(() => homeHiddenGroupIds(groups.groups))
+/** 当前笔记此刻是否不上首页信息流（分组默认 + 笔记覆盖） */
+const homeHidden = computed(() => (notes.current ? isHiddenFromHome(notes.current, hiddenGroups.value) : false))
+/** 当前笔记是否对首页可见性做过单独设置（有覆盖值），用于菜单文案与恢复入口 */
+const homeOverridden = computed(() => notes.current?.home_hidden === 0 || notes.current?.home_hidden === 1)
+/** 所属分组是否默认不上首页；有默认值时才谈得上「恢复跟随分组」 */
+const groupHidesHome = computed(() => groups.groups.find(g => g.group_id === notes.current?.group_id)?.hide_from_home === 1)
+
 /** ≤720px 的顶栏放不下删除按钮，删除挪进「更多」菜单；字数、文档信息、历史版本同样只在桌面直接放顶栏 */
 const compact = useMediaQuery('(max-width: 720px)')
+
+/**
+ * 能改正文的条件：不是回收站详情，也不在阅读模式里。
+ * 阅读模式只是「这条笔记现在只读」，退出后照常编辑；回收站的只读是数据状态。
+ */
+const canEdit = computed(() => !props.readonly && !ui.readingMode)
+
+/**
+ * 阅读模式开关。进只读态之前先把编辑器里 debounce 中还没交出去的内容落库——
+ * 否则刚敲的最后几个字会被后面的只读判断挡掉，直接丢掉。
+ */
+async function toggleReading() {
+  if (props.readonly) return
+  if (!ui.readingMode) editorRef.value?.flush?.()
+  ui.readingMode = !ui.readingMode
+  if (!ui.readingMode) {
+    await nextTick()
+    editorBody.value?.querySelector<HTMLElement>('.ProseMirror')?.focus()
+  }
+}
+
+/** 快捷键走 store 里的请求计数（和删除同一个套路），最终仍然由这里统一处理落盘顺序 */
+watch(() => ui.readingRequest, () => { void toggleReading() })
+
+/**
+ * 「全部笔记」与「已隐藏」是按可见性筛选的：改完可见性后当前视图可能已经装不下
+ * 这条笔记了，跟着切到装得下它的那个视图，免得刚操作的笔记从眼前消失。
+ * target 必须在写库前算好——写库会触发 load()，而 load() 会把指不到笔记的
+ * currentId 清掉，之后再读 notes.current 就是另一条笔记了。
+ */
+async function alignViewWithVisibility(id: string, target: 'all' | 'hidden') {
+  if (ui.view !== 'all' && ui.view !== 'hidden') return
+  if (ui.view === target) return
+  await switchListView(target)
+  // 切视图本身不算一次「打开」，直接把选中项落回这条笔记
+  notes.currentId = id
+  if (isMobile()) ui.mobilePane = 'editor'
+}
+
+/**
+ * 切换当前笔记的首页信息流可见性。分组设置只是默认值，这里是单条笔记的覆盖：
+ * 隐藏后它在「全部笔记」里消失，但仍在「已隐藏」、分组和星标视图里。
+ */
+async function toggleHomeFeed() {
+  const note = notes.current
+  if (!note) return
+  const hide = !homeHidden.value
+  await notes.setProps(note.id, { home_hidden: hide ? 1 : 0 })
+  notify(hide ? '已设为不上首页，可在「已隐藏」里找到' : '这条笔记已显示在首页信息流')
+  await alignViewWithVisibility(note.id, hide ? 'hidden' : 'all')
+}
+
+/** 清掉笔记级的覆盖值，重新跟随所属分组的默认设置 */
+async function resetHomeFeed() {
+  const note = notes.current
+  if (!note) return
+  // 清掉覆盖值之后这条笔记的可见性就等于所在分组的默认值了
+  const willHide = groupHidesHome.value
+  await notes.setProps(note.id, { home_hidden: null })
+  notify('已恢复跟随分组设置')
+  await alignViewWithVisibility(note.id, willHide ? 'hidden' : 'all')
+}
 
 /** 颜色和分组浮层一次只展开一个。 */
 const openPop = ref<'color' | 'group' | null>(null)
@@ -101,12 +173,15 @@ async function onMenuAction(action: NoteMenuAction) {
     case 'info': showInfo.value = true; return
     case 'history': showHistory.value = true; return
     case 'wordcount': showWordCount.value = true; return
+    case 'reading': await toggleReading(); return
+    case 'home-feed': await toggleHomeFeed(); return
+    case 'home-follow': await resetHomeFeed(); return
     case 'copy': await runCopy(); return
     case 'download': runDownload(); return
-    case 'import': if (!props.readonly && !importing.value) markdownInput.value?.click(); return
+    case 'import': if (canEdit.value && !importing.value) markdownInput.value?.click(); return
     case 'share': await runShare(); return
     case 'print': window.print(); return
-    case 'trash': if (!props.readonly) confirmAction.value = 'trash'; return
+    case 'trash': if (canEdit.value) confirmAction.value = 'trash'; return
   }
 }
 
@@ -164,6 +239,8 @@ function onEditLink(href: string) {
 }
 
 function onBody(md: string, base: string) {
+  // 注意这里只看回收站只读：切进阅读模式时编辑器里可能还有一次 debounce 中的编辑，
+  // 那是用户刚敲的字，必须照常落库，不能因为模式变了就丢掉。
   if (props.readonly) return
   if (notes.current) notes.saveBody(notes.current.id, md, base)
 }
@@ -201,7 +278,7 @@ async function onMarkdownPicked(event: Event) {
   const input = event.target as HTMLInputElement
   const file = input.files?.[0]
   input.value = ''
-  if (!file || props.readonly || importing.value) return
+  if (!file || !canEdit.value || importing.value) return
   if (!/\.(md|markdown)$/i.test(file.name)) {
     notify('请选择 .md 或 .markdown 文件')
     return
@@ -233,7 +310,7 @@ const confirmAction = ref<'trash' | 'purge' | null>(null)
 
 /** 快捷键 Mod Shift D 走 store 里的计数，不依赖顶栏有没有渲染删除按钮 */
 watch(() => ui.trashRequest, () => {
-  if (!props.readonly && notes.current) confirmAction.value = 'trash'
+  if (canEdit.value && notes.current) confirmAction.value = 'trash'
 })
 
 function runDelete() {
@@ -252,7 +329,7 @@ const showWordCount = ref(false)
 
 /** 历史弹窗里的「恢复」：当前正文先存为快照再被替换，编辑器随 modelValue 刷新 */
 async function onRestoreHistory(body: string) {
-  if (props.readonly || !notes.current) return
+  if (!canEdit.value || !notes.current) return
   const ok = await notes.restoreHistory(notes.current.id, body)
   notify(ok ? '已恢复到所选版本，之前的正文已存入历史' : '这条笔记已不存在')
 }
@@ -365,20 +442,22 @@ async function runShare() {
 
       <!-- 常用操作直接可见，分组入口同时显示当前位置；低频操作收进最右的「⋯」。 -->
       <div v-else-if="notes.current" class="op-bar">
-        <button class="op-btn" data-op="undo" title="撤销 (Ctrl+Z)" aria-label="撤销" @click="editorRef?.undo?.()">
-          <AppIcon name="undo" />
-        </button>
+        <template v-if="!ui.readingMode">
+          <button class="op-btn" data-op="undo" title="撤销 (Ctrl+Z)" aria-label="撤销" @click="editorRef?.undo?.()">
+            <AppIcon name="undo" />
+          </button>
 
-        <button class="op-btn" data-op="redo" title="重做 (Ctrl+Y)" aria-label="重做" @click="editorRef?.redo?.()">
-          <AppIcon name="redo" />
-        </button>
+          <button class="op-btn" data-op="redo" title="重做 (Ctrl+Y)" aria-label="重做" @click="editorRef?.redo?.()">
+            <AppIcon name="redo" />
+          </button>
 
-        <button class="op-btn" data-op="image" title="插入图片" aria-label="插入图片" @click="imageInput?.click()">
-          <AppIcon name="image" />
-        </button>
-        <input ref="imageInput" class="image-input" type="file" accept="image/*" multiple tabindex="-1" aria-hidden="true" @change="onImagePicked" />
+          <button class="op-btn" data-op="image" title="插入图片" aria-label="插入图片" @click="imageInput?.click()">
+            <AppIcon name="image" />
+          </button>
+          <input ref="imageInput" class="image-input" type="file" accept="image/*" multiple tabindex="-1" aria-hidden="true" @change="onImagePicked" />
 
-        <span class="op-separator" aria-hidden="true"></span>
+          <span class="op-separator" aria-hidden="true"></span>
+        </template>
 
         <button
           class="op-btn"
@@ -449,9 +528,24 @@ async function runShare() {
           <AppIcon :name="ui.focusMode ? 'collapse' : 'focus'" />
         </button>
 
-        <!-- 320px 顶栏没有余量：手机上删除让位给 ⋯，从菜单或列表左滑删除 -->
+        <!-- 阅读模式：正文只读，读文章时怎么点怎么划都改不坏内容。
+             ≤720px 顶栏没有余量，这颗按钮和删除一样让位给「⋯」菜单。 -->
         <button
           v-if="!compact"
+          class="op-btn reading-toggle"
+          data-op="reading"
+          :class="{ selected: ui.readingMode }"
+          :aria-pressed="ui.readingMode"
+          :title="ui.readingMode ? '退出阅读模式 (Esc)' : '阅读模式：正文只读 (Ctrl/⌘ Shift E)'"
+          :aria-label="ui.readingMode ? '退出阅读模式' : '阅读模式'"
+          @click="toggleReading"
+        >
+          <AppIcon :name="ui.readingMode ? 'edit' : 'book'" />
+        </button>
+
+        <!-- 320px 顶栏没有余量：手机上删除让位给 ⋯，从菜单或列表左滑删除 -->
+        <button
+          v-if="!compact && !ui.readingMode"
           class="op-btn danger"
           data-op="trash"
           title="删除"
@@ -468,9 +562,16 @@ async function runShare() {
     </div>
 
     <!-- 编辑工具栏独立一行：顶栏在 320px 已经排满，塞不下十几个格式按钮 -->
-    <FormatToolbar v-if="!readonly && notes.current" :state="formatState" @action="onFormat" />
+    <FormatToolbar v-if="canEdit && notes.current" :state="formatState" @action="onFormat" />
 
-    <div ref="editorBody" class="editor-body">
+    <!-- 阅读模式提示条：占位不高但足够显眼，点一下或按 Esc 就退出 -->
+    <div v-if="!readonly && ui.readingMode && notes.current" class="reading-banner" role="status">
+      <AppIcon name="book" :size="15" />
+      <span>阅读模式 · 正文只读，不会误改</span>
+      <button type="button" class="reading-exit" @click="toggleReading">退出 (Esc)</button>
+    </div>
+
+    <div ref="editorBody" class="editor-body" :class="{ 'is-reading': !readonly && ui.readingMode }">
       <div v-if="!notes.current && !readonly" class="editor-welcome">
         <AppIcon name="note" :size="40" class="empty-art" />
         <h1>选择一条笔记</h1>
@@ -481,7 +582,7 @@ async function runShare() {
         ref="editorRef"
         :note-id="notes.current.id"
         :model-value="notes.current.body"
-        :editable="!readonly"
+        :editable="canEdit"
         @update:model-value="onBody"
         @flush="onFlush"
         @format-state="formatState = $event"
@@ -500,11 +601,15 @@ async function runShare() {
       :show-delete="compact"
       :show-doc-items="compact"
       :importing="importing"
+      :home-hidden="homeHidden"
+      :can-follow-group="homeOverridden && groupHidesHome"
+      :show-reading="compact"
+      :reading="ui.readingMode"
       @action="onMenuAction"
       @close="menuOpen = false"
     />
 
-    <input v-if="!readonly" ref="markdownInput" class="image-input" data-input="markdown" type="file" accept=".md,.markdown,text/markdown" tabindex="-1" aria-hidden="true" @change="onMarkdownPicked" />
+    <input v-if="canEdit" ref="markdownInput" class="image-input" data-input="markdown" type="file" accept=".md,.markdown,text/markdown" tabindex="-1" aria-hidden="true" @change="onMarkdownPicked" />
 
     <!-- 删除统一先确认：移入回收站可恢复，彻底删除不可恢复 -->
     <ConfirmDialog
@@ -517,7 +622,7 @@ async function runShare() {
     />
 
     <NoteInfoDialog :open="showInfo" :note="notes.current" @close="showInfo = false" />
-    <HistoryDialog :open="showHistory" :note="notes.current" :readonly="readonly" @close="showHistory = false" @restore="onRestoreHistory" />
+    <HistoryDialog :open="showHistory" :note="notes.current" :readonly="!canEdit" @close="showHistory = false" @restore="onRestoreHistory" />
     <WordCountDialog :open="showWordCount" :count="wordCount" @close="showWordCount = false" />
     <TableDialog :open="tableDialog" @submit="submitTable" @close="tableDialog = false" />
     <LinkDialog

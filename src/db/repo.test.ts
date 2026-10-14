@@ -225,6 +225,68 @@ describe('listNotes', () => {
   })
 })
 
+describe('首页信息流可见性', () => {
+  /** 建一个分组，组内笔记默认不上首页 */
+  async function makeHiddenGroup(groupId: string) {
+    await db.groups.add({
+      group_id: groupId, name: '归档', ord: 0, color: null, hide_from_home: 1, invalid: 0, update_time: 1,
+    })
+  }
+
+  it('分组默认不上首页时，组内笔记不出现在全部笔记，但仍在分组视图里', async () => {
+    await makeHiddenGroup('g1')
+    const a = await createNote('a')
+    const b = await createNote('b')
+    await updateProps(a.id, { group_id: 'g1' })
+
+    expect((await listNotes({ view: 'all' })).map((n) => n.id)).toEqual([b.id])
+    expect((await listNotes({ view: 'group', groupId: 'g1' })).map((n) => n.id)).toEqual([a.id])
+  })
+
+  it('笔记级 home_hidden=0 把默认隐藏的分组笔记放回首页', async () => {
+    await makeHiddenGroup('g1')
+    const a = await createNote('a')
+    await updateProps(a.id, { group_id: 'g1' })
+    await updateProps(a.id, { home_hidden: 0 })
+
+    expect((await listNotes({ view: 'all' })).map((n) => n.id)).toEqual([a.id])
+    expect((await listNotes({ view: 'hidden' })).map((n) => n.id)).toEqual([])
+  })
+
+  it('笔记级 home_hidden=1 让未分组笔记也不上首页，并出现在已隐藏视图', async () => {
+    const a = await createNote('a')
+    const b = await createNote('b')
+    await updateProps(a.id, { home_hidden: 1 })
+
+    expect((await listNotes({ view: 'all' })).map((n) => n.id)).toEqual([b.id])
+    expect((await listNotes({ view: 'hidden' })).map((n) => n.id)).toEqual([a.id])
+    // 星标是明确的收藏，不受首页可见性影响
+    await updateProps(a.id, { star: 1 })
+    expect((await listNotes({ view: 'star' })).map((n) => n.id)).toEqual([a.id])
+  })
+
+  it('已隐藏视图不列回收站里的笔记', async () => {
+    const a = await createNote('a')
+    await updateProps(a.id, { home_hidden: 1 })
+    await trashNote(a.id)
+
+    expect((await listNotes({ view: 'hidden' })).map((n) => n.id)).toEqual([])
+    expect((await listNotes({ view: 'trash' })).map((n) => n.id)).toEqual([a.id])
+  })
+
+  it('home_hidden 进属性任务队列，能同步到服务端', async () => {
+    const a = await createNote('a')
+    await db.outbox.clear()
+
+    await updateProps(a.id, { home_hidden: 1 })
+
+    const tasks = await db.outbox.toArray()
+    expect(tasks).toHaveLength(1)
+    expect(tasks[0]).toMatchObject({ note_id: a.id, kind: 'prop' })
+    expect((tasks[0].payload as { home_hidden?: number }).home_hidden).toBe(1)
+  })
+})
+
 describe('openNote', () => {
   it('递增 open_count、刷新 last_open_time，不动 update_time', async () => {
     const note = await createNote('a')

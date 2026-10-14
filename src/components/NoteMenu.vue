@@ -4,10 +4,11 @@ import AppIcon from './AppIcon.vue'
 
 /**
  * 笔记顶栏「⋯」打开的菜单：收拢低频的笔记级操作。
- * 回收站详情不渲染这个菜单；文档信息、历史版本、字数统计和删除只在 ≤720px 出现，
- * 桌面顶栏放得下，它们直接摆在顶栏；手机顶栏没有余量，⋯ 顶替的正是删除按钮的位置。
+ * 回收站详情不渲染这个菜单；文档信息、历史版本、字数统计、阅读模式与删除只在
+ * ≤720px 出现，桌面顶栏放得下，它们直接摆在顶栏；手机顶栏没有余量，⋯ 顶替的
+ * 正是删除按钮的位置。
  */
-export type NoteMenuAction = 'info' | 'history' | 'wordcount' | 'copy' | 'download' | 'import' | 'share' | 'print' | 'trash'
+export type NoteMenuAction = 'info' | 'history' | 'wordcount' | 'reading' | 'home-feed' | 'home-follow' | 'copy' | 'download' | 'import' | 'share' | 'print' | 'trash'
 
 defineProps<{
   open: boolean
@@ -17,6 +18,14 @@ defineProps<{
   /** 文档信息 / 历史版本 / 字数统计是否进菜单（桌面在顶栏直接可见） */
   showDocItems: boolean
   importing?: boolean
+  /** 这条笔记此刻是否不上首页信息流 */
+  homeHidden?: boolean
+  /** 笔记单独设过、而所属分组又有默认值：给一个回到「跟随分组」的出口 */
+  canFollowGroup?: boolean
+  /** 阅读模式是否进菜单（≤720px 顶栏放不下这颗按钮，和删除同一个道理） */
+  showReading?: boolean
+  /** 当前是否在阅读模式里 */
+  reading?: boolean
 }>()
 
 const emit = defineEmits<{ action: [NoteMenuAction]; close: [] }>()
@@ -34,8 +43,20 @@ const emit = defineEmits<{ action: [NoteMenuAction]; close: [] }>()
       <button type="button" role="menuitem" class="menu-item" data-action="wordcount" @click="emit('action', 'wordcount')">
         <AppIcon name="sort" :size="15" /><span>字数统计</span>
       </button>
+      <button v-if="showReading" type="button" role="menuitemcheckbox" class="menu-item" data-action="reading" :aria-checked="reading === true" @click="emit('action', 'reading')">
+        <AppIcon :name="reading ? 'edit' : 'book'" :size="15" /><span>{{ reading ? '退出阅读模式' : '阅读模式（正文只读）' }}</span>
+      </button>
       <span class="menu-separator" aria-hidden="true"></span>
     </template>
+    <!-- 首页信息流可见性：分组级设置是默认值，这里可以给单条笔记单独定 -->
+    <button type="button" role="menuitemcheckbox" class="menu-item" data-action="home-feed" :aria-checked="homeHidden === true" @click="emit('action', 'home-feed')">
+      <AppIcon :name="homeHidden ? 'eyeOff' : 'eye'" :size="15" />
+      <span>{{ homeHidden ? '在首页信息流显示' : '不在首页信息流显示' }}</span>
+    </button>
+    <button v-if="canFollowGroup" type="button" role="menuitem" class="menu-item" data-action="home-follow" @click="emit('action', 'home-follow')">
+      <AppIcon name="refresh" :size="15" /><span>恢复跟随分组设置</span>
+    </button>
+    <span class="menu-separator" aria-hidden="true"></span>
     <button type="button" role="menuitem" class="menu-item" data-action="copy" @click="emit('action', 'copy')">
       <AppIcon name="copy" :size="15" /><span>复制 Markdown</span>
     </button>

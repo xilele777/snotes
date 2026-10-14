@@ -19,6 +19,12 @@ export function rowToNoteMeta(row: Record<string, unknown>): NoteMeta {
     star: Number(row.star) === 1 ? 1 : 0,
     top: Number(row.top) === 1 ? 1 : 0,
     skin_color: (row.skin_color as string | null) ?? null,
+    // 三态：NULL（或列还不存在）表示跟随分组，只有明确的 0/1 才是覆盖。
+    // 注意不能用 Number(null) 判断——那是 0，会把「跟随」误读成「强制显示」。
+    home_hidden:
+      row.home_hidden === null || row.home_hidden === undefined
+        ? null
+        : Number(row.home_hidden) === 1 ? 1 : 0,
     invalid: (Number(row.invalid) as 0 | 1 | 2) ?? 0,
     create_time: Number(row.create_time),
     update_time: Number(row.update_time),

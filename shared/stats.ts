@@ -1,4 +1,6 @@
 import { countWords } from './derive'
+import { homeHiddenGroupIds, isHiddenFromHome } from './home-feed'
+import type { HomeFeedGroup } from './home-feed'
 import type { LocalNote } from './types'
 
 /** 一天在热力图上的格子数据 */
@@ -22,18 +24,14 @@ export interface NoteStats {
   topped: number
   /** 回收站数 */
   trashed: number
-  /** 全部正文可见字符总数 */
-  totalChars: number
+  /** 正常笔记里「不上首页信息流」的条数：让统计总数与首页列表能对上账 */
+  hidden: number
   /** 全部正文字数（CJK 按字 / 拉丁按词） */
   totalWords: number
   /** 创建时间最早的一条（null 表示无笔记） */
   earliest: number | null
   /** 最近一次更新时间 */
   latest: number | null
-  /** 近 7 天每天新建数 */
-  createdLast7: { date: string; count: number }[]
-  /** 近 7 天每天更新数 */
-  updatedLast7: { date: string; count: number }[]
   /** 近 30 天创建数与更新数，供双色堆叠柱使用 */
   createdLast30: { date: string; count: number }[]
   updatedLast30: { date: string; count: number }[]
@@ -54,6 +52,8 @@ export interface NoteStats {
   mostOpened: { id: string; title: string; total_count: number }[]
   /** 最近打开的 5 条（跨设备最近打开时间降序） */
   recentOpened: { id: string; title: string; time: number }[]
+  /** 全部笔记累计被打开次数（跨设备合计），0 次的笔记不计 */
+  totalOpens: number
 }
 
 const DAY_MS = 86_400_000
@@ -93,10 +93,8 @@ function dayBuckets(days: number): Map<string, number> {
  */
 export function computeNoteStats(
   notes: LocalNote[],
-  groups: { group_id: string; name: string; color: string | null }[]
+  groups: (HomeFeedGroup & { name: string; color: string | null })[]
 ): NoteStats {
-  const created7 = dayBuckets(7)
-  const updated7 = dayBuckets(7)
   const created30 = dayBuckets(30)
   const updated30 = dayBuckets(30)
 
@@ -119,7 +117,7 @@ export function computeNoteStats(
   let starred = 0
   let topped = 0
   let trashed = 0
-  let totalChars = 0
+  let hidden = 0
   let totalWords = 0
   let earliest: number | null = null
   let latest: number | null = null
@@ -129,6 +127,7 @@ export function computeNoteStats(
   const updatedDays = new Set<string>()
 
   const groupCount = new Map<string, number>()
+  const hiddenGroups = homeHiddenGroupIds(groups)
 
   for (const n of notes) {
     if (n.invalid === 2) continue
@@ -136,12 +135,12 @@ export function computeNoteStats(
     else active++
     if (n.star === 1) starred++
     if (n.top === 1) topped++
+    if (n.invalid === 0 && isHiddenFromHome(n, hiddenGroups)) hidden++
 
     // 字数统计只算正常笔记，回收站内容不计入「写作量」
     if (n.invalid === 0) {
       const wc = countWords(n.body ?? '')
       totalWords += wc.words
-      totalChars += wc.chars
       const bucket = wc.words < 100 ? 0 : wc.words < 500 ? 1 : wc.words < 2000 ? 2 : 3
       lengthCounts[bucket]++
       if (!longest || wc.words > longest.words) {
@@ -152,13 +151,11 @@ export function computeNoteStats(
     if (n.create_time) {
       if (earliest === null || n.create_time < earliest) earliest = n.create_time
       const k = ymd(n.create_time)
-      if (created7.has(k)) created7.set(k, (created7.get(k) ?? 0) + 1)
       if (created30.has(k)) created30.set(k, (created30.get(k) ?? 0) + 1)
     }
     if (n.update_time) {
       if (latest === null || n.update_time > latest) latest = n.update_time
       const k = ymd(n.update_time)
-      if (updated7.has(k)) updated7.set(k, (updated7.get(k) ?? 0) + 1)
       if (updated30.has(k)) updated30.set(k, (updated30.get(k) ?? 0) + 1)
       const cell = heat.get(k)
       if (cell) cell.count += 1
@@ -181,14 +178,20 @@ export function computeNoteStats(
     })
     .sort((a, b) => b.count - a.count)
 
+  // 打开榜与累计次数只算「还能打开」的笔记：回收站里的笔记点开也只会落到别的笔记上，
+  // 把它们排进榜单既误导又会被 load() 的选中不变量清掉。
+  const openedTotal = notes
+    .filter((n) => n.invalid === 0)
+    .map((n) => (n.open_count ?? 0) + (n.open_others ?? 0))
+
   const mostOpened = notes
-    .filter((n) => n.invalid !== 2 && (n.open_count ?? 0) + (n.open_others ?? 0) > 0)
+    .filter((n) => n.invalid === 0 && (n.open_count ?? 0) + (n.open_others ?? 0) > 0)
     .map((n) => ({ id: n.id, title: n.title || '无标题', total_count: (n.open_count ?? 0) + (n.open_others ?? 0) }))
     .sort((a, b) => b.total_count - a.total_count || a.id.localeCompare(b.id))
     .slice(0, 5)
 
   const recentOpened = notes
-    .filter((n) => n.invalid !== 2)
+    .filter((n) => n.invalid === 0)
     .map((n) => ({ id: n.id, title: n.title || '无标题', time: Math.max(n.last_open_time ?? 0, n.open_others_time ?? 0) }))
     .filter((n) => n.time > 0)
     .sort((a, b) => b.time - a.time || a.id.localeCompare(b.id))
@@ -221,12 +224,10 @@ export function computeNoteStats(
     starred,
     topped,
     trashed,
-    totalChars,
+    hidden,
     totalWords,
     earliest,
     latest,
-    createdLast7: [...created7.entries()].map(([date, count]) => ({ date, count })),
-    updatedLast7: [...updated7.entries()].map(([date, count]) => ({ date, count })),
     createdLast30: [...created30.entries()].map(([date, count]) => ({ date, count })),
     updatedLast30: [...updated30.entries()].map(([date, count]) => ({ date, count })),
     heatmap: [...heat.values()],
@@ -238,11 +239,12 @@ export function computeNoteStats(
       { label: '<100', count: lengthCounts[0] },
       { label: '100-499', count: lengthCounts[1] },
       { label: '500-1999', count: lengthCounts[2] },
-      { label: '>=2000', count: lengthCounts[3] },
+      { label: '≥2000', count: lengthCounts[3] },
     ],
     avgWords: active === 0 ? 0 : totalWords / active,
     longest,
     mostOpened,
     recentOpened,
+    totalOpens: openedTotal.reduce((sum, count) => sum + count, 0),
   }
 }

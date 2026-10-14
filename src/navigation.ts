@@ -2,6 +2,7 @@ import { useNotesStore } from './stores/notes'
 import { useUiStore } from './stores/ui'
 import type { Overlay, SettingsTab, UiView, WorkspacePosition } from './stores/ui'
 import type { ListView } from './db/repo'
+import { getNote, isNoteHiddenFromHome } from './db/repo'
 
 /**
  * Bug 2 手机端返回：用 History API 撑起一层轻量 in-app 导航栈，不引 vue-router。
@@ -40,7 +41,7 @@ function snapshot(): NavSnapshot {
 }
 
 export function isNotesView(view: UiView): boolean {
-  return view === 'all' || view === 'star' || view === 'group'
+  return view === 'all' || view === 'star' || view === 'group' || view === 'hidden'
 }
 
 export async function switchListView(view: ListView, groupId: string | null = null) {
@@ -117,13 +118,17 @@ export async function openStatsNote(id: string) {
   ui.focusMode = false
   ui.drawerOpen = false
   ui.restorePosition = null
-  ui.view = 'all'
-  ui.activeGroupId = null
   ui.query = ''
-  notes.currentId = id
+  // 不上首页的笔记不在「全部笔记」里，直接跳过去会被 load() 的
+  // 「选中项必须在当前列表里」不变量清掉，落到别的笔记上。
+  const target = await getNote(id)
+  const hidden = target ? await isNoteHiddenFromHome(target) : false
+  ui.view = hidden ? 'hidden' : 'all'
+  ui.activeGroupId = null
+  notes.open(id)
   ui.mobilePane = 'editor'
   await notes.load()
-  if (ui.view === 'all' && notes.currentId === id) history.replaceState(snapshot(), '')
+  if (ui.view === (hidden ? 'hidden' : 'all') && notes.currentId === id) history.replaceState(snapshot(), '')
 }
 
 /** <720px 的移动端布局：只有在这里，「进详情」才是一层真正的界面切换 */

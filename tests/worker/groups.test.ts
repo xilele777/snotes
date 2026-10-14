@@ -22,6 +22,16 @@ describe('POST /api/groups', () => {
     expect(row).toMatchObject({ ord: 5, color: '#ff0000' })
   })
 
+  it('可带「不上首页信息流」默认值，缺省为 0', async () => {
+    await json('/api/groups', 'POST', { group_id: 'g1', name: '归档', hide_from_home: 1 })
+    await json('/api/groups', 'POST', { group_id: 'g2', name: '日常' })
+
+    const hidden = await env.DB.prepare('SELECT hide_from_home FROM note_group WHERE group_id = ?').bind('g1').first()
+    const normal = await env.DB.prepare('SELECT hide_from_home FROM note_group WHERE group_id = ?').bind('g2').first()
+    expect(hidden!.hide_from_home).toBe(1)
+    expect(normal!.hide_from_home).toBe(0)
+  })
+
   it('重放同一 group_id 幂等', async () => {
     await json('/api/groups', 'POST', { group_id: 'g1', name: '工作' })
     const res = await json('/api/groups', 'POST', { group_id: 'g1', name: '工作' })
@@ -58,6 +68,18 @@ describe('PATCH /api/groups/:id', () => {
       .bind('g1')
       .first()
     expect(row).toMatchObject({ name: '工作', ord: 9 })
+  })
+
+  it('可单独切换「不上首页信息流」', async () => {
+    await json('/api/groups', 'POST', { group_id: 'g1', name: '工作' })
+
+    await json('/api/groups/g1', 'PATCH', { hide_from_home: 1 })
+    let row = await env.DB.prepare('SELECT name, hide_from_home FROM note_group WHERE group_id = ?').bind('g1').first()
+    expect(row).toMatchObject({ name: '工作', hide_from_home: 1 })
+
+    await json('/api/groups/g1', 'PATCH', { hide_from_home: 0 })
+    row = await env.DB.prepare('SELECT hide_from_home FROM note_group WHERE group_id = ?').bind('g1').first()
+    expect(row!.hide_from_home).toBe(0)
   })
 
   it('不存在返回 404', async () => {

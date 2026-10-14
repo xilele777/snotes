@@ -112,9 +112,23 @@ describe('GroupSidebar', () => {
 
     expect(ui.view).toBe('trash')
     expect(wrapper.find('.sidebar-content').exists()).toBe(true)
-    expect(wrapper.findAll('.views > li').map(item => item.attributes('data-view'))).toEqual(['all', 'star', 'trash'])
+    // 「已隐藏」是 v0.18 新增的第三个筛选视图，排在星标与回收站之间
+    expect(wrapper.findAll('.views > li').map(item => item.attributes('data-view'))).toEqual(['all', 'star', 'hidden', 'trash'])
     expect(wrapper.find('.app-rail [data-view="trash"]').exists()).toBe(false)
     expect(wrapper.get('[data-view="trash"] button').attributes('aria-current')).toBe('page')
+    wrapper.unmount()
+  })
+
+  it('「已隐藏」入口切到只列不上首页笔记的视图', async () => {
+    const ui = useUiStore()
+    const wrapper = mount(GroupSidebar)
+    await wrapper.vm.$nextTick()
+
+    await wrapper.find('[data-view="hidden"]').trigger('click')
+
+    expect(ui.view).toBe('hidden')
+    expect(ui.activeGroupId).toBeNull()
+    expect(wrapper.get('[data-view="hidden"] button').attributes('aria-current')).toBe('page')
     wrapper.unmount()
   })
 
@@ -511,6 +525,38 @@ describe('GroupSidebar 分组菜单', () => {
 
     await openMenu(wrapper, g.group_id)
     expect(menu()!.querySelector('[aria-label="标记颜色 #d8b46a"]')!.getAttribute('aria-checked')).toBe('true')
+    wrapper.unmount()
+  })
+
+  it('「不上首页信息流」默认关闭，点一下打开并写库，再点回到关闭', async () => {
+    const groups = useGroupsStore()
+    const ui = useUiStore()
+    const g = await groups.create('归档')
+    const wrapper = mount(GroupSidebar, { attachTo: document.body })
+    await wrapper.vm.$nextTick()
+
+    await openMenu(wrapper, g.group_id)
+    const toggle = action('home-feed')!
+    expect(toggle.getAttribute('aria-checked')).toBe('false')
+    expect(toggle.textContent).toContain('不上首页信息流')
+
+    toggle.click()
+    // patch() 落库后还要 enqueue + load，等 store 也跟上再看渲染结果
+    await vi.waitFor(() => {
+      expect(groups.groups[0].hide_from_home).toBe(1)
+    })
+    expect((await db.groups.get(g.group_id))!.hide_from_home).toBe(1)
+
+    // 正看着「全部笔记」时改了分组的默认值，列表要跟着重新筛一遍
+    expect(ui.view).toBe('all')
+    await openMenu(wrapper, g.group_id)
+    expect(action('home-feed')!.getAttribute('aria-checked')).toBe('true')
+
+    action('home-feed')!.click()
+    await vi.waitFor(() => {
+      expect(groups.groups[0].hide_from_home).toBe(0)
+    })
+    expect((await db.groups.get(g.group_id))!.hide_from_home).toBe(0)
     wrapper.unmount()
   })
 

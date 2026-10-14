@@ -197,6 +197,25 @@ describe('PATCH /api/notes/:id', () => {
     expect((await res.json<{ conflicted: boolean }>()).conflicted).toBe(true)
   })
 
+  it('home_hidden 是普通属性：0 / 1 写值，null 写回「跟随分组」', async () => {
+    const req = noteReq()
+    await json('/api/notes', 'POST', req)
+
+    const read = async () => (await env.DB.prepare('SELECT home_hidden, prop_version FROM note WHERE id = ?')
+      .bind(req.id)
+      .first<{ home_hidden: number | null; prop_version: number }>())!
+
+    expect((await read()).home_hidden).toBeNull()
+
+    await json(`/api/notes/${req.id}`, 'PATCH', { home_hidden: 1, base_prop_version: 1 })
+    expect((await read()).home_hidden).toBe(1)
+
+    await json(`/api/notes/${req.id}`, 'PATCH', { home_hidden: null, base_prop_version: 2 })
+    expect((await read()).home_hidden).toBeNull()
+    // NULL 是一次真实改动，prop_version 照常推进，别的设备才会拉到
+    expect((await read()).prop_version).toBe(3)
+  })
+
   it('group_id 可置为 null 表示移出分组', async () => {
     const req = noteReq({ group_id: 'g1' })
     await json('/api/notes', 'POST', req)

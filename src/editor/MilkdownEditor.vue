@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { commandsCtx, Editor, defaultValueCtx, editorViewCtx, editorViewOptionsCtx, rootCtx } from '@milkdown/kit/core'
+import { commandsCtx, Editor, defaultValueCtx, editorStateCtx, editorViewCtx, editorViewOptionsCtx, rootCtx } from '@milkdown/kit/core'
 import type { Ctx } from '@milkdown/kit/ctx'
 import { clipboard } from '@milkdown/kit/plugin/clipboard'
 import { cursor } from '@milkdown/kit/plugin/cursor'
@@ -10,7 +10,7 @@ import { commonmark, linkAttr, paragraphAttr } from '@milkdown/kit/preset/common
 import { gfm, insertTableCommand } from '@milkdown/kit/preset/gfm'
 import { $nodeSchema, replaceAll } from '@milkdown/kit/utils'
 import { Fragment } from '@milkdown/kit/prose/model'
-import { TextSelection } from '@milkdown/kit/prose/state'
+import { EditorState, TextSelection } from '@milkdown/kit/prose/state'
 import type { EditorView } from '@milkdown/kit/prose/view'
 import { Milkdown, MilkdownProvider, useEditor } from '@milkdown/vue'
 import { defineComponent, h, onBeforeUnmount, onMounted, ref, watch } from 'vue'
@@ -184,7 +184,11 @@ function insertImages(files: File[]) {
   void handleImageFiles(files.filter(isAllowedImage))
 }
 
-defineExpose({ onMarkdownChange, insertImages, undo: () => runCommand(undoCommand), redo: () => runCommand(redoCommand), format, insertTable, currentLink, selectedText, setLinkAt, unlinkAt })
+/**
+ * 提前交卷：把 debounce 中还没交出去的内容立刻发出去。
+ * 宿主在「切进只读阅读模式」「切笔记」「卸载」这些会打断输入的时机调用。
+ */
+defineExpose({ onMarkdownChange, flush, insertImages, undo: () => runCommand(undoCommand), redo: () => runCommand(redoCommand), format, insertTable, currentLink, selectedText, setLinkAt, unlinkAt })
 
 /**
  * 工具栏的格式按钮。跑完命令把焦点还给编辑器：按钮上的 mousedown 已经拦掉了失焦，
@@ -529,6 +533,29 @@ const MilkdownInner = defineComponent({
         if (!editor) return
         editor.action(replaceAll(md))
       },
+      /**
+       * 清空撤销历史，保留当前正文。
+       *
+       * 必须用在「换了一条笔记」这种换文档的场合：ProseMirror 的 history 是跨文档的，
+       * 换笔记时那次 replaceAll 自己也会进历史，于是切过去之后按一次撤销就会把
+       * 上一条笔记的正文倒回来——而 listener 认为这是一个正常编辑，照常落库，
+       * 当前笔记的内容就被上一条的正文覆盖掉了。
+       *
+       * 做法是造一个全新 EditorState：doc 与 plugins 都用现成的（所以 view 插件不会
+       * 重建、DOM 不动），只有插件状态重新 init，history 于是回到空。
+       * updateState 不走事务，milkdown 缓存的 editorStateCtx 得手动跟一下。
+       */
+      resetHistory() {
+        const editor = get()
+        if (!editor) return
+        editor.action((ctx) => {
+          const view = ctx.get(editorViewCtx)
+          const { state } = view
+          const fresh = EditorState.create({ schema: state.schema, doc: state.doc, plugins: state.plugins })
+          view.updateState(fresh)
+          ctx.set(editorStateCtx, fresh)
+        })
+      },
       getEditor() {
         return get()
       },
@@ -550,6 +577,7 @@ const MilkdownInner = defineComponent({
 
 const inner = ref<ComponentPublicInstance<{
   replaceContent: (md: string) => void
+  resetHistory: () => void
   getEditor: () => Editor | undefined
   undo: () => void
   redo: () => void
@@ -567,6 +595,11 @@ watch(
     syncingExternally = true
     try {
       editor.replaceContent(escapeRawHtml(migrateLegacyBr(markdown)))
+      // 换了笔记就把撤销历史清干净：history 是跨文档的，留着它按一次撤销
+      // 就会把上一条笔记的正文倒回这条笔记并落库（见 resetHistory 的说明）。
+      // 同一条笔记的外部替换（恢复到某一版历史、pull 落到本地）不清，
+      // 那种情况下「撤销回去」正是用户想要的。
+      if (noteId !== previousId) editor.resetHistory()
       latest = markdown
       // 外部替换进来的正文就是库里此刻的正文，之后的输入都改自它
       base = markdown

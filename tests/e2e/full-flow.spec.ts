@@ -660,6 +660,8 @@ test('统计弹窗保留编辑器、撤销和滚动位置，支持焦点循环�
   expect(await page.locator('.editor-body').evaluate(el => el.scrollTop)).toBe(880)
   await page.locator('[data-op="undo"]').click()
   await expect(editor).not.toContainText('统计前补充的内容')
+  // 撤销不能跨笔记：切换笔记后按撤销，绝不会把上一条笔记的正文倒回当前这条
+  await expect(editor.locator('h1')).toHaveText('项目记录 13')
 
   await openStatsDialog(page)
   await page.mouse.click(8, 8)
@@ -669,11 +671,13 @@ test('统计弹窗保留编辑器、撤销和滚动位置，支持焦点循环�
   await expect(dialog).toHaveCount(0)
 
   await openStatsDialog(page)
-  await dialog.locator('.most-opened-title').filter({ hasText: /^项目记录 1$/ }).click()
+  // 打开榜只统计「用户真的点开过」的笔记：本用例点开的是 navigation-12（项目记录 13），
+  // 自动选中不再计入打开次数。
+  await dialog.locator('.opened-title').filter({ hasText: /^项目记录 13$/ }).click()
   await expect(dialog).toHaveCount(0)
   await expect(page.locator('.layout')).toHaveAttribute('data-view', 'all')
   await expect(page.getByPlaceholder('搜索笔记')).toHaveValue('')
-  await expect(page.locator('.ProseMirror h1')).toHaveText('项目记录 1')
+  await expect(page.locator('.ProseMirror h1')).toHaveText('项目记录 13')
   await page.goBack()
   await expect(page.locator('.layout')).toHaveAttribute('data-view', 'group')
   await expect(page.locator('[data-note-id="navigation-12"]')).toHaveClass(/is-active/)

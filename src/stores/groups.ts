@@ -4,8 +4,8 @@ import type { Group, OutboxTask } from '../../shared/types'
 import { db } from '../db/schema'
 import { enqueue } from '../db/repo'
 
-/** 分组上可以直接修改并同步到服务端的字段（PATCH /api/groups/:id 接受的三项） */
-export type GroupPatch = Partial<Pick<Group, 'name' | 'color' | 'ord'>>
+/** 分组上可以直接修改并同步到服务端的字段（PATCH /api/groups/:id 接受的几项） */
+export type GroupPatch = Partial<Pick<Group, 'name' | 'color' | 'ord' | 'hide_from_home'>>
 
 export const useGroupsStore = defineStore('groups', () => {
   const groups = ref<Group[]>([])
@@ -32,18 +32,21 @@ export const useGroupsStore = defineStore('groups', () => {
   }
 
   /** 导入备份时会带着颜色一起建组，平时新建只有名字 */
-  async function create(name: string, options: { color?: string | null } = {}) {
+  async function create(name: string, options: { color?: string | null; hide_from_home?: 0 | 1 } = {}) {
     const group: Group = {
       group_id: crypto.randomUUID(),
       name,
       ord: groups.value.length,
       color: options.color ?? null,
+      hide_from_home: options.hide_from_home ?? 0,
       invalid: 0,
       update_time: Date.now(),
     }
 
     await db.groups.add(group)
-    await enqueue(groupTask(group.group_id, 'create', { group_id: group.group_id, name, ord: group.ord, color: group.color }))
+    await enqueue(groupTask(group.group_id, 'create', {
+      group_id: group.group_id, name, ord: group.ord, color: group.color, hide_from_home: group.hide_from_home,
+    }))
     await load()
 
     return group
@@ -68,6 +71,14 @@ export const useGroupsStore = defineStore('groups', () => {
   const rename = (groupId: string, name: string) => patch(groupId, { name })
 
   const setColor = (groupId: string, color: string | null) => patch(groupId, { color })
+
+  /**
+   * 组内笔记是否默认不上首页信息流。只改分组这一位：
+   * 组内笔记的 home_hidden 保持 null（跟随），开关一翻立刻整体跟着变；
+   * 想让某条笔记例外，在那条笔记上单独设 home_hidden 就行。
+   */
+  const setHomeFeedHidden = (groupId: string, hidden: boolean) =>
+    patch(groupId, { hide_from_home: hidden ? 1 : 0 })
 
   /**
    * 上移 / 下移一格。按当前显示顺序重排后，把 ord 与新下标不一致的分组全部写回：
@@ -105,5 +116,5 @@ export const useGroupsStore = defineStore('groups', () => {
     await load()
   }
 
-  return { groups, load, create, rename, setColor, move, remove }
+  return { groups, load, create, rename, setColor, setHomeFeedHidden, move, remove }
 })

@@ -121,4 +121,39 @@ describe('computeNoteStats', () => {
     expect(s.mostOpened[0]).toMatchObject({ id: 'a', total_count: 9 })
     expect(s.recentOpened[0]).toMatchObject({ id: 'b', time: 40 })
   })
+
+  it('不上首页的条数按分组默认与笔记覆盖一起算，回收站不计', () => {
+    const notes = [
+      makeNote({ id: 'a', group_id: 'g1' }),
+      makeNote({ id: 'b', group_id: 'g1', home_hidden: 0 }),
+      makeNote({ id: 'c', group_id: 'g2', home_hidden: 1 }),
+      makeNote({ id: 'd', group_id: null }),
+      makeNote({ id: 'e', group_id: 'g1', invalid: 1 }),
+    ]
+    const groups = [
+      { group_id: 'g1', name: '工作', color: null, hide_from_home: 1 as const },
+      { group_id: 'g2', name: '生活', color: null, hide_from_home: 0 as const },
+    ]
+    const s = computeNoteStats(notes, groups)
+    // a 跟随分组、c 单独隐藏；e 在回收站里，不算「不上首页」
+    expect(s.hidden).toBe(2)
+    expect(s.active).toBe(4)
+  })
+
+  it('累计打开次数跨设备求和，回收站与 0 次的笔记不计', () => {
+    const notes = [
+      makeNote({ id: 'a', open_count: 2, open_others: 3 }),
+      makeNote({ id: 'b', open_count: 0, open_others: 0 }),
+      makeNote({ id: 'c', open_count: 5, invalid: 1 }),
+    ]
+    expect(computeNoteStats(notes, []).totalOpens).toBe(5)
+  })
+
+  it('只统计每台设备说的本机次数与其它设备聚合值之和', () => {
+    // open_others 未知（还没问过服务端）时按 0 参与合计，不能算成 NaN
+    const notes = [makeNote({ id: 'a', open_count: 1, open_others: undefined })]
+    const s = computeNoteStats(notes, [])
+    expect(s.mostOpened[0]).toMatchObject({ id: 'a', total_count: 1 })
+    expect(s.totalOpens).toBe(1)
+  })
 })

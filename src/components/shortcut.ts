@@ -4,6 +4,7 @@ export type ShortcutAction =
   | { type: 'clearQuery' }
   | { type: 'toggleStar' }
   | { type: 'togglePin' }
+  | { type: 'toggleReading' }
   | { type: 'trash' }
   | { type: 'nextNote' }
   | { type: 'prevNote' }
@@ -29,6 +30,7 @@ export const SHORTCUT_LIST: { keys: string; label: string }[] = [
   { keys: 'Mod Shift S', label: '星标 / 取消星标' },
   { keys: 'Mod Shift P', label: '置顶 / 取消置顶' },
   { keys: 'Mod Shift D', label: '删除当前笔记' },
+  { keys: 'Mod Shift E', label: '阅读模式（正文只读）' },
   { keys: 'Mod Alt ↑ ↓', label: '上一条 / 下一条' },
   { keys: 'Mod Shift F', label: '专注模式' },
   { keys: 'Mod Shift U', label: '立即同步' },
@@ -60,7 +62,7 @@ export const MARKDOWN_HINTS: { keys: string; label: string }[] = [
  * - Cmd/Ctrl + K / F → 聚焦搜索框
  * - Cmd/Ctrl + , → 打开设置
  * - Esc → 仅在有活动查询时清空（无查询时不劫持，交给浏览器关闭弹层等默认行为）
- * - Cmd/Ctrl + Shift + S / P / D → 星标、置顶、删除当前笔记
+ * - Cmd/Ctrl + Shift + S / P / D / E → 星标、置顶、删除当前笔记、阅读模式
  * - Cmd/Ctrl + Alt + ↑ / ↓ → 列表里切到上一条 / 下一条（不用单独的 Alt+方向键，
  *   那在 Mac 编辑器里是按词移动光标）
  * - Cmd/Ctrl + Shift + F → 专注模式；Cmd/Ctrl + Shift + U → 立即同步
@@ -82,6 +84,7 @@ export function resolveShortcut(
     if (key === 's') return { type: 'toggleStar' }
     if (key === 'p') return { type: 'togglePin' }
     if (key === 'd') return { type: 'trash' }
+    if (key === 'e') return { type: 'toggleReading' }
     if (key === 'f') return { type: 'toggleFocus' }
     if (key === 'u') return { type: 'syncNow' }
   }
