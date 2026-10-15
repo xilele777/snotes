@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { commandsCtx, Editor, defaultValueCtx, editorStateCtx, editorViewCtx, editorViewOptionsCtx, rootCtx } from '@milkdown/kit/core'
+import { commandsCtx, Editor, defaultValueCtx, editorStateCtx, editorViewCtx, editorViewOptionsCtx, rootCtx, parserCtx, serializerCtx } from '@milkdown/kit/core'
 import type { Ctx } from '@milkdown/kit/ctx'
 import { clipboard } from '@milkdown/kit/plugin/clipboard'
 import { cursor } from '@milkdown/kit/plugin/cursor'
@@ -9,11 +9,11 @@ import { listener, listenerCtx } from '@milkdown/kit/plugin/listener'
 import { commonmark, linkAttr, paragraphAttr } from '@milkdown/kit/preset/commonmark'
 import { gfm, insertTableCommand } from '@milkdown/kit/preset/gfm'
 import { $nodeSchema, replaceAll } from '@milkdown/kit/utils'
-import { Fragment } from '@milkdown/kit/prose/model'
+import { Fragment, type Node as ProseNode } from '@milkdown/kit/prose/model'
 import { EditorState, TextSelection } from '@milkdown/kit/prose/state'
 import type { EditorView } from '@milkdown/kit/prose/view'
 import { Milkdown, MilkdownProvider, useEditor } from '@milkdown/vue'
-import { defineComponent, h, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { defineComponent, h, onBeforeUnmount, onMounted, ref, toRaw, watch } from 'vue'
 import type { ComponentPublicInstance } from 'vue'
 import { escapeRawHtml, migrateLegacyBr } from '../../shared/sanitize'
 import { clipboardImageFiles, isAllowedImage, uploadImage } from './image-upload'
@@ -48,7 +48,18 @@ const DEBOUNCE_MS = 800
 let timer: ReturnType<typeof setTimeout> | undefined
 let syncingExternally = false
 let latest = props.modelValue
+let documentNoteId = props.noteId
 let pendingId: string | null = null
+let pendingMarkdown = props.modelValue
+let documentLifetime = 0
+let disposed = false
+const placeholderCleanups = new Set<() => void>()
+
+function invalidateUploads() {
+  documentLifetime++
+  for (const cleanup of placeholderCleanups) cleanup()
+  placeholderCleanups.clear()
+}
 
 /**
  * 编辑器认为数据库此刻存着的正文：初始 modelValue、外部替换进来的值、或自己最近一次交出去的值。
@@ -71,6 +82,7 @@ function handOff(markdown: string): string {
  * 不触碰它、视觉上又不可见——空行视觉改由编辑器 CSS 撑高度来保证。
  */
 const EMPTY_LINE = '\u200B'
+let serializationLastNode: ProseNode | null | undefined
 
 /**
  * 覆盖 commonmark 的段落 schema：toMarkdown 里空段落写零宽空格而非 `<br />`。
@@ -93,7 +105,9 @@ const paragraphSchema = $nodeSchema('paragraph', (ctx) => ({
   toMarkdown: {
     match: (node) => node.type.name === 'paragraph',
     runner: (state, node) => {
-      const lastNode = ctx.get(editorViewCtx).state?.doc.lastChild
+      const lastNode = serializationLastNode === undefined
+        ? ctx.get(editorViewCtx).state?.doc.lastChild
+        : serializationLastNode
       state.openNode('paragraph')
       if ((!node.content || node.content.size === 0) && node !== lastNode) {
         state.addNode('text', void 0, EMPTY_LINE)
@@ -126,7 +140,7 @@ function clearTimer() {
 function take(): { id: string; markdown: string } | null {
   clearTimer()
   if (pendingId === null) return null
-  const pending = { id: pendingId, markdown: latest }
+  const pending = { id: pendingId, markdown: pendingMarkdown }
   pendingId = null
   return pending
 }
@@ -136,26 +150,71 @@ function take(): { id: string; markdown: string } | null {
  * 必须带上 id：flush 发生时 props.noteId 往往已经指向新笔记了。
  */
 function flush() {
+  // Milkdown's markdownUpdated has its own 200ms debounce. Capture the live
+  // upload document before switching/unmounting, not only the last callback.
+  const editor = inner.value?.getEditor?.()
+  if (placeholderCleanups.size > 0 && editor && editor.status === 'Created') {
+    editor.action((ctx) => {
+      const doc = ctx.get(editorViewCtx).state.doc
+      onMarkdownChange(ctx.get(serializerCtx)(doc), ctx)
+    })
+  }
   const pending = take()
   if (pending) emit('flush', pending.id, pending.markdown, handOff(pending.markdown))
 }
 
-function onMarkdownChange(markdown: string) {
-  if (syncingExternally) return
+/** Serialize a real document, not a Markdown regex: preserve links, code and nested blocks. */
+function withoutPlaceholderImages(ctx: Ctx, markdown: string): string {
+  const doc = ctx.get(parserCtx)(markdown)
+  if (!doc) throw new Error('Unable to parse editor document')
+  let removed = false
+  function omit(node: ProseNode): ProseNode | null {
+    if (node.type.name === 'image' && String(node.attrs.src).startsWith('blob:')) {
+      removed = true
+      return null
+    }
+    if (node.isLeaf) return node
+    const children: ProseNode[] = []
+    node.forEach((child) => {
+      const kept = omit(child)
+      if (kept) children.push(kept)
+    })
+    return node.copy(Fragment.fromArray(children))
+  }
+  const clean = omit(doc)!
+  if (!removed) return markdown
+  serializationLastNode = clean.lastChild
+  try {
+    return ctx.get(serializerCtx)(clean)
+  } finally {
+    serializationLastNode = undefined
+  }
+}
+
+function onMarkdownChange(markdown: string, ctx?: Ctx) {
+  if (syncingExternally || disposed) return
   if (markdown === latest) return
 
-  // 占位图还在上传中（src 是 blob:），此时持久化会把只在当前页有效的 blob:
-  // 写进库，并可能被同步推到服务端，其它设备拉下来就是死链且再也不会收敛。
-  // 等真实 URL 替换进来、触发新一轮 markdownUpdated 后再落库。
-  // 仍更新 latest：替换后那条 markdown 同值时直接走上面的早退，不会漏存。
+  let persistable = markdown
+  if (markdown.includes('blob:')) {
+    // The listener supplies its context. The exposed testing/toolbar entry can use
+    // the current editor; before editor creation there cannot be an upload node.
+    if (ctx) persistable = withoutPlaceholderImages(ctx, markdown)
+    else {
+      const editor = inner.value?.getEditor?.()
+      if (!editor) return
+      persistable = editor.action((editorCtx) => withoutPlaceholderImages(editorCtx, markdown))
+    }
+  }
   latest = markdown
-  if (/]\(blob:[^)]+\)/.test(markdown)) {
+  pendingMarkdown = persistable
+  if (persistable === base) {
     pendingId = null
     clearTimer()
     return
   }
 
-  pendingId = props.noteId
+  pendingId = documentNoteId
   clearTimer()
   timer = setTimeout(() => {
     const pending = take()
@@ -293,37 +352,43 @@ function insertImageAtCursor(editor: Editor, src: string): boolean {
 }
 
 /** 上传成功后把占位图的 src 换成正式地址 */
-function updateImageSrc(editor: Editor, fromUrl: string, toUrl: string) {
+async function updateImageSrc(editor: Editor, fromUrl: string, toUrl: string, isCurrent: () => boolean) {
   // 预载真实图片，下载完再替换占位。否则替换瞬间 <img> 节点被销毁重建，
   // 新图还没下载完就先空白一帧——视觉上就是「闪一下」。
   const img = new Image()
+  let finish!: () => void
+  const ready = new Promise<void>((resolve) => { finish = resolve })
+  const cancel = () => {
+    img.onload = null
+    img.onerror = null
+    finish()
+  }
+  placeholderCleanups.add(cancel)
+  img.onload = finish
+  // 加载失败也替换，避免永远停在只在本页有效的 blob:。
+  img.onerror = finish
   img.src = toUrl
-  const ready = img.complete
-    ? Promise.resolve()
-    : new Promise<void>((resolve) => {
-        img.onload = () => resolve()
-        // 加载失败也要继续：换成破图占位比永远停在 blob:（只在本页有效）好
-        img.onerror = () => resolve()
-      })
-
-  ready.then(() => {
-    editor.action((ctx) => {
-      const view = ctx.get(editorViewCtx)
-      const { state } = view
-      const image = state.schema.nodes.image
-      if (!image) return
-      const tr = state.tr
-      let touched = false
-      state.doc.descendants((node, pos) => {
-        if (node.type === image && node.attrs.src === fromUrl) {
-          tr.setNodeMarkup(pos, undefined, { ...node.attrs, src: toUrl })
-          touched = true
-          return false
-        }
-        return true
-      })
-      if (touched) view.dispatch(tr)
+  if (img.complete) finish()
+  await ready
+  placeholderCleanups.delete(cancel)
+  cancel()
+  if (!isCurrent()) return
+  editor.action((ctx) => {
+    const view = ctx.get(editorViewCtx)
+    const { state } = view
+    const image = state.schema.nodes.image
+    if (!image) return
+    const tr = state.tr
+    let touched = false
+    state.doc.descendants((node, pos) => {
+      if (node.type === image && node.attrs.src === fromUrl) {
+        tr.setNodeMarkup(pos, undefined, { ...node.attrs, src: toUrl })
+        touched = true
+        return false
+      }
+      return true
     })
+    if (touched) view.dispatch(tr)
   })
 }
 /**
@@ -352,28 +417,37 @@ function removeImageAt(editor: Editor, fromUrl: string) {
 
 async function handleImageFiles(files: File[]) {
   const editor = inner.value?.getEditor?.()
-  if (!editor || files.length === 0) return
+  if (!editor || files.length === 0 || disposed) return
+  const noteId = props.noteId
+  const lifetime = documentLifetime
+  const isCurrent = () => !disposed && props.noteId === noteId
+    && lifetime === documentLifetime && inner.value?.getEditor?.() === editor
+    && editor.status !== 'Destroyed' && editor.status !== 'OnDestroy'
 
-  // 逐张来：光标处插占位 → 上传 → 成功换 src / 失败删节点。
-  // 不做整篇 replaceAll，光标和撤销历史都保留着。
+  // A reusable editor can display another note after either await. Bind every
+  // insertion, failure cleanup and preload completion to this document lifetime.
   for (const file of files) {
+    if (!isCurrent()) break
     const placeholder = URL.createObjectURL(file)
-
-    if (!insertImageAtCursor(editor, placeholder)) {
+    let revoked = false
+    const cleanup = () => {
+      if (revoked) return
+      revoked = true
       URL.revokeObjectURL(placeholder)
-      continue
     }
-
+    placeholderCleanups.add(cleanup)
     try {
-      const { url } = await uploadImage(file, props.noteId)
-      updateImageSrc(editor, placeholder, url)
+      if (!insertImageAtCursor(editor, placeholder)) continue
+      const { url } = await uploadImage(file, noteId)
+      if (!isCurrent()) break
+      await updateImageSrc(editor, placeholder, url, isCurrent)
     } catch (error) {
-      // 必须把占位抹掉。blob URL 只在当初那个页面上下文里有效，
-      // 留着它就是一条会同步到其他设备、且永远修不好的死链。
+      if (!isCurrent()) break
       removeImageAt(editor, placeholder)
       alert(`图片上传失败：${error instanceof Error ? error.message : String(error)}`)
     } finally {
-      URL.revokeObjectURL(placeholder)
+      placeholderCleanups.delete(cleanup)
+      cleanup()
     }
   }
 }
@@ -432,7 +506,7 @@ const MilkdownInner = defineComponent({
         .config((ctx) => {
           ctx.set(rootCtx, root)
           ctx.set(defaultValueCtx, escapeRawHtml(migrateLegacyBr(props.modelValue)))
-          ctx.get(listenerCtx).markdownUpdated((_ctx, markdown) => onMarkdownChange(markdown))
+          ctx.get(listenerCtx).markdownUpdated((editorCtx, markdown) => onMarkdownChange(markdown, editorCtx))
           // 光标移动与文档变化都要刷新工具栏的点亮状态：命令改的是文档，
           // 点一下按钮后按钮自己也得跟着亮起来
           ctx.get(listenerCtx).updated(pushFormatState)
@@ -557,7 +631,9 @@ const MilkdownInner = defineComponent({
         })
       },
       getEditor() {
-        return get()
+        // Vue can proxy the Editor class. Its lifecycle getters use JS private
+        // fields and must run with the original instance as their receiver.
+        return toRaw(get())
       },
       undo() {
         const editor = get()
@@ -587,7 +663,9 @@ watch(
   () => [props.noteId, props.modelValue] as const,
   ([noteId, markdown], [previousId]) => {
     if (noteId !== previousId) flush()
-    else if (markdown === latest || pendingId !== null) return
+    // A save echo contains no placeholders. Do not replace the live upload doc.
+    else if (markdown === latest || markdown === base || pendingId !== null) return
+    invalidateUploads()
 
     const editor = inner.value
     if (!editor) return
@@ -601,6 +679,7 @@ watch(
       // 那种情况下「撤销回去」正是用户想要的。
       if (noteId !== previousId) editor.resetHistory()
       latest = markdown
+      documentNoteId = noteId
       // 外部替换进来的正文就是库里此刻的正文，之后的输入都改自它
       base = markdown
       if (noteId !== previousId && !markdown.trim() && props.editable !== false) {
@@ -617,6 +696,8 @@ onMounted(() => window.addEventListener('pagehide', flush))
 onBeforeUnmount(() => {
   window.removeEventListener('pagehide', flush)
   flush()
+  disposed = true
+  invalidateUploads()
 })
 </script>
 

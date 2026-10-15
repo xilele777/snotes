@@ -1,11 +1,23 @@
 import { mount } from '@vue/test-utils'
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { shallowReactive } from 'vue'
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
+import { Editor, editorViewCtx, parserCtx, rootCtx, serializerCtx } from '@milkdown/kit/core'
+import { commonmark } from '@milkdown/kit/preset/commonmark'
+import { gfm } from '@milkdown/kit/preset/gfm'
+import { replaceAll } from '@milkdown/kit/utils'
+import { uploadImage } from './image-upload'
 import MilkdownEditor from './MilkdownEditor.vue'
+
+const editorMock = vi.hoisted(() => ({ current: undefined as Editor | undefined }))
+vi.mock('./image-upload', async (importOriginal) => ({
+  ...await importOriginal<typeof import('./image-upload')>(),
+  uploadImage: vi.fn(),
+}))
 
 vi.mock('@milkdown/vue', () => ({
   Milkdown: { template: '<div class="milkdown-mock" />' },
   MilkdownProvider: { template: '<div><slot /></div>' },
-  useEditor: () => ({ loading: { value: false }, get: () => undefined }),
+  useEditor: () => ({ loading: { value: false }, get: () => editorMock.current }),
 }))
 
 beforeEach(() => vi.useFakeTimers())
@@ -241,5 +253,181 @@ describe('MilkdownEditor 基线上报', () => {
 
     expect(wrapper.emitted('update:modelValue')![0]).toEqual(['n2 正文加一句', 'n2 正文'])
     wrapper.unmount()
+  })
+})
+
+function deferred<T>() {
+  let resolve!: (value: T) => void
+  let reject!: (error: Error) => void
+  const promise = new Promise<T>((yes, no) => { resolve = yes; reject = no })
+  return { promise, resolve, reject }
+}
+
+async function settleUpload() {
+  // No sleeps or network: advance only the upload/preload promise continuations.
+  for (let i = 0; i < 6; i++) await Promise.resolve()
+}
+
+describe('MilkdownEditor 上传的文档生命周期', () => {
+  let editor: Editor
+  const root = document.createElement('div')
+  let wrapper: ReturnType<typeof mount<typeof MilkdownEditor>> | undefined
+  let preloads: { onload: (() => void) | null; onerror: (() => void) | null; src: string; complete: boolean }[]
+  let revoke: ReturnType<typeof vi.fn>
+
+  beforeAll(async () => {
+    document.body.append(root)
+    editor = await Editor.make().config(ctx => ctx.set(rootCtx, root)).use(commonmark).use(gfm).create()
+  })
+  afterAll(async () => { await editor.destroy(); root.remove() })
+  beforeEach(() => {
+    // Match @milkdown/vue's reactive editor exposure: status uses private fields.
+    editorMock.current = shallowReactive(editor)
+    editor.action(replaceAll('original'))
+    vi.mocked(uploadImage).mockReset()
+    let nextUrl = 0
+    revoke = vi.fn()
+    vi.stubGlobal('URL', Object.assign(class extends URL {}, {
+      createObjectURL: vi.fn(() => `blob:test-${++nextUrl}`), revokeObjectURL: revoke,
+    }))
+    preloads = []
+    vi.stubGlobal('Image', class {
+      onload = null
+      onerror = null
+      src = ''
+      complete = false
+      constructor() { preloads.push(this) }
+    })
+    vi.stubGlobal('alert', vi.fn())
+    wrapper = mount(MilkdownEditor, { props: { noteId: 'A', modelValue: 'original' } })
+  })
+  afterEach(() => {
+    wrapper?.unmount()
+    wrapper = undefined
+    editorMock.current = undefined
+    vi.unstubAllGlobals()
+  })
+  const file = () => new File(['image'], 'photo.png', { type: 'image/png' })
+  function markdown() { return editor.action(ctx => ctx.get(serializerCtx)(ctx.get(editorViewCtx).state.doc)) }
+
+  it('two-file upload cannot insert its second placeholder into B, even after switching back to A', async () => {
+    const upload = deferred<Awaited<ReturnType<typeof uploadImage>>>()
+    vi.mocked(uploadImage).mockReturnValue(upload.promise)
+    wrapper!.vm.insertImages([file(), file()])
+    expect(uploadImage).toHaveBeenCalledExactlyOnceWith(expect.any(File), 'A')
+    await wrapper!.setProps({ noteId: 'B', modelValue: 'B text' })
+    await wrapper!.setProps({ noteId: 'A', modelValue: 'A reopened' })
+    const action = vi.spyOn(editor, 'action')
+    upload.resolve({ file_key: 'A/one.png', url: '/api/images/A/one.png' })
+    await settleUpload()
+    expect(action).not.toHaveBeenCalled()
+    action.mockRestore()
+    expect(markdown().trim()).toBe('A reopened')
+    expect(uploadImage).toHaveBeenCalledTimes(1)
+    expect(preloads).toHaveLength(0)
+    expect(revoke).toHaveBeenCalledExactlyOnceWith('blob:test-1')
+  })
+
+  it('switch during real-image preload does not mutate B and releases the placeholder exactly once', async () => {
+    vi.mocked(uploadImage).mockResolvedValue({ file_key: 'A/one.png', url: '/api/images/A/one.png' })
+    wrapper!.vm.insertImages([file(), file()])
+    await settleUpload()
+    expect(preloads).toHaveLength(1)
+    expect(revoke).not.toHaveBeenCalled()
+    const loaded = preloads[0]!.onload!
+    await wrapper!.setProps({ noteId: 'B', modelValue: 'B text' })
+    const action = vi.spyOn(editor, 'action')
+    loaded()
+    await settleUpload()
+    expect(action).not.toHaveBeenCalled()
+    action.mockRestore()
+    expect(markdown().trim()).toBe('B text')
+    expect(uploadImage).toHaveBeenCalledTimes(1)
+    expect(revoke).toHaveBeenCalledExactlyOnceWith('blob:test-1')
+  })
+
+  it.each(['resolve', 'reject'] as const)('unmount during upload: late %s does not access the destroyed editor', async outcome => {
+    const upload = deferred<Awaited<ReturnType<typeof uploadImage>>>()
+    vi.mocked(uploadImage).mockReturnValue(upload.promise)
+    wrapper!.vm.insertImages([file(), file()])
+    wrapper!.unmount()
+    wrapper = undefined
+    const action = vi.spyOn(editor, 'action')
+    if (outcome === 'resolve') upload.resolve({ file_key: 'A/one.png', url: '/api/images/A/one.png' })
+    else upload.reject(new Error('late failure'))
+    await settleUpload()
+    expect(action).not.toHaveBeenCalled()
+    action.mockRestore()
+    expect(alert).not.toHaveBeenCalled()
+    expect(revoke).toHaveBeenCalledExactlyOnceWith('blob:test-1')
+  })
+
+  it('flushes text typed before and during an unresolved upload, with no blob image in valid nested Markdown', async () => {
+    const upload = deferred<Awaited<ReturnType<typeof uploadImage>>>()
+    vi.mocked(uploadImage).mockReturnValue(upload.promise)
+    wrapper!.vm.onMarkdownChange('before upload')
+    wrapper!.vm.insertImages([file()])
+    const draft = 'before upload\n\n> - **during** ![alt](blob:test-1 "title") after\n\n[keep link](blob:link)\n\n`![](blob:code)`'
+    editor.action(replaceAll(draft))
+    // Deliberately do not deliver markdownUpdated: Milkdown debounces it 200ms.
+    await wrapper!.setProps({ noteId: 'B', modelValue: 'B text' })
+    const flushed = wrapper!.emitted('flush')![0]!
+    expect(flushed[0]).toBe('A')
+    expect(flushed[2]).toBe('original')
+    expect(flushed[1]).toContain('before upload')
+    expect(flushed[1]).toContain('**during**')
+    expect(flushed[1]).toContain('after')
+    expect(flushed[1]).not.toContain('blob:test-1')
+    expect(flushed[1]).toContain('[keep link](blob:link)')
+    expect(flushed[1]).toContain('`![](blob:code)`')
+    editor.action(ctx => ctx.get(parserCtx)(flushed[1] as string).check())
+    upload.resolve({ file_key: 'A/one.png', url: '/api/images/A/one.png' })
+    await settleUpload()
+    vi.advanceTimersByTime(2000)
+    expect(wrapper!.emitted('update:modelValue')).toBeUndefined()
+  })
+
+  it.each(['flush', 'pagehide', 'unmount'] as const)('%s captures live text even before the Markdown listener runs', async exit => {
+    const upload = deferred<Awaited<ReturnType<typeof uploadImage>>>()
+    vi.mocked(uploadImage).mockReturnValue(upload.promise)
+    wrapper!.vm.insertImages([file()])
+    editor.action(replaceAll('unsaved before ![](blob:test-1) and during upload'))
+    const current = wrapper!
+    if (exit === 'flush') current.vm.flush()
+    else if (exit === 'pagehide') window.dispatchEvent(new Event('pagehide'))
+    else { current.unmount(); wrapper = undefined }
+    const flushed = current.emitted('flush')![0]!
+    expect(flushed[0]).toBe('A')
+    expect(flushed[1]).toContain('unsaved before')
+    expect(flushed[1]).toContain('and during upload')
+    expect(flushed[1]).not.toContain('blob:')
+    expect(flushed[2]).toBe('original')
+    if (wrapper) { wrapper.unmount(); wrapper = undefined }
+    upload.resolve({ file_key: 'A/one.png', url: '/api/images/A/one.png' })
+    await settleUpload()
+    expect(revoke).toHaveBeenCalledExactlyOnceWith('blob:test-1')
+  })
+
+  it('persists text while uploading, ignores its sanitized save echo, then persists the real URL', async () => {
+    vi.mocked(uploadImage).mockResolvedValue({ file_key: 'A/one.png', url: '/api/images/A/one.png' })
+    wrapper!.vm.insertImages([file()])
+    wrapper!.vm.onMarkdownChange('typed ![](blob:test-1) tail')
+    vi.advanceTimersByTime(800)
+    const saved = wrapper!.emitted('update:modelValue')![0]![0] as string
+    expect(saved).toContain('typed')
+    expect(saved).toContain('tail')
+    expect(saved).not.toContain('blob:')
+    const replace = vi.spyOn(wrapper!.findComponent({ name: 'MilkdownInner' }).vm.$.exposed!, 'replaceContent')
+    await wrapper!.setProps({ modelValue: saved })
+    expect(replace).not.toHaveBeenCalled()
+    await settleUpload()
+    expect(revoke).not.toHaveBeenCalled()
+    preloads[0]!.onload!()
+    await settleUpload()
+    expect(markdown()).toContain('/api/images/A/one.png')
+    wrapper!.vm.onMarkdownChange('typed ![](/api/images/A/one.png) tail')
+    vi.advanceTimersByTime(800)
+    expect(wrapper!.emitted('update:modelValue')!.at(-1)![1]).toBe(saved)
+    expect(revoke).toHaveBeenCalledExactlyOnceWith('blob:test-1')
   })
 })
