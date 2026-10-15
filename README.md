@@ -1,16 +1,34 @@
-# snotes
+<h1 align="center" style="display: none;">snotes</h1>
+<!-- 或者直接用一个不可见的锚点 -->
+<div id="snotes"></div>
 
-轻量的个人 Markdown 笔记，支持离线编辑、多设备同步，以及 Cloudflare 或独立服务器自托管。
+<div align="center">
 
-[![Release](https://img.shields.io/github/v/release/xilele777/snotes)](https://github.com/xilele777/snotes/releases/latest)
-[![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
-[![Cloudflare Workers](https://img.shields.io/badge/Cloudflare-Workers-F38020?logo=cloudflare&logoColor=white)](https://workers.cloudflare.com/)
+<img width="512" height="286" alt="snotes" src="https://github.com/user-attachments/assets/f70b7292-c7ef-4918-8efb-b835007639e6" />
 
-中文 | [English](README.en.md)
+<p><strong>Your notes. Your server. Every device. Even offline.</strong></p>
 
-当前稳定版：**[v0.17.0](https://github.com/xilele777/snotes/releases/tag/v0.17.0)**（[全部发布](https://github.com/xilele777/snotes/releases)）。服务器部署从 `v0.7.0` 开始提供。
+<p>一款轻量的个人笔记应用，支持离线编辑、多设备同步，以及 Cloudflare 或独立服务器自托管。</p>
 
-[界面与操作](#界面与操作) · [Cloudflare 部署](#部署到你自己的-cloudflare-账号) · [服务器部署](docs/server-deployment.md) · [本地开发](#本地开发) · [更新记录](CHANGELOG.md)
+<p>
+  <a href="https://github.com/xilele777/snotes/releases/latest"><img src="https://img.shields.io/github/v/release/xilele777/snotes" alt="Release"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="License"></a>
+  <a href="https://workers.cloudflare.com/"><img src="https://img.shields.io/badge/Cloudflare-Workers-F38020?logo=cloudflare&amp;logoColor=white" alt="Cloudflare Workers"></a>
+</p>
+
+<p>中文 | <a href="README.en.md">English</a></p>
+
+<p>当前稳定版：<a href="https://github.com/xilele777/snotes/releases/tag/v0.17.0"><strong>v0.17.0</strong></a>（<a href="https://github.com/xilele777/snotes/releases">全部发布</a>）。服务器部署从 <code>v0.7.0</code> 开始提供。</p>
+
+<p>
+  <a href="#界面与操作">界面与操作</a> ·
+  <a href="#部署到你自己的-cloudflare-账号">Cloudflare 部署</a> ·
+  <a href="docs/server-deployment.md">服务器部署</a> ·
+  <a href="#本地开发">本地开发</a> ·
+  <a href="CHANGELOG.md">更新记录</a>
+</p>
+
+</div>
 
 笔记先保存在浏览器的 IndexedDB，再由后台增量同步。可以使用 Cloudflare Workers + D1 + R2，也可以在自己的服务器运行 Node.js + SQLite + 本地图片存储，两种方式共用笔记 API 与同步逻辑。适合在自己的电脑和手机之间记录、整理与继续写作。
 
