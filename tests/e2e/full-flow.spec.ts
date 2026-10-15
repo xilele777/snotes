@@ -113,8 +113,8 @@ async function seedLongNotes(page: Page, titles: string[]) {
 
 async function openStatsPage(page: Page) {
   if (page.viewportSize()!.width <= 1020) await page.getByRole('button', { name: '打开侧栏' }).click()
-  await page.getByRole('button', { name: '记录统计', exact: true }).click()
-  await expect(page.getByRole('region', { name: '记录统计' }).locator('.stats-grid')).toBeVisible()
+  await page.getByRole('button', { name: '统计', exact: true }).click()
+  await expect(page.getByRole('region', { name: '统计' }).locator('.stats-grid')).toBeVisible()
 }
 
 /** 1×1 的 PNG，够小到可以直接内联 */
@@ -598,12 +598,12 @@ test('窄屏下侧栏收进抽屉，点 ☰ 能拿回全部入口', async ({ pag
   // 统计作为独立页面，返回后恢复原视图和可见的抽屉入口。
   await page.getByRole('button', { name: '打开侧栏', exact: true }).click()
   await page.locator('.group-sidebar [data-view="stats"]').click()
-  await expect(page.getByRole('region', { name: '记录统计' })).toBeVisible()
+  await expect(page.getByRole('region', { name: '统计' })).toBeVisible()
   await expect(page.locator('.layout')).toHaveAttribute('data-view', 'stats')
   await expect(page.locator('.drawer-mask')).toHaveCount(0)
-  await expect(page.getByRole('heading', { name: '记录统计' })).toBeFocused()
+  await expect(page.getByRole('heading', { name: '统计' })).toBeFocused()
   await page.getByRole('button', { name: '返回工作区' }).click()
-  await expect(page.getByRole('region', { name: '记录统计' })).toHaveCount(0)
+  await expect(page.getByRole('region', { name: '统计' })).toHaveCount(0)
   await expect(page.getByRole('button', { name: '打开侧栏', exact: true })).toBeFocused()
 
   // 回收站属于笔记导航，保留同样的侧栏和关闭抽屉的入口。
@@ -635,23 +635,23 @@ test('统计页面保留编辑器、撤销和滚动位置，侧栏可切换页�
   await page.locator('.note-list').evaluate(el => { el.scrollTop = 610 })
   await page.locator('.editor-body').evaluate(el => { el.scrollTop = 880 })
   await openStatsPage(page)
-  const dialog = page.getByRole('region', { name: '记录统计' })
+  const dialog = page.getByRole('region', { name: '统计' })
   await expect(page.locator('.layout')).toHaveAttribute('data-view', 'stats')
   await expect(page.locator('.layout')).not.toHaveAttribute('inert')
   await expect(editor).toBeHidden()
   await expect(editor).toHaveAttribute('data-preserved-editor', 'yes')
-  await expect(dialog.getByRole('heading', { name: '记录统计' })).toBeFocused()
+  await expect(dialog.getByRole('heading', { name: '统计' })).toBeFocused()
   const grid = (await dialog.locator('.stats-grid').boundingBox())!
   const heatmap = (await dialog.locator('.panel-heatmap').boundingBox())!
   expect(heatmap.width).toBeCloseTo(grid.width, 0)
   await page.getByRole('button', { name: '设置', exact: true }).click()
   await expect(page.getByRole('region', { name: '设置', exact: true })).toBeVisible()
   await expect(page.locator('.sidebar-tool[data-view="settings"]')).toHaveAttribute('aria-current', 'page')
-  await page.getByRole('button', { name: '记录统计', exact: true }).click()
+  await page.getByRole('button', { name: '统计', exact: true }).click()
   await dialog.getByRole('button', { name: '返回工作区' }).click()
 
   await expect(dialog).toHaveCount(0)
-  await expect(page.getByRole('button', { name: '记录统计', exact: true })).toBeFocused()
+  await expect(page.getByRole('button', { name: '统计', exact: true })).toBeFocused()
   await expect(editor).toHaveAttribute('data-preserved-editor', 'yes')
   await expect(page.locator(`.groups [data-group-id="${groupId}"]`)).toHaveClass(/active/)
   await expect(page.getByRole('searchbox', { name: '搜索笔记', exact: true })).toHaveValue('项目')
@@ -700,7 +700,7 @@ test('回收站预览与正文对齐，返回后恢复分组、搜索和阅读�
 
   await openStatsPage(page)
   await page.getByRole('button', { name: '返回工作区' }).click()
-  await expect(page.getByRole('region', { name: '记录统计' })).toHaveCount(0)
+  await expect(page.getByRole('region', { name: '统计' })).toHaveCount(0)
   await expect(page.locator('.layout')).toHaveAttribute('data-view', 'trash')
   await expect(page.locator('.note-item')).toHaveCount(3)
   await page.getByRole('button', { name: '笔记', exact: true }).click()
@@ -849,7 +849,7 @@ for (const width of [390, 320]) {
     await page.locator('.note-list').evaluate(el => { el.scrollTop = 420 })
 
     await openStatsPage(page)
-    const dialog = page.getByRole('region', { name: '记录统计' })
+    const dialog = page.getByRole('region', { name: '统计' })
     const bounds = await dialog.boundingBox()
     expect(bounds!.x).toBe(0)
     expect(bounds!.width).toBe(width)

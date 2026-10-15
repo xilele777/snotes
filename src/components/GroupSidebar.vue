@@ -220,7 +220,7 @@ watch(() => ui.drawerOpen, (open) => { if (!open) menuGroup.value = null })
       <div class="sidebar-footer">
         <div class="sidebar-tools">
           <button class="sidebar-tool" data-view="trash" :class="{ active: !ui.workspacePage && ui.view === 'trash' }" aria-label="回收站" title="回收站" :aria-current="!ui.workspacePage && ui.view === 'trash' ? 'page' : undefined" @click="switchListView('trash')"><AppIcon name="trash" :size="16" /><span>回收站</span></button>
-          <button class="sidebar-tool" data-view="stats" :class="{ active: statsOpen }" aria-label="记录统计" title="记录统计" :aria-current="statsOpen ? 'page' : undefined" @click="openWorkspacePage('stats')"><AppIcon name="chart" :size="16" /><span>记录统计</span></button>
+          <button class="sidebar-tool" data-view="stats" :class="{ active: statsOpen }" aria-label="统计" title="统计" :aria-current="statsOpen ? 'page' : undefined" @click="openWorkspacePage('stats')"><AppIcon name="chart" :size="16" /><span>统计</span></button>
           <button class="sidebar-tool" data-view="settings" :class="{ active: settingsOpen, 'has-update': hasUpdate }" aria-label="设置" :aria-current="settingsOpen ? 'page' : undefined" :title="hasUpdate ? `设置（有新版本 ${latestLabel} 可用）` : '设置'" @click="openWorkspacePage('settings')"><AppIcon name="settings" :size="20" /><span>设置</span></button>
         </div>
 

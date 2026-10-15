@@ -10,10 +10,10 @@ onMounted(() => heading.value?.focus({ preventScroll: true }))
 </script>
 
 <template>
-  <section v-if="open" class="workspace-page stats-page" role="region" aria-label="记录统计">
+  <section v-if="open" class="workspace-page stats-page" role="region" aria-label="统计">
     <header class="workspace-page-header">
       <button class="drawer-btn" aria-label="打开侧栏" @click="openDrawer"><AppIcon name="menu" /></button>
-      <h1 ref="heading" tabindex="-1">记录统计</h1>
+      <h1 ref="heading" tabindex="-1">统计</h1>
       <button class="page-back" aria-label="返回工作区" @click="closeWorkspacePage"><AppIcon name="back" :size="17" /><span>返回工作区</span></button>
     </header>
     <StatsView @select-note="openStatsNote" />

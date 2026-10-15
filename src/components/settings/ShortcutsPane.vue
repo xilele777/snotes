@@ -26,13 +26,26 @@ const editorList = withMod(EDITOR_SHORTCUT_LIST)
 </template>
 
 <style scoped>
-.shortcut-section { max-width: 480px; margin-inline: auto; }
-.shortcut-section .settings-section-title { text-align: center; margin-bottom: 12px; }
-.shortcut-list > div { display: grid; grid-template-columns: repeat(2, minmax(0, 160px)); justify-content: center; gap: 48px; padding-block: 9px; }
-.shortcut-list dt { text-align: left; }
-.shortcut-list dd { text-align: left; }
+/*
+ * min-width: 0 是关键：外层 .settings-pane 是 flex 容器，flex 子项默认 min-width: auto
+ * 会被撑满整行，于是下面清单的 max-width: 100% 会解析成「整行宽」，
+ * margin-inline: auto 就没有余量可分，整块只能贴左边。断掉这条链才能真的居中。
+ */
+.shortcut-section { max-width: 560px; min-width: 0; margin-inline: auto; }
+.shortcut-section .settings-section-title { text-align: center; margin-bottom: 14px; }
+/*
+ * 快捷键清单按「表格」来排：
+ * - 两列等宽（各 1fr），整张表定宽 + margin-inline: auto 居中，两端留白一样；
+ * - 每列内容在自己那一列里居中（dt / dd 都是 text-align: center）；
+ * - 列距收窄到 12px：两列各自往中间靠，说明紧跟键位。
+ * 定宽而不是 width: max-content：表格宽度不随最长键位跳来跳去，视觉更稳定。
+ */
+.shortcut-list { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); column-gap: 12px; row-gap: 6px; width: min(340px, 100%); margin-inline: auto; }
+.shortcut-list > div { display: contents; }
+.shortcut-list dt { text-align: center; white-space: nowrap; }
+.shortcut-list dd { min-width: 0; text-align: center; overflow-wrap: anywhere; }
+.shortcut-list code { white-space: normal; }
 @media (max-width: 480px) {
-  .shortcut-list > div { gap: 28px; }
-  .shortcut-list code { white-space: normal; overflow-wrap: anywhere; }
+  .shortcut-list { column-gap: 12px; row-gap: 4px; width: 100%; }
 }
 </style>

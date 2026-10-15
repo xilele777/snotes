@@ -75,8 +75,8 @@ for (const width of [1440, 320]) {
 
     // 深色下热力图 5 级色阶仍然两两不同
     if (width < 1020) await page.getByRole('button', { name: '打开侧栏' }).click()
-    await page.getByRole('button', { name: '记录统计', exact: true }).click()
-    const stats = page.getByRole('region', { name: '记录统计', exact: true })
+    await page.getByRole('button', { name: '统计', exact: true }).click()
+    const stats = page.getByRole('region', { name: '统计', exact: true })
     const legend = stats.locator('.heatmap-legend .heatmap-cell')
     await expect(legend).toHaveCount(5)
     const colors = await legend.evaluateAll((cells) => cells.map((el) => getComputedStyle(el).backgroundColor))

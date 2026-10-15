@@ -82,8 +82,8 @@ for (const width of [1440, 390, 320]) {
     await expect(page.locator('.sidebar-footer [data-view="settings"]')).toHaveClass(/has-update/)
     expect(checks).toBe(1)
     if (width < 1020) await page.getByRole('button', { name: '打开侧栏' }).click()
-    await page.getByRole('button', { name: '记录统计', exact: true }).click()
-    const stats = page.getByRole('region', { name: '记录统计', exact: true })
+    await page.getByRole('button', { name: '统计', exact: true }).click()
+    const stats = page.getByRole('region', { name: '统计', exact: true })
     await expect(stats.locator('.heatmap-grid .heatmap-cell')).toHaveCount(371)
     const colors: string[] = []
     for (let level = 0; level <= 4; level++) {

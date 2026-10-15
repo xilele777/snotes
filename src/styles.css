@@ -490,12 +490,13 @@ textarea.dialog-input { height: auto; min-height: 112px; padding: 10px 12px; lin
 .settings-seg button:hover { color: var(--text-primary); }
 .settings-seg button[aria-checked='true'] { background: var(--bg-surface); color: var(--text-primary); box-shadow: 0 1px 3px rgb(0 0 0 / 10%); }
 .settings-hint { margin: 4px 0 0; font-size: 12px; color: var(--text-tertiary); line-height: 1.6; }
-/* 快捷键页：三段清单，键位在左、说明在右 */
+/*
+ * 快捷键页：三段清单，键位在左、说明在右。
+ * 分栏与对齐由 ShortcutsPane 的 scoped 样式负责（那里能一起改），这里只留文字样式。
+ */
 .shortcut-section + .shortcut-section { margin-top: 22px; }
 .shortcut-list { margin: 0; font-size: 12px; }
-.shortcut-list > div { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 6px 0; border-bottom: 1px solid var(--border-light); }
-.shortcut-list dt { flex: none; }
-.shortcut-list dd { margin: 0; color: var(--text-secondary); text-align: right; }
+.shortcut-list dd { margin: 0; color: var(--text-secondary); }
 .shortcut-list code { display: inline-block; color: var(--text-primary); font-family: inherit; background: var(--bg-app); padding: 2px 6px; border-radius: 4px; font-size: 11px; white-space: nowrap; }
 /* 关于页尾：退出登录只清令牌 */
 .logout-button { display: flex; align-items: center; gap: 6px; min-height: 34px; padding: 0 12px; border: 1px solid var(--border-default); border-radius: 6px; background: transparent; color: var(--danger); font-size: 13px; white-space: nowrap; }

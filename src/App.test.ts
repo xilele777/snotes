@@ -225,7 +225,7 @@ describe('App 统计页面', () => {
     expect(wrapper.get('.editor-body').element).toBe(editor)
     expect(wrapper.get('.layout').attributes('inert')).toBeUndefined()
     expect(wrapper.get('.list-pane').attributes('inert')).toBeDefined()
-    const dialog = document.querySelector('[role="region"][aria-label="记录统计"]')!
+    const dialog = document.querySelector('[role="region"][aria-label="统计"]')!
     const close = dialog.querySelector<HTMLButtonElement>('[aria-label="返回工作区"]')!
     expect(document.activeElement).toBe(dialog.querySelector('h1'))
     const create = vi.spyOn(notes, 'create')
@@ -235,7 +235,7 @@ describe('App 统计页面', () => {
     close.click()
     await vi.waitFor(() => expect(history.state.workspacePage).toBeNull())
     await flushPromises()
-    expect(document.querySelector('[role="region"][aria-label="记录统计"]')).toBeNull()
+    expect(document.querySelector('[role="region"][aria-label="统计"]')).toBeNull()
     expect(document.activeElement).toBe(trigger.element)
     expect(wrapper.getComponent(NoteDetail).vm.$.uid).toBe(detailId)
     expect(notes.currentId).toBe(note.id)
