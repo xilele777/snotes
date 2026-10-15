@@ -1,4 +1,5 @@
 import { createPinia, setActivePinia } from 'pinia'
+import Dexie from 'dexie'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { db } from './db/schema'
 import { backToList, closeWorkspacePage, initNavigation, isMobile, openDrawer, openWorkspacePage, openStatsNote, openManagedView, popNav, pushNav, showKnowledgeBases, showNotes, switchListView } from './navigation'
@@ -16,6 +17,38 @@ beforeEach(async () => {
 })
 
 describe('navigation 导航栈', () => {
+  it('浏览器返回后前进会恢复真正的目标视图', async () => {
+    const ui = useUiStore()
+    initNavigation()
+    await switchListView('star')
+    expect(window.history.state.view).toBe('star')
+    const traverse = (action: () => void) => new Promise<void>(resolve => {
+      window.addEventListener('popstate', () => resolve(), { once: true })
+      action()
+    })
+    await traverse(() => window.history.back())
+    expect(ui.view).toBe('all')
+    await traverse(() => window.history.forward())
+    expect(ui.view).toBe('star')
+  })
+
+  it('延迟的统计笔记查询不会覆盖后来切换的视图', async () => {
+    const ui = useUiStore()
+    const notes = useNotesStore()
+    const note = await notes.create()
+    initNavigation()
+    openWorkspacePage('stats')
+    let release!: () => void
+    const gate = new Promise<void>(resolve => { release = resolve })
+    const lookup = vi.spyOn(db.notes, 'get').mockImplementationOnce(() => Dexie.Promise.resolve(gate).then(() => note))
+    const pending = openStatsNote(note.id)
+    await switchListView('star')
+    release()
+    await pending
+    expect(ui.view).toBe('star')
+    expect(ui.workspacePage).toBeNull()
+    lookup.mockRestore()
+  })
   it('隐藏笔记入口替换设置层，返回保留原笔记与搜索', async () => {
     const ui = useUiStore()
     const notes = useNotesStore()

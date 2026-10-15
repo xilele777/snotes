@@ -52,7 +52,10 @@ export function isNotesView(view: UiView): boolean {
   return view === 'all' || view === 'star' || view === 'group' || view === 'hidden'
 }
 
+let navigationGeneration = 0
+
 export async function switchListView(view: ListView, groupId: string | null = null) {
+  navigationGeneration++
   const ui = useUiStore()
   ui.focusMode = false
   if (!ui.workspacePage && ui.view === view && ui.activeGroupId === groupId) {
@@ -75,6 +78,7 @@ export async function switchListView(view: ListView, groupId: string | null = nu
 
 /** 图标栏回到离开前的笔记位置；在笔记页内点击不会重置分组。 */
 export async function showNotes() {
+  navigationGeneration++
   const ui = useUiStore()
   if (isNotesView(ui.view)) {
     if (ui.workspacePage) { pushNav(); ui.workspacePage = null }
@@ -92,6 +96,7 @@ export async function showNotes() {
 }
 
 export async function showKnowledgeBases(id: string | null = null) {
+  navigationGeneration++
   const ui = useUiStore()
   if (!ui.workspacePage && ui.view === 'knowledge-bases' && ui.activeKnowledgeBaseId === id && ui.knowledgeBaseFilter === 'active') { ui.drawerOpen = false; return }
   if (isNotesView(ui.view) && !ui.workspacePage) ui.lastNotesPosition = snapshot()
@@ -114,6 +119,7 @@ export async function showKnowledgeBases(id: string | null = null) {
 
 /** A management link replaces the settings layer so Back returns to its original workspace. */
 export async function openManagedView(target: 'hidden' | 'trash') {
+  navigationGeneration++
   const ui = useUiStore()
   const notes = useNotesStore()
   if (!ui.workspacePage) pushNav()
@@ -143,6 +149,7 @@ export async function openManagedView(target: 'hidden' | 'trash') {
  * 页面之间切换替换当前条目，返回按钮和浏览器返回都回到原工作区。
  */
 export function openWorkspacePage(kind: WorkspacePage, tab?: SettingsTab) {
+  navigationGeneration++
   const ui = useUiStore()
   if (tab) ui.settingsTab = tab
   else if (kind === 'settings') ui.settingsTab = 'appearance'
@@ -155,6 +162,7 @@ export function openWorkspacePage(kind: WorkspacePage, tab?: SettingsTab) {
 }
 
 export function closeWorkspacePage() {
+  navigationGeneration++
   const ui = useUiStore()
   if (!ui.workspacePage) return
   if (history.state?.workspacePage) popNav()
@@ -173,6 +181,7 @@ export function closeStats() {
 
 /** 榜单中的笔记是一次明确跳转，用目标笔记替换统计页这层历史。 */
 export async function openStatsNote(id: string) {
+  const generation = ++navigationGeneration
   const ui = useUiStore()
   const notes = useNotesStore()
   ui.workspacePage = null
@@ -184,6 +193,9 @@ export async function openStatsNote(id: string) {
   // 「选中项必须在当前列表里」不变量清掉，落到别的笔记上。
   const target = await getNote(id)
   const hidden = target ? await isNoteHiddenFromHome(target) : false
+  if (generation !== navigationGeneration) return
+  ui.activeKnowledgeBaseId = null
+  ui.activeTocNodeId = null
   ui.view = hidden ? 'hidden' : 'all'
   ui.activeGroupId = null
   notes.open(id)
@@ -200,6 +212,7 @@ export function isMobile(): boolean {
 let initialized = false
 
 export function initNavigation() {
+  navigationGeneration++
   // 根快照写进当前条目。不再压哨兵：目录页按返回时栈底就是它，
   // 没有更早条目可退，standalone PWA 直接退出回桌面，不再被 forward 挡住。
   history.replaceState(snapshot(), '')
@@ -215,10 +228,17 @@ export function pushNav() {
   const current = snapshot()
   history.replaceState(current, '')
   history.pushState(current, '')
+  const generation = ++navigationGeneration
+  // Callers synchronously set the destination after pushNav. Persist that
+  // destination too, otherwise Forward replays the pre-navigation snapshot.
+  queueMicrotask(() => {
+    if (generation === navigationGeneration) history.replaceState(snapshot(), '')
+  })
 }
 
 /** 返回上一级：走 history.back()，由 popstate 统一恢复 */
 export function popNav() {
+  navigationGeneration++
   history.back()
 }
 
@@ -263,6 +283,7 @@ function restore(s: NavSnapshot) {
 let popping = false
 
 function onPopState(e: PopStateEvent) {
+  navigationGeneration++
   if (popping) return
   popping = true
   queueMicrotask(() => {
