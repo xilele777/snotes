@@ -3,6 +3,7 @@ import { Hono } from 'hono'
 import { bodyLimit } from 'hono/body-limit'
 import { extname, join, resolve } from 'node:path'
 import { createApp } from '../worker/app'
+import { auth } from '../worker/auth'
 import type { Env } from '../worker/types'
 import { LoginLimiter, clientAddress } from './rate-limit'
 
@@ -22,7 +23,11 @@ export function createServerApp(assetDirectory: string, limiter = new LoginLimit
     }
     await next()
     if (c.res.status === 401) limiter.fail(key)
-    else limiter.succeed(key)
+    else {
+      // bodyLimit 等中间件可在鉴权前返回 413；非 401 并不证明凭据有效。
+      // 复用真正的鉴权规则（包括图片 Cookie），只有 auth 放行才清除失败记录。
+      await auth(c, async () => { limiter.succeed(key) })
+    }
   })
   app.use('/api/*', bodyLimit({ maxSize: 12 * 1024 * 1024, onError: (c) => c.json({ error: 'payload_too_large' }, 413) }))
   app.route('/', createApp())

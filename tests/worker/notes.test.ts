@@ -1,7 +1,9 @@
 import { env } from 'cloudflare:test'
 import { beforeEach, describe, expect, it } from 'vitest'
 import type { PatchNoteResponse } from '../../shared/types'
-import { api, json, noteReq, resetDb } from './helpers'
+import { createApp } from '../../worker/app'
+import type { Database, Statement } from '../../worker/storage'
+import { api, json, noteReq, resetDb, TOKEN } from './helpers'
 
 beforeEach(resetDb)
 
@@ -90,6 +92,88 @@ describe('POST /api/notes 复活墓碑', () => {
     expect(await res.json()).toMatchObject({ version: 1, prop_version: 1 })
     const body = await env.DB.prepare('SELECT content FROM note_body WHERE note_id = ?').bind(req.id).first()
     expect(body).toMatchObject({ content: '原正文' })
+  })
+})
+
+// 注入局部 DB 代理，不修改共享 env，也不依赖请求调度时机。
+function requestWithDb(db: Database, path: string, method: string, body?: unknown) {
+  return createApp().request(path, {
+    method,
+    headers: { Authorization: `Bearer ${TOKEN}`, 'Content-Type': 'application/json' },
+    ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+  }, { ...env, DB: db })
+}
+
+describe('note write interleavings', () => {
+  it('retries a body CAS after an interleaved property PATCH without writing the body alone', async () => {
+    const req = noteReq()
+    await json('/api/notes', 'POST', req)
+    let intercepted = false
+    const db: Database = {
+      prepare: (sql) => env.DB.prepare(sql),
+      async batch(statements) {
+        if (intercepted) return env.DB.batch(statements as D1PreparedStatement[])
+        intercepted = true
+        // 原请求已读到两个版本 1；star 仅推进 prop_version，正文版本仍为 1。
+        const star = await json(`/api/notes/${req.id}`, 'PATCH', { star: 1, base_prop_version: 1 })
+        expect(await star.json()).toMatchObject({ version: 1, prop_version: 2 })
+        const result = await env.DB.batch(statements as D1PreparedStatement[])
+        expect(result[0].meta.changes).toBe(0)
+        expect(result[1].meta.changes).toBe(0)
+        expect(await env.DB.prepare('SELECT content, version FROM note_body WHERE note_id = ?').bind(req.id).first())
+          .toMatchObject({ content: req.content, version: 1 })
+        return result
+      },
+    }
+    const response = await requestWithDb(db, `/api/notes/${req.id}`, 'PATCH', {
+      content: 'edited', title: 'edited', summary: 'edited', base_version: 1,
+    })
+    expect(response.status).toBe(200)
+    expect(await response.json()).toMatchObject({ version: 2, prop_version: 2, conflicted: false })
+    expect(intercepted).toBe(true)
+    expect(await env.DB.prepare('SELECT title, summary, version, prop_version, star FROM note WHERE id = ?').bind(req.id).first())
+      .toMatchObject({ title: 'edited', summary: 'edited', version: 2, prop_version: 2, star: 1 })
+    expect(await env.DB.prepare('SELECT content, version FROM note_body WHERE note_id = ?').bind(req.id).first())
+      .toMatchObject({ content: 'edited', version: 2 })
+
+    const next = await json(`/api/notes/${req.id}`, 'PATCH', {
+      content: 'next edit', title: 'next edit', summary: 'next edit', base_version: 2,
+    })
+    expect(await next.json()).toMatchObject({ version: 3, prop_version: 2, conflicted: false })
+    expect(await env.DB.prepare('SELECT content, version FROM note_body WHERE note_id = ?').bind(req.id).first())
+      .toMatchObject({ content: 'next edit', version: 3 })
+  })
+
+  it.each(['trash', 'recover'])('%s atomically increments the latest property version after interleaved writes', async (action) => {
+    const req = noteReq()
+    await json('/api/notes', 'POST', req)
+    let intercepted = false
+    const beforeWrite = async () => {
+      if (intercepted) return
+      intercepted = true
+      expect((await json(`/api/notes/${req.id}`, 'PATCH', { star: 1, base_prop_version: 1 })).status).toBe(200)
+      expect((await json(`/api/notes/${req.id}`, 'PATCH', { top: 1, base_prop_version: 2 })).status).toBe(200)
+    }
+    const wrap = (statement: Statement): Statement => ({
+      bind: (...values) => wrap(statement.bind(...values)),
+      first: async <T>() => { await beforeWrite(); return statement.first<T>() },
+      all: () => statement.all(),
+      run: async () => { await beforeWrite(); return statement.run() },
+    })
+    const db: Database = {
+      prepare(sql) {
+        const statement = env.DB.prepare(sql)
+        return sql.startsWith('UPDATE note SET invalid = ?') ? wrap(statement) : statement
+      },
+      batch: (statements) => env.DB.batch(statements as D1PreparedStatement[]),
+    }
+    const response = await requestWithDb(db, `/api/notes/${req.id}/${action}`, 'POST')
+    expect(response.status).toBe(200)
+    const ack = await response.json<{ prop_version: number; update_time: number }>()
+    expect(ack.prop_version).toBe(4)
+    expect(intercepted).toBe(true)
+    expect(await env.DB.prepare('SELECT invalid, prop_version, update_time, star, top FROM note WHERE id = ?').bind(req.id).first())
+      .toEqual({ invalid: action === 'trash' ? 1 : 0, ...ack, star: 1, top: 1 })
   })
 })
 

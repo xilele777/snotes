@@ -225,16 +225,16 @@ notesRoutes.patch('/api/notes/:id', async (c) => {
     // 否则两个并发请求都读到 version=1、都写成 2、都报告没有冲突，其中一份正文就被静默覆盖。
     const statements = [
       c.env.DB.prepare(
-        `UPDATE note SET ${sets.join(', ')} WHERE id = ? AND version = ? AND prop_version = ?`
+        `UPDATE note SET ${sets.join(', ')} WHERE id = ? AND version = ? AND prop_version = ? AND invalid != 2`
       ).bind(...values, id, current.version, current.prop_version),
     ]
 
     if (changesBody) {
-      // note_body.version 与 note.version 始终同步推进，同样用它做条件：
-      // 上一条落空时这一条也不能写，否则正文与元数据的版本会错开。
+      // batch 是同一连接上的事务（D1 与 server SQLite 均如此）。changes() 必须紧接
+      // 元数据 CAS：仅属性被并发推进时，正文 version 仍匹配，但 CAS 已失败，不能单独写正文。
       statements.push(
         c.env.DB.prepare(
-          'UPDATE note_body SET content = ?, version = ? WHERE note_id = ? AND version = ?'
+          'UPDATE note_body SET content = ?, version = ? WHERE note_id = ? AND version = ? AND changes() = 1'
         ).bind(req.content, version, id, current.version)
       )
     }
@@ -267,22 +267,17 @@ notesRoutes.patch('/api/notes/:id', async (c) => {
 async function setInvalid(c: { env: Env }, id: string, invalid: 0 | 1) {
   // 墓碑（invalid=2）不再接受任何状态切换：正文早已回收，「恢复」只会造出一条没有正文的
   // 正常笔记，「删除」则会把它重新摆进回收站。回 404 让客户端按已物理删除处理。
-  const current = await c.env.DB.prepare('SELECT prop_version FROM note WHERE id = ? AND invalid != 2')
-    .bind(id)
-    .first<{ prop_version: number }>()
-
-  if (!current) return null
-
-  const now = nowMs()
-  const propVersion = current.prop_version + 1
-
-  await c.env.DB.prepare(
-    'UPDATE note SET invalid = ?, prop_version = ?, update_time = ? WHERE id = ? AND invalid != 2'
+  // 在同一个语句中递增并返回实际落库版本，不能用先读后写的旧 prop_version 覆盖并发 PATCH。
+  const result = await c.env.DB.prepare(
+    `UPDATE note SET invalid = ?, prop_version = prop_version + 1, update_time = ?
+     WHERE id = ? AND invalid != 2 RETURNING prop_version, update_time`
   )
-    .bind(invalid, propVersion, now, id)
-    .run()
-
-  return { prop_version: propVersion, update_time: now }
+    .bind(invalid, nowMs(), id)
+    .first<{ prop_version: number; update_time: number }>()
+  if (!result) return null
+  // RETURNING precedes AFTER triggers: retain our version, read the committed time.
+  const committed = await c.env.DB.prepare('SELECT update_time FROM note WHERE id = ?').bind(id).first<{ update_time: number }>()
+  return { ...result, update_time: committed?.update_time ?? result.update_time }
 }
 
 notesRoutes.post('/api/notes/:id/trash', async (c) => {

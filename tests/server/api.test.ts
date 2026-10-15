@@ -7,6 +7,7 @@ import { DiskImages } from '../../server/images'
 import { SqliteDatabase } from '../../server/sqlite'
 import { ORPHAN_IMAGE_GRACE_MS, runMaintenance } from '../../worker/maintenance'
 import { LOGIN_FAIL_THRESHOLD } from '../../server/rate-limit'
+import type { Database, Statement } from '../../worker/storage'
 
 let directory: string
 let db: SqliteDatabase
@@ -80,6 +81,103 @@ it('blocks a source after repeated 401s, keeps other sources and health working,
   expect((await from('127.0.0.1', { 'X-Forwarded-For': '198.51.100.7', Authorization: 'Bearer dev-token' })).status).toBe(200)
   expect((await from('127.0.0.1', { 'X-Forwarded-For': '198.51.100.7' })).status).toBe(401)
   expect((await from('127.0.0.1', { 'X-Forwarded-For': '198.51.100.8', Authorization: 'Bearer dev-token' })).status).toBe(200)
+})
+
+it.each([undefined, 'Bearer wrong-token'])('does not reset login failures after an unauthenticated 413 (%s)', async (authorization) => {
+  const source = { ...env, REMOTE_ADDRESS: '203.0.113.42' }
+  const wrong = () => app.request('/api/runtime', { headers: { Authorization: 'Bearer wrong-token' } }, source)
+  for (let i = 0; i < LOGIN_FAIL_THRESHOLD - 1; i++) expect((await wrong()).status).toBe(401)
+  const oversized = await app.request('/api/notes', {
+    method: 'POST',
+    headers: authorization ? { Authorization: authorization } : {},
+    body: 'x'.repeat(12 * 1024 * 1024 + 1),
+  }, source)
+  expect(oversized.status).toBe(413)
+  expect((await wrong()).status).toBe(401)
+  const blocked = await wrong()
+  expect(blocked.status).toBe(429)
+  expect(blocked.headers.get('Retry-After')).toMatch(/^\d+$/)
+})
+
+it('only resets failures for valid credentials, including authenticated application errors and image Cookies', async () => {
+  const source = { ...env, REMOTE_ADDRESS: '203.0.113.43' }
+  const wrong = () => app.request('/api/runtime', { headers: { Authorization: 'Bearer wrong-token' } }, source)
+  const almostBlocked = async () => {
+    for (let i = 0; i < LOGIN_FAIL_THRESHOLD - 1; i++) expect((await wrong()).status).toBe(401)
+  }
+  await almostBlocked()
+  expect((await app.request('/api/missing', { headers: { Authorization: 'Bearer dev-token' } }, source)).status).toBe(404)
+  await almostBlocked()
+  expect((await app.request('/api/images/missing.png', { headers: { Cookie: 'snotes_token=dev-token' } }, source)).status).toBe(404)
+  expect((await wrong()).status).toBe(401)
+  expect((await wrong()).status).toBe(401)
+})
+
+it('gates SQLite body updates on the preceding metadata CAS and persists subsequent edits', async () => {
+  const id = await createNote()
+  let intercepted = false
+  const proxy: Database = {
+    prepare: (sql) => db.prepare(sql),
+    async batch(statements) {
+      if (intercepted) return db.batch(statements)
+      intercepted = true
+      expect(await (await api(`/api/notes/${id}`, { star: 1, base_prop_version: 1 }, 'PATCH')).json())
+        .toMatchObject({ version: 1, prop_version: 2 })
+      const result = await db.batch(statements)
+      expect(result.map((row) => row.meta.changes)).toEqual([0, 0])
+      expect(await db.prepare('SELECT content, version FROM note_body WHERE note_id = ?').bind(id).first())
+        .toEqual({ content: 'original', version: 1 })
+      return result
+    },
+  }
+  const response = await app.request(`/api/notes/${id}`, {
+    method: 'PATCH', headers: { Authorization: 'Bearer dev-token', 'Content-Type': 'application/json' },
+    body: JSON.stringify({ content: 'edited', title: 'edited', summary: 'edited', base_version: 1 }),
+  }, { ...env, DB: proxy })
+  expect(response.status).toBe(200)
+  expect(await response.json()).toMatchObject({ version: 2, prop_version: 2, conflicted: false })
+  expect(intercepted).toBe(true)
+  expect(await db.prepare('SELECT title, summary, version, prop_version, star FROM note WHERE id = ?').bind(id).first())
+    .toEqual({ title: 'edited', summary: 'edited', version: 2, prop_version: 2, star: 1 })
+  expect(await db.prepare('SELECT content, version FROM note_body WHERE note_id = ?').bind(id).first())
+    .toEqual({ content: 'edited', version: 2 })
+  expect(await (await api(`/api/notes/${id}`, { content: 'next', title: 'next', summary: 'next', base_version: 2 }, 'PATCH')).json())
+    .toMatchObject({ version: 3, prop_version: 2, conflicted: false })
+  expect(await db.prepare('SELECT content, version FROM note_body WHERE note_id = ?').bind(id).first())
+    .toEqual({ content: 'next', version: 3 })
+})
+
+it.each(['trash', 'recover'])('SQLite %s returns the atomically incremented version after interleaved property PATCHes', async (action) => {
+  const id = await createNote()
+  let intercepted = false
+  const beforeWrite = async () => {
+    if (intercepted) return
+    intercepted = true
+    expect((await api(`/api/notes/${id}`, { star: 1, base_prop_version: 1 }, 'PATCH')).status).toBe(200)
+    expect((await api(`/api/notes/${id}`, { top: 1, base_prop_version: 2 }, 'PATCH')).status).toBe(200)
+  }
+  const wrap = (statement: Statement): Statement => ({
+    bind: (...values) => wrap(statement.bind(...values)),
+    first: async <T>() => { await beforeWrite(); return statement.first<T>() },
+    all: () => statement.all(),
+    run: async () => { await beforeWrite(); return statement.run() },
+  })
+  const proxy: Database = {
+    prepare(sql) {
+      const statement = db.prepare(sql)
+      return sql.startsWith('UPDATE note SET invalid = ?') ? wrap(statement) : statement
+    },
+    batch: (statements) => db.batch(statements),
+  }
+  const response = await app.request(`/api/notes/${id}/${action}`, {
+    method: 'POST', headers: { Authorization: 'Bearer dev-token' },
+  }, { ...env, DB: proxy })
+  expect(response.status).toBe(200)
+  const ack = await response.json()
+  expect(ack.prop_version).toBe(4)
+  expect(intercepted).toBe(true)
+  expect(await db.prepare('SELECT invalid, prop_version, update_time, star, top FROM note WHERE id = ?').bind(id).first())
+    .toEqual({ invalid: action === 'trash' ? 1 : 0, ...ack, star: 1, top: 1 })
 })
 
 it('saves notes, detects concurrent changes and returns sync bodies after restart', async () => {
