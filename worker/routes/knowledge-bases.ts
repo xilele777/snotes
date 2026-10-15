@@ -4,12 +4,13 @@ import { MAX_TOC_BYTES, validId, validateKnowledgeBaseMeta, validateToc } from '
 import type { KnowledgeBase, KnowledgeBaseAck, KnowledgeBaseRemote, TocNode } from '../../shared/knowledge-base'
 import type { Database } from '../storage'
 import type { Env } from '../types'
+import { cleanupDeletedNotebookImages } from '../knowledge-base-deletion'
 
 export const knowledgeBasesRoutes = new Hono<{ Bindings: Env }>()
 knowledgeBasesRoutes.use('/api/knowledge-bases/*', bodyLimit({ maxSize: MAX_TOC_BYTES + 4096 }))
 knowledgeBasesRoutes.use('/api/knowledge-bases', bodyLimit({ maxSize: 8192 }))
 
-const BOOK_FIELDS = 'id, name, description, icon, ord, invalid, meta_version, toc_version, create_time, update_time, change_seq'
+const BOOK_FIELDS = 'id, name, description, icon, ord, invalid, deleted, meta_version, toc_version, create_time, update_time, change_seq'
 const ACK_FIELDS = 'meta_version, toc_version, update_time'
 const absent = 'NOT EXISTS (SELECT 1 FROM knowledge_base_operation WHERE knowledge_base_id = ? AND operation_id = ?)'
 
@@ -31,10 +32,12 @@ async function remote(db: Database, id: string): Promise<KnowledgeBaseRemote | n
     const statuses = new Map(rows.results.map(n => [n.id, n.invalid]))
     for (const id of ids) note_states[id] = statuses.get(id) === 0 ? 'available' : statuses.get(id) === 1 ? 'trash' : 'purged'
   }
-  const { id: bookId, name, description, icon, ord, invalid, meta_version, toc_version, create_time, update_time, change_seq } = row
+  const { id: bookId, name, description, icon, ord, invalid, deleted, meta_version, toc_version, create_time, update_time, change_seq } = row
+  const deletedNotes = deleted ? (await db.prepare('SELECT note_id FROM knowledge_base_deleted_note WHERE knowledge_base_id = ?').bind(id).all<{ note_id: string }>()).results.map(n => n.note_id) : undefined
   return {
-    book: { id: bookId, name, description, icon, ord, invalid, meta_version, toc_version, create_time, update_time, change_seq },
+    book: { id: bookId, name, description, icon, ord, invalid, deleted, meta_version, toc_version, create_time, update_time, change_seq },
     toc: { knowledge_base_id: id, version: row.structure_version, nodes, update_time: row.structure_time }, note_states,
+    ...(deletedNotes ? { deleted_note_ids: deletedNotes } : {}),
   }
 }
 
@@ -94,6 +97,8 @@ async function writeMeta(c: Context<{ Bindings: Env }>, create: boolean) {
   let meta
   try { meta = validateKnowledgeBaseMeta(req) } catch (e) { return c.json({ error: String(e) }, 400) }
   const hash = await fingerprint({ kind: 'meta', base, meta })
+  const existing = await c.env.DB.prepare('SELECT deleted FROM knowledge_base WHERE id = ?').bind(id).first<{ deleted: number }>()
+  if (existing?.deleted) return c.json({ error: 'permanently_deleted', current: await remote(c.env.DB, id) }, 410)
   const prior = await operation(c.env.DB, id, op)
   if (prior) return prior.request_json === hash ? c.json(ack(prior)) : c.json({ error: 'operation_reused' }, 400)
   const now = Date.now()
@@ -106,7 +111,7 @@ async function writeMeta(c: Context<{ Bindings: Env }>, create: boolean) {
       SELECT id, ? FROM knowledge_base WHERE id = ? ON CONFLICT(knowledge_base_id) DO NOTHING`).bind(now, id),
   ] : [
     db.prepare(`UPDATE knowledge_base SET name = ?, description = ?, icon = ?, ord = ?, invalid = ?,
-      meta_version = meta_version + 1, update_time = ?, last_operation_id = ? WHERE id = ? AND meta_version = ? AND ${absent}`)
+      meta_version = meta_version + 1, update_time = ?, last_operation_id = ? WHERE id = ? AND deleted = 0 AND meta_version = ? AND ${absent}`)
       .bind(...values, now, op, id, base, id, op),
   ]
   await db.batch([...statements, ...finish(db, id, op, hash, metaGuard)])
@@ -117,6 +122,46 @@ async function writeMeta(c: Context<{ Bindings: Env }>, create: boolean) {
 }
 knowledgeBasesRoutes.post('/api/knowledge-bases', c => writeMeta(c, true))
 knowledgeBasesRoutes.patch('/api/knowledge-bases/:id', c => writeMeta(c, false))
+
+knowledgeBasesRoutes.post('/api/knowledge-bases/:id/delete', async c => {
+  const id = c.req.param('id')
+  const req = await c.req.json().catch(() => null)
+  if (!validId(id) || typeof req?.name !== 'string' || ![req?.base_meta_version, req?.base_toc_version].every(n => Number.isSafeInteger(n) && n >= 0)) return c.json({ error: 'invalid_body' }, 400)
+  const db = c.env.DB
+  const current = await remote(db, id)
+  if (!current) return c.json({ error: 'not_found' }, 404)
+  if (req.name !== current.book.name) return c.json({ error: 'name_mismatch' }, 400)
+  if (!current.book.deleted) {
+    const now = Date.now()
+    // All destructive statements share the successful CAS marker in one transaction.
+    const marker = crypto.randomUUID()
+    const guard = 'EXISTS (SELECT 1 FROM knowledge_base WHERE id = ? AND deleted = 1 AND last_operation_id = ?)'
+    const refs = 'SELECT note_id FROM knowledge_base_deleted_note WHERE knowledge_base_id = ?'
+    await db.batch([
+      db.prepare(`UPDATE knowledge_base SET deleted = 1, invalid = 1, meta_version = meta_version + 1,
+        toc_version = toc_version + 1, update_time = ?, last_operation_id = ?
+        WHERE id = ? AND deleted = 0 AND name = ? AND meta_version = ? AND toc_version = ?`)
+        .bind(now, marker, id, req.name, req.base_meta_version, req.base_toc_version),
+      db.prepare(`INSERT OR IGNORE INTO knowledge_base_deleted_note (note_id, knowledge_base_id)
+        SELECT json_extract(j.value, '$.note_id'), ? FROM knowledge_base_toc t, json_each(t.nodes_json) j
+        WHERE t.knowledge_base_id = ? AND json_extract(j.value, '$.note_id') IS NOT NULL AND ${guard}`).bind(id, id, id, marker),
+      db.prepare(`INSERT OR IGNORE INTO knowledge_base_deleted_image (file_key, knowledge_base_id)
+        SELECT file_key, ? FROM image WHERE note_id IN (${refs}) AND ${guard}`).bind(id, id, id, marker),
+      ...['image', 'note_body', 'note_open', 'note_history'].map(table => db.prepare(`DELETE FROM ${table} WHERE note_id IN (${refs}) AND ${guard}`).bind(id, id, marker)),
+      db.prepare(`UPDATE note SET invalid = 2, title = '', summary = '', thumbnail = NULL, prop_version = prop_version + 1, update_time = ?
+        WHERE id IN (${refs}) AND ${guard}`).bind(now, id, id, marker),
+      db.prepare(`DELETE FROM knowledge_base_toc_history WHERE knowledge_base_id = ? AND ${guard}`).bind(id, id, marker),
+      db.prepare(`UPDATE knowledge_base_toc SET nodes_json = '[]', version = version + 1, update_time = ? WHERE knowledge_base_id = ? AND ${guard}`).bind(now, id, id, marker),
+      db.prepare(`UPDATE knowledge_base_clock SET seq = seq + 1 WHERE id = 1 AND ${guard}`).bind(id, marker),
+      db.prepare(`UPDATE knowledge_base SET change_seq = (SELECT seq FROM knowledge_base_clock WHERE id = 1) WHERE id = ? AND ${guard}`).bind(id, id, marker),
+    ])
+    const result = await remote(db, id)
+    if (!result?.book.deleted) return c.json({ error: 'conflict', current: result }, 409)
+  }
+  // Failed storage requests retain durable cleanup keys for a retry or maintenance.
+  await cleanupDeletedNotebookImages(c.env, id)
+  return c.json(await remote(db, id))
+})
 
 knowledgeBasesRoutes.put('/api/knowledge-bases/:id/toc', async c => {
   const id = c.req.param('id')
@@ -131,9 +176,10 @@ knowledgeBasesRoutes.put('/api/knowledge-bases/:id/toc', async c => {
   const archivedVersion = req.archived_meta_version ?? -1
   if (!Number.isSafeInteger(archivedVersion) || archivedVersion < -1 || req.preserve_missing_references !== undefined && typeof req.preserve_missing_references !== 'boolean') return c.json({ error: 'invalid_body' }, 400)
   const hash = await fingerprint({ kind: 'toc', base, nodes, preserveMissing, archivedVersion })
+  const current = await remote(db, id)
+  if (current?.book.deleted) return c.json({ error: 'permanently_deleted', current }, 410)
   const prior = await operation(db, id, op)
   if (prior) return prior.request_json === hash ? c.json(ack(prior)) : c.json({ error: 'operation_reused' }, 400)
-  const current = await remote(db, id)
   if (!current) return c.json({ error: 'not_found' }, 404)
   if (current.toc.version !== base || current.book.invalid && current.book.meta_version !== archivedVersion) return c.json({ error: 'conflict', current }, 409)
   const oldRefs = new Set(current.toc.nodes.flatMap(n => n.note_id ? [n.note_id] : []))
@@ -151,9 +197,9 @@ knowledgeBasesRoutes.put('/api/knowledge-bases/:id/toc', async c => {
   await db.batch([
     db.prepare(`INSERT OR IGNORE INTO knowledge_base_toc_history (knowledge_base_id, version, nodes_json, update_time)
       SELECT knowledge_base_id, version, nodes_json, update_time FROM knowledge_base_toc WHERE knowledge_base_id = ? AND version = ?
-      AND EXISTS (SELECT 1 FROM knowledge_base WHERE id = ? AND (invalid = 0 OR meta_version = ?)) AND ${absent}`).bind(id, base, id, archivedVersion, id, op),
+      AND EXISTS (SELECT 1 FROM knowledge_base WHERE id = ? AND deleted = 0 AND (invalid = 0 OR meta_version = ?)) AND ${absent}`).bind(id, base, id, archivedVersion, id, op),
     db.prepare(`UPDATE knowledge_base_toc SET version = version + 1, nodes_json = ?, update_time = ?, last_operation_id = ?
-      WHERE knowledge_base_id = ? AND version = ? AND EXISTS (SELECT 1 FROM knowledge_base WHERE id = ? AND (invalid = 0 OR meta_version = ?)) AND ${absent}`)
+      WHERE knowledge_base_id = ? AND version = ? AND EXISTS (SELECT 1 FROM knowledge_base WHERE id = ? AND deleted = 0 AND (invalid = 0 OR meta_version = ?)) AND ${absent}`)
       .bind(JSON.stringify(nodes), now, op, id, base, id, archivedVersion, id, op),
     db.prepare(`UPDATE knowledge_base SET toc_version = toc_version + 1, update_time = ? WHERE id = ? AND ${tocGuard} AND ${absent}`)
       .bind(now, id, id, op, id, op),

@@ -31,6 +31,10 @@ notesRoutes.post('/api/notes', async (c) => {
 
   const now = nowMs()
 
+  if (await c.env.DB.prepare('SELECT note_id FROM knowledge_base_deleted_note WHERE note_id = ?').bind(req.id).first()) {
+    return c.json({ error: 'permanently_deleted' }, 410)
+  }
+
   // 同一 id 的墓碑（彻底删除后保留 30 天的删除标记）要能被「复活」：导入备份、
   // 或另一台设备迟到的 create 都会带着原 id 再来一次。之前 ON CONFLICT DO NOTHING
   // 会静默跳过并把墓碑的版本号当作成功返回，客户端以为推上去了，云端其实还是删除态。
@@ -67,6 +71,7 @@ notesRoutes.post('/api/notes', async (c) => {
          ON CONFLICT(note_id) DO UPDATE SET content = excluded.content, version = excluded.version`
       ).bind(req.id, req.content, version),
     ])
+    if (await c.env.DB.prepare('SELECT note_id FROM knowledge_base_deleted_note WHERE note_id = ?').bind(req.id).first()) return c.json({ error: 'permanently_deleted' }, 410)
     return c.json({ id: req.id, version, prop_version: propVersion, update_time: now })
   }
 
@@ -95,9 +100,11 @@ notesRoutes.post('/api/notes', async (c) => {
     ).bind(req.id, req.content),
   ])
 
-  const row = await c.env.DB.prepare('SELECT version, prop_version, update_time FROM note WHERE id = ?')
+  const row = await c.env.DB.prepare('SELECT version, prop_version, update_time, invalid FROM note WHERE id = ?')
     .bind(req.id)
-    .first<{ version: number; prop_version: number; update_time: number }>()
+    .first<{ version: number; prop_version: number; update_time: number; invalid: number }>()
+
+  if (!row || row.invalid === 2) return c.json({ error: 'permanently_deleted' }, 410)
 
   return c.json({
     id: req.id,

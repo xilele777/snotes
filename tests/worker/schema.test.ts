@@ -8,7 +8,7 @@ describe('schema', () => {
       "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' AND name NOT LIKE 'd1_%' AND name NOT LIKE '\\_cf\\_%' ESCAPE '\\' ORDER BY name"
     ).all<{ name: string }>()
 
-    expect(results.map((r) => r.name)).toEqual(['image', 'knowledge_base', 'knowledge_base_clock', 'knowledge_base_operation', 'knowledge_base_toc', 'knowledge_base_toc_history', 'note', 'note_body', 'note_group', 'note_history', 'note_open'])
+    expect(results.map((r) => r.name)).toEqual(['image', 'knowledge_base', 'knowledge_base_clock', 'knowledge_base_deleted_image', 'knowledge_base_deleted_note', 'knowledge_base_operation', 'knowledge_base_toc', 'knowledge_base_toc_history', 'note', 'note_body', 'note_group', 'note_history', 'note_open'])
   })
 
   it('note 表带默认值插入后各字段符合预期', async () => {
@@ -52,5 +52,13 @@ describe('schema', () => {
 
     expect(res.status).toBe(200)
     expect(await res.json()).toEqual({ ok: true })
+  })
+
+  it('运行环境由 Worker 服务返回，且不缓存', async () => {
+    const app = createApp()
+    const res = await app.request('/api/runtime', { headers: { Authorization: 'Bearer test-token' } }, env)
+    expect(await res.json()).toEqual({ runtime: 'cloudflare' })
+    expect(res.headers.get('Cache-Control')).toBe('no-store')
+    expect((await app.request('/api/runtime', {}, env)).status).toBe(401)
   })
 })

@@ -1,4 +1,5 @@
 import { nowMs, purgeNotes, reapTombstones } from './db'
+import { cleanupDeletedNotebookImages } from './knowledge-base-deletion'
 import type { Env } from './types'
 
 /**
@@ -96,6 +97,7 @@ export async function purgeExpiredTrash(env: Env, retentionDays: number | null, 
 
 export async function runMaintenance(env: Env, now = nowMs()): Promise<MaintenanceReport> {
   const retention = parseTrashRetentionDays(env.TRASH_RETENTION_DAYS)
+  await cleanupDeletedNotebookImages(env)
   // 先清回收站再扫图片：刚墓碑化的笔记正文已删，其图片在 purgeNotes 里已经回收，
   // 顺序反过来也不会错，只是多扫一遍。
   const expired = await purgeExpiredTrash(env, retention, now)

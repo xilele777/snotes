@@ -35,6 +35,8 @@ imagesRoutes.post('/api/images/upload', async (c) => {
 
   if (file.size > MAX_BYTES) return c.json({ error: 'payload_too_large' }, 413)
 
+  if (await c.env.DB.prepare('SELECT note_id FROM knowledge_base_deleted_note WHERE note_id = ?').bind(noteId).first()) return c.json({ error: 'permanently_deleted' }, 410)
+
   const fileKey = `${noteId}/${crypto.randomUUID()}.${ext}`
 
   await c.env.R2.put(fileKey, await file.arrayBuffer(), {
@@ -42,10 +44,15 @@ imagesRoutes.post('/api/images/upload', async (c) => {
   })
 
   await c.env.DB.prepare(
-    'INSERT INTO image (file_key, note_id, size, mime, create_time) VALUES (?, ?, ?, ?, ?)'
+    'INSERT INTO image (file_key, note_id, size, mime, create_time) SELECT ?, ?, ?, ?, ? WHERE NOT EXISTS (SELECT 1 FROM knowledge_base_deleted_note WHERE note_id = ?)'
   )
-    .bind(fileKey, noteId, file.size, file.type, nowMs())
+    .bind(fileKey, noteId, file.size, file.type, nowMs(), noteId)
     .run()
+
+  if (await c.env.DB.prepare('SELECT note_id FROM knowledge_base_deleted_note WHERE note_id = ?').bind(noteId).first()) {
+    await c.env.R2.delete(fileKey)
+    return c.json({ error: 'permanently_deleted' }, 410)
+  }
 
   return c.json({
     file_key: fileKey,
@@ -57,6 +64,8 @@ imagesRoutes.post('/api/images/upload', async (c) => {
 
 imagesRoutes.get('/api/images/:file_key{.+}', async (c) => {
   const fileKey = c.req.param('file_key')
+  // Check before the edge cache so previously cached images also become unavailable.
+  if (await c.env.DB.prepare('SELECT note_id FROM knowledge_base_deleted_note WHERE note_id = ?').bind(fileKey.split('/')[0]).first()) return c.json({ error: 'not_found' }, 404)
   const cache = c.env.EDGE_CACHE
   const cacheKey = new Request(c.req.url, { method: 'GET' })
 

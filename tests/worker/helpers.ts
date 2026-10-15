@@ -24,6 +24,8 @@ export function json(path: string, method: string, body: unknown, token: string 
 
 export async function resetDb() {
   await env.DB.batch([
+    env.DB.prepare('DELETE FROM knowledge_base_deleted_image'),
+    env.DB.prepare('DELETE FROM knowledge_base_deleted_note'),
     env.DB.prepare('DELETE FROM knowledge_base_operation'),
     env.DB.prepare('DELETE FROM knowledge_base_toc_history'),
     env.DB.prepare('DELETE FROM knowledge_base_toc'),

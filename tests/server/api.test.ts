@@ -55,6 +55,14 @@ it('serves public health and SPA, protects API and keeps missing assets out of S
   expect(await metrics.json()).toMatchObject({ error: 'not_supported' })
 })
 
+it('reports the running Node service independently of the frontend build', async () => {
+  const response = await api('/api/runtime', undefined, 'GET')
+  expect(response.status).toBe(200)
+  expect(await response.json()).toEqual({ runtime: 'server' })
+  expect(response.headers.get('Cache-Control')).toBe('no-store')
+  expect((await app.request('/api/runtime', {}, env)).status).toBe(401)
+})
+
 it('blocks a source after repeated 401s, keeps other sources and health working, and resets on success', async () => {
   const from = (address: string, headers: Record<string, string> = {}) =>
     app.request('/api/sync/pull', { method: 'POST', headers: { 'Content-Type': 'application/json', ...headers }, body: JSON.stringify({ since: 0 }) }, { ...env, REMOTE_ADDRESS: address })

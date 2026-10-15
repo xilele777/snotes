@@ -1,11 +1,12 @@
 import { expect, it } from 'vitest'
 import type { KnowledgeBaseRemote, TocNode } from '../shared/knowledge-base'
+import type { Env } from '../worker/types'
 
 export type KnowledgeBaseTestApi = (path: string, method: string, body?: unknown) => Promise<Response>
 const folder = (id: string, title = id, parent_id: string | null = null): TocNode => ({ id, title, parent_id, kind: 'folder', note_id: null, ord: 0 })
 
 /** The exact same CAS, replay and pagination contract runs on real D1 and SQLite. */
-export function knowledgeBaseContract(api: KnowledgeBaseTestApi) {
+export function knowledgeBaseContract(api: KnowledgeBaseTestApi, environment: () => Env) {
   const create = async (id = crypto.randomUUID()) => {
     const request = { id, operation_id: crypto.randomUUID(), name: '读书笔记', description: '摘录与思考', icon: '📚', ord: 0, invalid: 0 }
     const res = await api('/api/knowledge-bases', 'POST', request)
@@ -14,6 +15,62 @@ export function knowledgeBaseContract(api: KnowledgeBaseTestApi) {
   }
   const get = async (id: string): Promise<KnowledgeBaseRemote> => (await api(`/api/knowledge-bases/${id}/toc`, 'GET')).json()
   const toc = (id: string, base: number, nodes: TocNode[], op = crypto.randomUUID()) => api(`/api/knowledge-bases/${id}/toc`, 'PUT', { nodes, base_toc_version: base, operation_id: op })
+
+  it('requires the exact name and current versions before permanently deleting notebook content', async () => {
+    const { id, request } = await create()
+    const noteId = crypto.randomUUID()
+    const note = { id: noteId, title: '正文', summary: '摘要', content: '# 正文', create_time: Date.now() }
+    expect((await api('/api/notes', 'POST', note)).status).toBe(200)
+    const node: TocNode = { id: 'ref', kind: 'note', parent_id: null, ord: 0, note_id: noteId, title: null }
+    expect((await toc(id, 0, [node])).status).toBe(200)
+    const shared = await create()
+    expect((await toc(shared.id, 0, [{ ...node, id: 'shared' }])).status).toBe(200)
+    const env = environment()
+    const key = `${noteId}/image.png`
+    await env.R2.put(key, new Uint8Array([1, 2, 3]).buffer)
+    await env.DB.prepare('INSERT INTO image (file_key, note_id, size, mime, create_time) VALUES (?, ?, 3, ?, 1)').bind(key, noteId, 'image/png').run()
+    expect((await api(`/api/notes/${noteId}/history`, 'POST', { body: '旧正文', time: 1 })).status).toBe(200)
+    const deletion = { name: request.name, base_meta_version: 1, base_toc_version: 1 }
+    expect((await api(`/api/knowledge-bases/${id}/delete`, 'POST', { ...deletion, name: '读书' })).status).toBe(400)
+    expect((await api(`/api/knowledge-bases/${id}/delete`, 'POST', { ...deletion, base_toc_version: 0 })).status).toBe(409)
+    expect(await env.R2.get(key)).not.toBeNull()
+    expect((await get(id)).book.deleted).toBe(0)
+    const deleted = await api(`/api/knowledge-bases/${id}/delete`, 'POST', deletion)
+    expect(deleted.status).toBe(200)
+    const result = await deleted.json() as KnowledgeBaseRemote
+    expect(result.book).toMatchObject({ invalid: 1, deleted: 1, meta_version: 2, toc_version: 2 })
+    expect(result.toc.nodes).toEqual([])
+    expect(result.deleted_note_ids).toEqual([noteId])
+    for (const table of ['note_body', 'image', 'note_open', 'note_history']) {
+      expect(await env.DB.prepare(`SELECT note_id FROM ${table} WHERE note_id = ?`).bind(noteId).first()).toBeNull()
+    }
+    expect(await env.DB.prepare('SELECT knowledge_base_id FROM knowledge_base_toc_history WHERE knowledge_base_id = ?').bind(id).first()).toBeNull()
+    expect(await env.R2.get(key)).toBeNull()
+    expect((await get(shared.id)).note_states[noteId]).toBe('purged')
+    expect((await api(`/api/images/${key}`, 'GET')).status).toBe(404)
+    expect((await api(`/api/knowledge-bases/${id}`, 'PATCH', { ...request, invalid: 0, base_meta_version: 2, operation_id: crypto.randomUUID() })).status).toBe(410)
+    expect((await api(`/api/knowledge-bases/${id}/toc`, 'PUT', { nodes: [node], base_toc_version: 2, operation_id: crypto.randomUUID(), archived_meta_version: 2 })).status).toBe(410)
+    // The original create acknowledgement cannot bypass permanent removal either.
+    expect((await api('/api/knowledge-bases', 'POST', request)).status).toBe(410)
+    expect((await api('/api/notes', 'POST', note)).status).toBe(410)
+    expect((await api('/api/notes/opens', 'POST', { device_id: 'late-device', since: 0, items: [{ note_id: noteId, count: 4, last_open_time: 1 }] })).status).toBe(200)
+    expect(await env.DB.prepare('SELECT note_id FROM note_open WHERE note_id = ?').bind(noteId).first()).toBeNull()
+    expect((await api(`/api/knowledge-bases/${id}/delete`, 'POST', deletion)).status).toBe(200)
+    expect((await get(id)).book.change_seq).toBe(result.book.change_seq)
+    // Protection remains after the ordinary 30-day note tombstone is reaped.
+    await env.DB.prepare('DELETE FROM note WHERE id = ?').bind(noteId).run()
+    expect((await api('/api/notes', 'POST', note)).status).toBe(410)
+  })
+
+  it('leaves every note intact when a newer tree wins the deletion CAS', async () => {
+    const { id, request } = await create()
+    await toc(id, 0, [folder('new')])
+    const res = await api(`/api/knowledge-bases/${id}/delete`, 'POST', { name: request.name, base_meta_version: 1, base_toc_version: 0 })
+    expect(res.status).toBe(409)
+    expect((await get(id)).toc.nodes).toEqual([folder('new')])
+    expect((await get(id)).book.deleted).toBe(0)
+    expect((await environment().DB.prepare('SELECT note_id FROM knowledge_base_deleted_note').all()).results).toEqual([])
+  })
 
   it('creates idempotently and replays the original acknowledgement after later changes', async () => {
     const { id, request, ack } = await create()

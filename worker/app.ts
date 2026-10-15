@@ -18,6 +18,11 @@ export function createApp() {
 
   app.use('/api/*', auth)
 
+  app.get('/api/runtime', c => {
+    c.header('Cache-Control', 'no-store')
+    return c.json({ runtime: c.env.RUNTIME === 'server' ? 'server' : 'cloudflare' })
+  })
+
   app.route('/', notesRoutes)
   app.route('/', opensRoutes)
   app.route('/', groupsRoutes)

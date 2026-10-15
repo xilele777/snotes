@@ -14,4 +14,4 @@ beforeEach(() => { directory = mkdtempSync(join(tmpdir(), 'snotes-kb-test-')); d
 afterEach(() => { db.close(); rmSync(directory, { recursive: true, force: true }) })
 knowledgeBaseContract(async (path, method, body) => app.request(path, { method, headers: { Authorization: 'Bearer test-token', 'Content-Type': 'application/json' },
   ...(body === undefined ? {} : { body: JSON.stringify(body) }),
-}, { DB: db, R2: new DiskImages(join(directory, 'images')), ACCESS_TOKEN: 'test-token' }))
+}, { DB: db, R2: new DiskImages(join(directory, 'images')), ACCESS_TOKEN: 'test-token' }), () => ({ DB: db, R2: new DiskImages(join(directory, 'images')), ACCESS_TOKEN: 'test-token' }))

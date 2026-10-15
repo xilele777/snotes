@@ -6,6 +6,8 @@ export interface KnowledgeBase {
   icon: string
   ord: number
   invalid: 0 | 1
+  /** Permanent removal; legacy invalid=1 remains non-destructive. */
+  deleted?: 0 | 1
   meta_version: number
   toc_version: number
   create_time: number
@@ -39,6 +41,7 @@ export interface KnowledgeBaseRemote {
   book: KnowledgeBase
   toc: KnowledgeBaseToc
   note_states: Record<string, 'available' | 'trash' | 'purged'>
+  deleted_note_ids?: string[]
 }
 
 export const MAX_TOC_NODES = 1000
@@ -49,19 +52,19 @@ export function validId(value: unknown): value is string {
 }
 
 export function validateKnowledgeBaseMeta(value: unknown): KnowledgeBaseMeta {
-  if (!value || typeof value !== 'object') throw new Error('知识库信息不完整')
+  if (!value || typeof value !== 'object') throw new Error('笔记本信息不完整')
   const m = value as KnowledgeBaseMeta
   if (typeof m.name !== 'string' || !m.name.trim() || m.name.length > 100
     || typeof m.description !== 'string' || m.description.length > 2000
     || typeof m.icon !== 'string' || m.icon.length > 32
     || !Number.isSafeInteger(m.ord) || Math.abs(m.ord) > 1_000_000
-    || (m.invalid !== 0 && m.invalid !== 1)) throw new Error('知识库名称或简介不符合要求')
+    || (m.invalid !== 0 && m.invalid !== 1)) throw new Error('笔记本名称或简介不符合要求')
   return { name: m.name.trim(), description: m.description, icon: m.icon, ord: m.ord, invalid: m.invalid }
 }
 
 /** Validate before writing either IndexedDB or the API. Never trust cached tree data. */
 export function validateToc(value: unknown): TocNode[] {
-  if (!Array.isArray(value) || value.length > MAX_TOC_NODES) throw new Error('每个知识库最多 1000 个目录节点')
+  if (!Array.isArray(value) || value.length > MAX_TOC_NODES) throw new Error('每个笔记本最多 1000 个目录节点')
   if (new TextEncoder().encode(JSON.stringify(value)).length > MAX_TOC_BYTES) throw new Error('目录超过 1 MiB')
   const ids = new Set<string>()
   const notes = new Set<string>()
@@ -73,7 +76,7 @@ export function validateToc(value: unknown): TocNode[] {
     if (raw.kind === 'folder') {
       if (typeof raw.title !== 'string' || !raw.title.trim() || raw.title.length > 100 || raw.note_id !== null) throw new Error('章节名称无效')
     } else if (raw.kind === 'note') {
-      if (!validId(raw.note_id) || notes.has(raw.note_id) || raw.title !== null) throw new Error('同一知识库不能重复引用笔记')
+      if (!validId(raw.note_id) || notes.has(raw.note_id) || raw.title !== null) throw new Error('同一笔记本不能重复引用笔记')
       notes.add(raw.note_id)
     } else throw new Error('不支持的目录节点类型')
     return { id: raw.id, parent_id: raw.parent_id, kind: raw.kind, ord: raw.ord, note_id: raw.note_id, title: raw.title }
