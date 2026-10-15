@@ -143,6 +143,8 @@ describe('runMaintenance', () => {
     await seedImage(crypto.randomUUID(), 'x/orphan.png', 1)
     await env.DB.prepare('INSERT INTO note (id, invalid, create_time, update_time) VALUES (?, 2, 1, ?)')
       .bind('tomb', Date.now() - TOMBSTONE_RETENTION_MS - 1).run()
+    // Age the committed tombstone fixture after the insert trigger timestamps it.
+    await env.DB.prepare('UPDATE note SET update_time = ? WHERE id = ?').bind(Date.now() - TOMBSTONE_RETENTION_MS - 1, 'tomb').run()
 
     const report = await runMaintenance({ ...env, TRASH_RETENTION_DAYS: 'off' }, Date.now())
 

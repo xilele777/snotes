@@ -16,13 +16,27 @@ afterEach(() => { db.close(); rmSync(directory, { recursive: true, force: true }
 
 describe('SQLite persistence and migrations', () => {
   it('applies migrations once and preserves data after reopening', async () => {
-    expect(db.migrate(resolve('migrations'))).toHaveLength(7)
+    expect(db.migrate(resolve('migrations'))).toHaveLength(8)
     await db.prepare('INSERT INTO note (id, create_time, update_time) VALUES (?, ?, ?)').bind('n1', 1, 1).run()
     db.close()
     db = new SqliteDatabase(join(directory, 'snotes.sqlite'))
     expect(db.migrate(resolve('migrations'))).toEqual([])
     expect(await db.prepare('SELECT id FROM note').first()).toEqual({ id: 'n1' })
     expect((await db.prepare('SELECT * FROM note').all()).results).toHaveLength(1)
+  })
+
+  it('persists the commit watermark across reopen and ignores stale application timestamps', async () => {
+    db.migrate(resolve('migrations'))
+    const initial = (await db.prepare('SELECT watermark FROM note_sync_clock').first<{ watermark: number }>())!.watermark
+    await db.prepare("INSERT INTO note (id, create_time, update_time) VALUES ('late', 1, 1)").run()
+    const written = (await db.prepare("SELECT update_time FROM note WHERE id = 'late'").first<{ update_time: number }>())!.update_time
+    expect(written).toBeGreaterThan(initial)
+    db.close()
+    db = new SqliteDatabase(join(directory, 'snotes.sqlite'))
+    await db.prepare("UPDATE note SET star = 1, prop_version = prop_version + 1, update_time = 1 WHERE id = 'late'").run()
+    const updated = (await db.prepare("SELECT update_time FROM note WHERE id = 'late'").first<{ update_time: number }>())!.update_time
+    expect(updated).toBeGreaterThan(written)
+    expect((await db.prepare('SELECT watermark FROM note_sync_clock').first<{ watermark: number }>())!.watermark).toBe(updated)
   })
 
   it('rolls back every statement in a failed batch', async () => {

@@ -1,7 +1,7 @@
 import { Hono } from 'hono'
 import { decodeCursor, encodeCursor } from '../../shared/cursor'
 import type { BodiesRequest, BodiesResponse, Group, NoteBody, PullRequest, PullResponse } from '../../shared/types'
-import { nowMs, rowToNoteMeta } from '../db'
+import { rowToNoteMeta } from '../db'
 import { parseTrashRetentionDays } from '../maintenance'
 import type { Env } from '../types'
 
@@ -11,9 +11,12 @@ const MAX_LIMIT = 500
 export const syncRoutes = new Hono<{ Bindings: Env }>()
 
 syncRoutes.post('/api/sync/pull', async (c) => {
-  // 必须在任何查询之前取：它是客户端下一轮的 since，
-  // 晚取一毫秒就会在这段窗口里永久漏掉别的设备的写入。
-  const serverTime = nowMs()
+  // Read the durable watermark before querying rows. A write committing after
+  // this read receives a strictly newer timestamp, even if its request started
+  // earlier or an application clock moves backwards.
+  const clock = await c.env.DB.prepare('SELECT watermark FROM note_sync_clock WHERE id = 1').first<{ watermark: number }>()
+  if (!clock) throw new Error('Missing note sync clock; apply database migrations')
+  const serverTime = clock.watermark
 
   const req = await c.req.json<PullRequest>().catch(() => null)
 

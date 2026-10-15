@@ -1,7 +1,9 @@
 import { env } from 'cloudflare:test'
-import { beforeEach, describe, expect, it } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { createApp } from '../../worker/app'
+import type { Database } from '../../worker/storage'
 import type { PullResponse } from '../../shared/types'
-import { json, noteReq, resetDb } from './helpers'
+import { json, noteReq, resetDb, TOKEN } from './helpers'
 
 beforeEach(resetDb)
 
@@ -12,6 +14,9 @@ async function seed(id: string, updateTime: number, over: Record<string, unknown
   )
     .bind(id, over.title ?? id, over.version ?? 1, over.prop_version ?? 1, over.invalid ?? 0, updateTime)
     .run()
+  // Fixtures intentionally exercise historical/equal timestamps; normal writes
+  // are assigned commit-ordered timestamps by the database triggers.
+  await env.DB.prepare('UPDATE note SET update_time = ? WHERE id = ?').bind(updateTime, id).run()
   await env.DB.prepare('INSERT INTO note_body (note_id, content, version) VALUES (?, ?, ?)')
     .bind(id, `正文-${id}`, over.version ?? 1)
     .run()
@@ -23,6 +28,41 @@ async function pull(body: Record<string, unknown>) {
 }
 
 describe('POST /api/sync/pull', () => {
+  it('a create committing after a completed pull cannot fall behind its watermark', async () => {
+    const req = noteReq()
+    const time = vi.spyOn(Date, 'now').mockReturnValue(100)
+    let watermark = 0
+    const delayed: Database = {
+      prepare: sql => env.DB.prepare(sql),
+      async batch(statements) {
+        time.mockReturnValue(200)
+        const snapshot = await pull({ since: 0 })
+        expect(snapshot.notes.some(n => n.id === req.id)).toBe(false)
+        watermark = snapshot.server_time
+        return env.DB.batch(statements as D1PreparedStatement[])
+      },
+    }
+    try {
+      const response = await createApp().request('/api/notes', { method: 'POST', headers: { Authorization: `Bearer ${TOKEN}`, 'Content-Type': 'application/json' }, body: JSON.stringify(req) }, { ...env, DB: delayed })
+      expect(response.status).toBe(200)
+      const incremental = await pull({ since: watermark })
+      expect(incremental.notes.find(n => n.id === req.id)!.update_time).toBeGreaterThan(watermark)
+    } finally { time.mockRestore() }
+  })
+
+  it('group commits and clock rollback still advance beyond the previous pull watermark', async () => {
+    const first = await pull({ since: 0 })
+    await env.DB.prepare("INSERT INTO note_group (group_id, name, ord, invalid, update_time) VALUES ('late-group', 'Late', 0, 0, 1)").run()
+    const next = await pull({ since: first.server_time })
+    expect(next.groups.find(g => g.group_id === 'late-group')!.update_time).toBeGreaterThan(first.server_time)
+    const time = vi.spyOn(Date, 'now').mockReturnValue(1)
+    try {
+      await json('/api/groups/late-group', 'PATCH', { name: 'Renamed' })
+      const renamed = await pull({ since: next.server_time })
+      expect(renamed.groups.find(g => g.group_id === 'late-group')).toMatchObject({ name: 'Renamed' })
+      expect(renamed.server_time).toBeGreaterThan(next.server_time)
+    } finally { time.mockRestore() }
+  })
   it('since=0 返回全部笔记', async () => {
     await seed('a', 100)
     await seed('b', 200)
