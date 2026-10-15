@@ -157,6 +157,28 @@ describe('导出', () => {
   })
 })
 
+it('导入只替换相对图片路径，不破坏同名外部图片地址', async () => {
+  uploadMock.mockResolvedValue({ file_key: 'new/image.jpg', url: '/api/images/new/image.jpg' })
+  const external = '![external](https://cdn.example/images/abc.jpg)'
+  const bytes = zipSync({ 'note.md': strToU8(`${external}\n![local](../images/abc.jpg)`), 'images/abc.jpg': new Uint8Array([1, 2, 3]) })
+  await importBackup([new File([new Uint8Array(bytes)], 'images.zip')])
+  const note = (await db.notes.toArray())[0]!
+  expect(note.body).toContain(external)
+  expect(note.body).toContain('![local](/api/images/new/image.jpg)')
+  expect(uploadMock).toHaveBeenCalledTimes(1)
+})
+
+it('导出不把外部绝对图片 URL 的路径误当作本站图片', async () => {
+  const external = '![external](https://other.example/api/images/n/abc.jpg)'
+  await createNote(`${external}\n![local](/api/images/n/abc.jpg)`)
+  apiBlobMock.mockResolvedValue(new Blob(['image'], { type: 'image/jpeg' }))
+  const files = await unzip((await buildBackup()).blob)
+  const body = Object.entries(files).find(([path]) => path.endsWith('.md'))![1]
+  expect(body).toContain(external)
+  expect(body).toContain('![local](../images/abc.jpg)')
+  expect(apiBlobMock).toHaveBeenCalledTimes(1)
+})
+
 describe('导入', () => {
   it('完整备份往返保留跨库同一笔记引用，重复导入不翻倍', async () => {
     const note = await createNote('# 同一篇笔记')
@@ -164,7 +186,8 @@ describe('导入', () => {
     const a = await createKnowledgeBase(meta)
     const b = await createKnowledgeBase({ ...meta, name: '第二个库' })
     await addKnowledgeBaseNode(a.id, { kind: 'note', note_id: note.id, title: null })
-    await addKnowledgeBaseNode(b.id, { kind: 'note', note_id: note.id, title: null })
+    // Simulate a legacy shared reference; new joins now enforce single ownership.
+    await db.knowledgeBaseTocs.update(b.id, { nodes: [{ id: 'legacy-shared', kind: 'note', note_id: note.id, title: null, parent_id: null, ord: 0 }] })
     const bundle = await buildBackup()
     const files = await unzip(bundle.blob)
     const index = JSON.parse(files['index.json'])

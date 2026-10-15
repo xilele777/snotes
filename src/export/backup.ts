@@ -20,9 +20,9 @@ export const IMAGES_DIR = 'images'
 export const UNGROUPED_DIR = '未分组'
 
 /** 正文里指向本站图片的引用，file_key 形如 `<noteId>/<uuid>.jpg`。 */
-const IMAGE_REF_RE = /\/api\/images\/([^\s)"'<>\]]+)/g
+const IMAGE_REF_RE = /(?<![^\s("'<>])\/api\/images\/([^\s)"'<>\]]+)/g
 /** 导入时认的图片相对引用：`images/x.jpg` 或 `../images/x.jpg`。 */
-const RELATIVE_IMAGE_RE = /(?:\.\.\/)?images\/([^\s)"'<>\]]+)/g
+const RELATIVE_IMAGE_RE = /(?<![^\s("'<>])(?:\.\.\/)?images\/([^\s)"'<>\]]+)/g
 
 export interface BackupGroup {
   group_id: string
@@ -478,7 +478,7 @@ export async function importBackup(
       await createKnowledgeBase(validateKnowledgeBaseMeta(book), book.id, book.nodes, true)
       await db.knowledgeBases.update(book.id, { create_time: book.create_time })
       result.knowledgeBases++
-    } else if (JSON.stringify(toc?.nodes ?? []) !== JSON.stringify(book.nodes) || JSON.stringify(metadata(existing)) !== JSON.stringify(validateKnowledgeBaseMeta(book))) {
+    } else if (JSON.stringify(validateToc(toc?.nodes ?? [])) !== JSON.stringify(validateToc(book.nodes)) || JSON.stringify(metadata(existing)) !== JSON.stringify(validateKnowledgeBaseMeta(book))) {
       // Keep the existing library; retain the imported alternative for review.
       await db.transaction('rw', knowledgeBaseTables(), async () => {
         const previous = await db.knowledgeBaseTocHistory.where('book_id').equals(book.id).toArray()
