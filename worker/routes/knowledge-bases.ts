@@ -193,14 +193,24 @@ knowledgeBasesRoutes.put('/api/knowledge-bases/:id/toc', async c => {
       if (found.results.length !== ids.length) return c.json({ error: 'missing_notes' }, 422)
     }
   }
+  const newRefs = nodes.flatMap(n => n.note_id && !oldRefs.has(n.note_id) ? [n.note_id] : [])
+  // Check within the CAS statement: two devices adding the same note to
+  // different notebooks must not both win. Imports retain legacy references.
+  const ownershipGuard = preserveMissing || !newRefs.length ? '' : `AND NOT EXISTS (
+    SELECT 1 FROM knowledge_base_toc other
+    JOIN knowledge_base b ON b.id = other.knowledge_base_id,
+      json_each(other.nodes_json) ref, json_each(?) wanted
+    WHERE other.knowledge_base_id != ? AND b.invalid = 0 AND b.deleted = 0
+      AND json_extract(ref.value, '$.note_id') = wanted.value)`
+  const ownershipValues = ownershipGuard ? [JSON.stringify(newRefs), id] : []
   const now = Date.now()
   await db.batch([
     db.prepare(`INSERT OR IGNORE INTO knowledge_base_toc_history (knowledge_base_id, version, nodes_json, update_time)
       SELECT knowledge_base_id, version, nodes_json, update_time FROM knowledge_base_toc WHERE knowledge_base_id = ? AND version = ?
       AND EXISTS (SELECT 1 FROM knowledge_base WHERE id = ? AND deleted = 0 AND (invalid = 0 OR meta_version = ?)) AND ${absent}`).bind(id, base, id, archivedVersion, id, op),
     db.prepare(`UPDATE knowledge_base_toc SET version = version + 1, nodes_json = ?, update_time = ?, last_operation_id = ?
-      WHERE knowledge_base_id = ? AND version = ? AND EXISTS (SELECT 1 FROM knowledge_base WHERE id = ? AND deleted = 0 AND (invalid = 0 OR meta_version = ?)) AND ${absent}`)
-      .bind(JSON.stringify(nodes), now, op, id, base, id, archivedVersion, id, op),
+      WHERE knowledge_base_id = ? AND version = ? AND EXISTS (SELECT 1 FROM knowledge_base WHERE id = ? AND deleted = 0 AND (invalid = 0 OR meta_version = ?)) AND ${absent} ${ownershipGuard}`)
+      .bind(JSON.stringify(nodes), now, op, id, base, id, archivedVersion, id, op, ...ownershipValues),
     db.prepare(`UPDATE knowledge_base SET toc_version = toc_version + 1, update_time = ? WHERE id = ? AND ${tocGuard} AND ${absent}`)
       .bind(now, id, id, op, id, op),
     ...finish(db, id, op, hash, tocGuard),

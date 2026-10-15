@@ -1,8 +1,8 @@
 import Dexie from 'dexie'
 import { beforeEach, expect, it } from 'vitest'
 import { db } from './schema'
-import { createNote, purgeNote, trashNote } from './repo'
-import { addKnowledgeBaseNode, applyKnowledgeBaseRemote, createKnowledgeBase, moveKnowledgeBaseNode, removeKnowledgeBaseNode, updateKnowledgeBase } from './knowledge-base-repo'
+import { createNote, listNotes, purgeNote, recoverNote, trashNote } from './repo'
+import { addKnowledgeBaseNode, applyKnowledgeBaseRemote, createKnowledgeBase, moveKnowledgeBaseNode, removeKnowledgeBaseNode, trashKnowledgeBaseNode, updateKnowledgeBase } from './knowledge-base-repo'
 const meta = { name: '笔记本', description: '', icon: '', ord: 0, invalid: 0 as const }
 beforeEach(async () => { await db.delete(); await db.open() })
 
@@ -32,7 +32,8 @@ it('keeps a shared note, its group and body version when removing chapters and l
   const b = await createKnowledgeBase(meta)
   const chapter = await addKnowledgeBaseNode(a.id, { kind: 'folder', title: '章节', note_id: null })
   await addKnowledgeBaseNode(a.id, { kind: 'note', note_id: note.id, title: null }, chapter)
-  await addKnowledgeBaseNode(b.id, { kind: 'note', note_id: note.id, title: null })
+  // A pre-existing shared reference from an older client/backup remains readable.
+  await db.knowledgeBaseTocs.update(b.id, { nodes: [{ id: 'legacy-shared', parent_id: null, ord: 0, kind: 'note', note_id: note.id, title: null }] })
   await removeKnowledgeBaseNode(a.id, chapter)
   await updateKnowledgeBase(b.id, { invalid: 1 })
   expect(await db.notes.get(note.id)).toEqual(note)
@@ -40,6 +41,64 @@ it('keeps a shared note, its group and body version when removing chapters and l
   expect((await db.knowledgeBaseTocs.get(b.id))?.nodes).toHaveLength(1)
   await updateKnowledgeBase(b.id, { invalid: 0 })
   expect((await db.knowledgeBaseTocs.get(b.id))?.nodes[0].note_id).toBe(note.id)
+})
+
+it('serializes concurrent joins so only one active notebook owns the note', async () => {
+  const note = await createNote('# 独属于一本')
+  const a = await createKnowledgeBase(meta)
+  const b = await createKnowledgeBase(meta)
+  const results = await Promise.allSettled([a, b].map(book => addKnowledgeBaseNode(book.id, { kind: 'note', note_id: note.id, title: null })))
+  expect(results.filter(r => r.status === 'fulfilled')).toHaveLength(1)
+  expect(results.filter(r => r.status === 'rejected')).toHaveLength(1)
+  expect((await db.knowledgeBaseTocs.toArray()).flatMap(t => t.nodes)).toHaveLength(1)
+  const before = await db.knowledgeBases.count()
+  await expect(createKnowledgeBase(meta, crypto.randomUUID(), [{ id: 'new-ref', kind: 'note', note_id: note.id, title: null, parent_id: null, ord: 0 }])).rejects.toThrow('已属于')
+  expect(await db.knowledgeBases.count()).toBe(before)
+})
+
+it('directory trash and recovery preserve the owner, chapter, node id and ordering', async () => {
+  const note = await createNote('# 可恢复')
+  const book = await createKnowledgeBase(meta)
+  const chapter = await addKnowledgeBaseNode(book.id, { kind: 'folder', title: '章节', note_id: null })
+  await addKnowledgeBaseNode(book.id, { kind: 'note', note_id: note.id, title: null }, chapter)
+  const original = (await db.knowledgeBaseTocs.get(book.id))!.nodes
+  await trashKnowledgeBaseNode(book.id, chapter, original)
+  expect((await db.notes.get(note.id))?.invalid).toBe(1)
+  expect((await listNotes({ view: 'trash' })).map(n => n.id)).toContain(note.id)
+  expect((await db.knowledgeBaseTocs.get(book.id))!.nodes).toEqual(original)
+  await recoverNote(note.id)
+  expect((await listNotes({ view: 'all' })).map(n => n.id)).not.toContain(note.id)
+  expect((await db.knowledgeBaseTocs.get(book.id))!.nodes).toEqual(original)
+})
+
+it('rejects stale directory deletion without trashing notes or altering references', async () => {
+  const n1 = await createNote('# 原来在章节内')
+  const n2 = await createNote('# 后来移入')
+  const book = await createKnowledgeBase(meta)
+  const chapter = await addKnowledgeBaseNode(book.id, { kind: 'folder', title: '章节', note_id: null })
+  const first = await addKnowledgeBaseNode(book.id, { kind: 'note', note_id: n1.id, title: null }, chapter)
+  const second = await addKnowledgeBaseNode(book.id, { kind: 'note', note_id: n2.id, title: null })
+  const expected = (await db.knowledgeBaseTocs.get(book.id))!.nodes
+  await moveKnowledgeBaseNode(book.id, first, null, 1)
+  await moveKnowledgeBaseNode(book.id, second, chapter, 0)
+  const latest = await db.knowledgeBaseTocs.get(book.id)
+  await expect(trashKnowledgeBaseNode(book.id, chapter, expected)).rejects.toThrow('目录已更新')
+  expect((await db.notes.get(n1.id))?.invalid).toBe(0)
+  expect((await db.notes.get(n2.id))?.invalid).toBe(0)
+  expect(await db.knowledgeBaseTocs.get(book.id)).toEqual(latest)
+  expect(await db.outbox.where('kind').equals('trash').count()).toBe(0)
+})
+
+it('rolls back directory trash when a referenced note has not been downloaded', async () => {
+  const note = await createNote('# 不应部分删除')
+  const book = await createKnowledgeBase(meta)
+  const folder = await addKnowledgeBaseNode(book.id, { kind: 'folder', title: '章节', note_id: null })
+  await addKnowledgeBaseNode(book.id, { kind: 'note', note_id: note.id, title: null }, folder)
+  await addKnowledgeBaseNode(book.id, { kind: 'note', note_id: 'not-downloaded', title: null }, folder)
+  const before = (await db.knowledgeBaseTocs.get(book.id))!.nodes
+  await expect(trashKnowledgeBaseNode(book.id, folder, before)).rejects.toThrow('尚未同步')
+  expect((await db.notes.get(note.id))?.invalid).toBe(0)
+  expect(await db.outbox.where('kind').equals('trash').count()).toBe(0)
 })
 
 it('does not commit or enqueue an invalid cyclic move', async () => {

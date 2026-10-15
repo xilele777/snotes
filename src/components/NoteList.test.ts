@@ -344,10 +344,11 @@ describe('NoteList', () => {
     expect(wrapper.find('.empty-state .empty-action').text()).toBe('在全部笔记中搜索')
 
     await wrapper.find('.empty-state .empty-action').trigger('click')
-    await flushPromises()
+    // 切视图会触发两次并发取数（挂载 watcher 与 switchListView），最后落地的是后一次；
+    // 单次 flushPromises 只够跑完微任务，可能还在等 Dexie，所以等列表真正落地再断言。
+    await vi.waitFor(() => expect(store.visible.map((n) => n.id)).toEqual([note.id]))
     expect(ui.view).toBe('all')
     expect(ui.query).toBe('会议')
-    expect(store.visible.map((n) => n.id)).toEqual([note.id])
   })
 
   it('搜索命中正文深处时显示命中片段并高亮', async () => {

@@ -2,6 +2,7 @@ import { flushPromises, mount } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { db } from '../db/schema'
+import { addKnowledgeBaseNode, createKnowledgeBase } from '../db/knowledge-base-repo'
 import MilkdownEditor from '../editor/MilkdownEditor.vue'
 import { useGroupsStore } from '../stores/groups'
 import { useNotesStore } from '../stores/notes'
@@ -1020,6 +1021,143 @@ describe('顶栏的历史版本', () => {
     await vi.waitFor(() => expect(notes.current?.body).toBe('# 第一版'))
     await vi.waitFor(() => expect(document.querySelectorAll('.history-item')).toHaveLength(2))
     expect(notice.value).toContain('已恢复')
+    wrapper.unmount()
+  })
+})
+
+describe('顶栏的加入笔记本', () => {
+  async function seedBook(name: string) {
+    const book = await createKnowledgeBase({ name, description: '', icon: '', ord: 0, invalid: 0 })
+    return book
+  }
+
+  /** Dexie 的 liveQuery 是批量推的，比 flushPromises 慢一拍；等到目标条件成立再断言 */
+  const memberCount = (noteId: string) => db.knowledgeBaseTocs.toArray()
+    .then(tocs => tocs.reduce((n, toc) => n + toc.nodes.filter(node => node.note_id === noteId).length, 0))
+
+  it('没加入任何笔记本时显示入口，浮层把可加入的笔记本列出来', async () => {
+    const notes = useNotesStore()
+    const note = await notes.create()
+    notes.currentId = note.id
+    await seedBook('产品研究')
+
+    const wrapper = mount(NoteDetail, { attachTo: document.body })
+    await vi.waitFor(() => expect(op(wrapper, 'notebook').text()).toContain('加入笔记本'))
+
+    await op(wrapper, 'notebook').trigger('click')
+    // 列表要等 liveQuery 把索引数据推过来，所以等「可加入项」自己出现，再断言没有已加入项
+    await vi.waitFor(() => expect(document.querySelector('.notebook-pop-addable .book-opt.addable')).not.toBeNull())
+    const pop = document.querySelector('.notebook-pop')!
+    expect(pop.querySelector('.notebook-pop-empty')!.textContent).toContain('还没加入任何笔记本')
+    expect(pop.querySelectorAll('.notebook-pop-members .book-opt')).toHaveLength(0)
+    expect(pop.querySelector('.notebook-pop-addable .book-opt.addable')!.textContent).toContain('产品研究')
+    wrapper.unmount()
+  })
+
+  it('点可加入项后写入目录，入口改显示数量且该项变成已加入', async () => {
+    const notes = useNotesStore()
+    const note = await notes.create()
+    notes.currentId = note.id
+    const book = await seedBook('产品研究')
+
+    const wrapper = mount(NoteDetail, { attachTo: document.body })
+    await vi.waitFor(() => expect(document.querySelector('.book-opt')).toBeNull())
+    await op(wrapper, 'notebook').trigger('click')
+    await vi.waitFor(() => expect(document.querySelector('.notebook-pop-addable .book-opt.addable')).not.toBeNull())
+    ;(document.querySelector('.notebook-pop-addable .book-opt.addable') as HTMLButtonElement).click()
+
+    await vi.waitFor(async () => expect(await memberCount(note.id)).toBe(1))
+    await vi.waitFor(() => expect(op(wrapper, 'notebook').text()).toContain('1 本笔记本'))
+    await vi.waitFor(async () => {
+      const toc = await db.knowledgeBaseTocs.get(book.id)
+      expect(toc!.nodes.filter(n => n.note_id === note.id)).toHaveLength(1)
+    })
+    await vi.waitFor(() => expect(notice.value).toContain('已加入'))
+    expect(useUiStore().view).toBe('knowledge-bases')
+    expect(useUiStore().activeKnowledgeBaseId).toBe(book.id)
+    expect(notes.currentId).toBe(note.id)
+    await op(wrapper, 'notebook').trigger('click')
+    await vi.waitFor(() => expect(document.querySelector('.notebook-pop-members')).not.toBeNull())
+    expect(document.querySelector('.notebook-pop-addable')).toBeNull()
+    expect(document.querySelector('[data-book-id="__new"]')).toBeNull()
+    wrapper.unmount()
+  })
+
+  it('所属笔记本不再提供重复加入，删除需确认且保留恢复位置', async () => {
+    const notes = useNotesStore()
+    const note = await notes.create()
+    notes.currentId = note.id
+    const book = await seedBook('产品研究')
+    await addKnowledgeBaseNode(book.id, { kind: 'note', note_id: note.id, title: null })
+
+    const wrapper = mount(NoteDetail, { attachTo: document.body })
+    await vi.waitFor(() => expect(op(wrapper, 'notebook').text()).toContain('1 本笔记本'))
+
+    await op(wrapper, 'notebook').trigger('click')
+    await flushPromises()
+    const member = document.querySelector<HTMLButtonElement>('.notebook-pop-members .book-opt')!
+    expect(member.textContent).toContain('产品研究')
+    member.click()
+
+    await flushPromises()
+    expect(document.querySelector('.notebook-pop-addable')).toBeNull()
+    expect((await db.notes.get(note.id))!.invalid).toBe(0)
+    expect(document.querySelector('[role="alertdialog"]')).not.toBeNull()
+    ;(document.querySelector('[role="alertdialog"] [data-op="confirm"]') as HTMLButtonElement).click()
+    await vi.waitFor(async () => expect((await db.notes.get(note.id))!.invalid).toBe(1))
+    expect((await db.knowledgeBaseTocs.get(book.id))!.nodes).toHaveLength(1)
+    expect(await db.outbox.where('kind').equals('trash').count()).toBe(1)
+    wrapper.unmount()
+  })
+
+  it('窄屏顶栏放不下时，从「⋯」菜单进入同一个浮层', async () => {
+    const restore = mockCompact()
+    try {
+      const notes = useNotesStore()
+      const note = await notes.create()
+      notes.currentId = note.id
+      await seedBook('产品研究')
+
+      const wrapper = mount(NoteDetail, { attachTo: document.body })
+      await wrapper.vm.$nextTick()
+      expect(op(wrapper, 'notebook').exists()).toBe(false)
+
+      await openMore(wrapper)
+      expect(menuAction('notebooks')!.textContent).toContain('加入笔记本')
+      menuAction('notebooks')!.click()
+      await flushPromises()
+      expect(document.querySelector('.notebook-pop')).not.toBeNull()
+      wrapper.unmount()
+    } finally { restore() }
+  })
+
+  it('浮层里可以现场新建笔记本并立刻收录当前笔记', async () => {
+    const notes = useNotesStore()
+    const note = await notes.create()
+    notes.currentId = note.id
+
+    const wrapper = mount(NoteDetail, { attachTo: document.body })
+    await vi.waitFor(() => expect(op(wrapper, 'notebook').text()).toContain('加入笔记本'))
+    await op(wrapper, 'notebook').trigger('click')
+    await flushPromises()
+    ;(document.querySelector('[data-book-id="__new"]') as HTMLButtonElement).click()
+    await flushPromises()
+
+    const form = document.querySelector<HTMLFormElement>('[role="dialog"][aria-label="新建笔记本"]')!
+    expect(form).not.toBeNull()
+    const name = form.querySelector<HTMLInputElement>('[aria-label="笔记本名称"]')!
+    name.value = '读书笔记'
+    name.dispatchEvent(new Event('input'))
+    form.dispatchEvent(new Event('submit'))
+    await flushPromises()
+
+    await vi.waitFor(async () => {
+      const book = (await db.knowledgeBases.toArray()).find(b => b.name === '读书笔记')
+      expect(book).toBeTruthy()
+      const toc = await db.knowledgeBaseTocs.get(book!.id)
+      expect(toc!.nodes.filter(n => n.note_id === note.id)).toHaveLength(1)
+    })
+    await vi.waitFor(() => expect(notice.value).toContain('读书笔记'))
     wrapper.unmount()
   })
 })

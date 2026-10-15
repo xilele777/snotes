@@ -2,6 +2,7 @@
 import '../insights.css'
 import { computed, onMounted, ref } from 'vue'
 import { computeNoteStats, type NoteStats } from '../../shared/stats'
+import { notebookOwnedNoteIds } from '../db/repo'
 import { db } from '../db/schema'
 
 const emit = defineEmits<{ selectNote: [id: string] }>()
@@ -12,8 +13,9 @@ const openedTab = ref<'most' | 'recent'>('most')
 
 async function load() {
   status.value = 'loading'
-  const [noteList, groupList] = await Promise.all([db.notes.toArray(), db.groups.toArray()])
-  stats.value = computeNoteStats(noteList, groupList)
+  // 统计只统计「外面的笔记」：属于笔记本的笔记和首页信息流一样不该出现在这里。
+  const [noteList, groupList, owned] = await Promise.all([db.notes.toArray(), db.groups.toArray(), notebookOwnedNoteIds()])
+  stats.value = computeNoteStats(noteList.filter((n) => !owned.has(n.id)), groupList)
   status.value = 'ready'
 }
 onMounted(load)
@@ -93,7 +95,7 @@ function openNote(id: string) { emit('selectNote', id) }
 </script>
 
 <template>
-  <div class="metrics-view stats-view" aria-label="记录统计">
+  <div class="metrics-view stats-view" aria-label="统计">
     <div class="metrics-body">
       <p v-if="status === 'loading'" class="metrics-hint">正在统计…</p>
 

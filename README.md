@@ -18,7 +18,7 @@
 
 <p>中文 | <a href="README.en.md">English</a></p>
 
-<p>当前稳定版：<a href="https://github.com/xilele777/snotes/releases/tag/v0.17.0"><strong>v0.17.0</strong></a>（<a href="https://github.com/xilele777/snotes/releases">全部发布</a>）。服务器部署从 <code>v0.7.0</code> 开始提供。</p>
+<p>当前稳定版：<a href="https://github.com/xilele777/snotes/releases/tag/v0.22.0"><strong>v0.22.0</strong></a>（<a href="https://github.com/xilele777/snotes/releases">全部发布</a>）。服务器部署从 <code>v0.7.0</code> 开始提供。</p>
 
 <p>
   <a href="#界面与操作">界面与操作</a> ·
@@ -40,9 +40,9 @@
 | 直接运行 Node.js | Node.js 24 LTS、持久化磁盘 | SQLite、本地图片目录 | [快速开始](#能否部署到自己的服务器) |
 | Docker Compose | Docker Engine、Compose 插件 | `snotes-data` 持久化卷 | [完整指引](docs/server-deployment.md#docker-compose) |
 
-未指定标签的克隆命令默认跟踪 `main`。要安装固定版本，在克隆后、安装或构建前执行 `git switch --detach v0.17.0`；下方服务器快速开始已在克隆命令中指定此标签。`main` 可能包含尚未发布的后续改动；需要固定版本时请选择明确的发布标签。
+未指定标签的克隆命令默认跟踪 `main`。要安装固定版本，在克隆后、安装或构建前执行 `git switch --detach v0.22.0`；下方服务器快速开始已在克隆命令中指定此标签。`main` 可能包含尚未发布的后续改动；需要固定版本时请选择明确的发布标签。
 
-已有部署先完成同步、备份数据并保存本地配置，再执行 `git fetch origin --tags` 和 `git switch --detach v0.17.0`，随后按对应部署方式重新安装、构建和启动。固定标签处于 detached HEAD 状态，后续升级需获取并切换到新标签，不能直接 `git pull`；Cloudflare 配置的保存与恢复见下方[更新步骤](#8-更新到新版本)。不要使用强制切换覆盖本地改动。
+已有部署先完成同步、备份数据并保存本地配置，再执行 `git fetch origin --tags` 和 `git switch --detach v0.22.0`，随后按对应部署方式重新安装、构建和启动。固定标签处于 detached HEAD 状态，后续升级需获取并切换到新标签，不能直接 `git pull`；Cloudflare 配置的保存与恢复见下方[更新步骤](#8-更新到新版本)。不要使用强制切换覆盖本地改动。
 
 应用内更新提醒只查询 GitHub 最新**稳定版**，成功结果缓存 24 小时，不自动提示预览版，也不会自动更新服务端。预览版需在 [Releases](https://github.com/xilele777/snotes/releases) 手动选择。直接运行 Node.js 与 Playwright 端到端已验证；Docker Compose 配置检查已通过，镜像构建与容器运行尚未实测。
 
@@ -51,8 +51,8 @@
 - **离线优先**：已同步到本机的笔记可离线阅读和编辑，联网后自动同步。
 - **Markdown 编辑**：支持标题、编号列表、任务清单、表格、图片和撤销重做，正文以 Markdown 保存。
 - **日常整理**：分组（重命名、颜色、排序、删除）、星标、置顶、颜色标记；搜索支持多个关键词按空格分隔取交集，正文命中时摘要显示命中附近的片段。
-- **笔记本**：独立首页与章节目录，引用已有笔记、在笔记本中新建、移动排序、搜索，支持离线同步与冲突选择；移除目录引用保留笔记，删除笔记本需联网输入名称确认，将永久删除其中内容。从侧栏「笔记本」进入总览、新建和管理。[使用与升级说明](docs/knowledge-bases.md)。
-- **首页信息流**：默认所有笔记都在「全部笔记」里；可以让某个分组默认不上首页，也可以单独设置某一条笔记，「已隐藏」入口汇总所有被摘出去的笔记随时找回。
+- **笔记本**：独立首页与章节目录，可加入未归属的已有笔记、在笔记本中新建、移动排序和搜索，支持离线同步与冲突选择。笔记独属于笔记本，不混入外面的笔记列表和统计；目录删除进入回收站，恢复回到原笔记本和章节。删除整本笔记本需联网输入名称确认，将永久删除其中内容。从侧栏「笔记本」进入总览、新建和管理。[使用与升级说明](docs/knowledge-bases.md)。
+- **首页信息流**：未归属笔记本的普通笔记默认都在「全部笔记」里；可以让某个分组默认不上首页，也可以单独设置某一条笔记，「已隐藏」入口汇总所有被摘出去的笔记随时找回。
 - **阅读模式**：一键把当前笔记切成只读，编辑工具一并收起，读长文时怎么点怎么划都不会误改正文。
 - **数据可携带**：一键把全部笔记导出为 Markdown 压缩包（含图片与属性），也能把 `.md` 或备份包导入回来，重复导入不产生副本、同名分组自动复用；单条笔记可复制、下载、分享到其他应用或打印 / 存为 PDF。
 - **深色模式与个性化**：主题跟随系统或手动选择浅色、深色，正文字号与编辑区宽度可调，设置按设备保存。
@@ -310,7 +310,7 @@ npx wrangler secret put CF_API_TOKEN    # 需要 Account > Analytics > Read 权�
 直接运行 Node.js：
 
 ```bash
-git clone --branch v0.17.0 https://github.com/xilele777/snotes.git
+git clone --branch v0.22.0 https://github.com/xilele777/snotes.git
 cd snotes
 npm ci
 npm run build:server
@@ -322,7 +322,7 @@ npm start
 或使用 Docker Compose（独立安装，二选一）：
 
 ```bash
-git clone --branch v0.17.0 https://github.com/xilele777/snotes.git
+git clone --branch v0.22.0 https://github.com/xilele777/snotes.git
 cd snotes
 cp server.env.example .env
 # 编辑 .env，设置自己的随机 ACCESS_TOKEN

@@ -94,17 +94,32 @@ ${note.body}`, terms)
   })
 
   async function load() {
-    const seq = ++loadSeq
-    const key = viewKey()
-    // metrics 视图不经这里取数（MetricsView 直接调 apiMetrics），所以 types 收窄到列表视图是安全的
-    const toc = ui.view === 'knowledge-bases' && ui.activeKnowledgeBaseId ? await db.knowledgeBaseTocs.get(ui.activeKnowledgeBaseId) : undefined
-    const rows = ui.view === 'knowledge-bases'
-      ? (await db.notes.bulkGet(toc?.nodes.flatMap(n => n.note_id ? [n.note_id] : []) ?? [])).filter((n): n is LocalNote => !!n && n.invalid === 0)
-      : await repo.listNotes({ view: ui.view as ListView, groupId: ui.activeGroupId })
-    // 视图快速切换时，较早查询的结果不能覆盖较新的查询。
-    if (seq !== loadSeq) return
-    notes.value = rows
-    loadedKey.value = key
+    // 取数期间视图可能又变了（挂载瞬间的 watcher 与切视图几乎同时触发）。此时这份结果
+    // 已经过期，但它可能已经是最新的那个 seq，让 seq 守卫放行的话列表就空着没人再补，
+    // 所以这里就着重取一次，直到「取数前后是同一个视图」为止。
+    for (;;) {
+      const seq = ++loadSeq
+      const key = viewKey()
+      let rows: LocalNote[]
+      try {
+        // metrics 视图不经这里取数（MetricsView 直接调 apiMetrics），所以 types 收窄到列表视图是安全的
+        const toc = ui.view === 'knowledge-bases' && ui.activeKnowledgeBaseId ? await db.knowledgeBaseTocs.get(ui.activeKnowledgeBaseId) : undefined
+        rows = ui.view === 'knowledge-bases'
+          ? (await db.notes.bulkGet(toc?.nodes.flatMap(n => n.note_id ? [n.note_id] : []) ?? [])).filter((n): n is LocalNote => !!n && n.invalid === 0)
+          : await repo.listNotes({ view: ui.view as ListView, groupId: ui.activeGroupId })
+      } catch (e) {
+        // 组件已经卸载 / 测试环境把库关了：这次取数已经没有去处，静默收场。
+        // 重取循环会让同一次 load 多飞几次查询，落在这里的可能性比原来高。
+        if (e instanceof Error && e.name === 'DatabaseClosedError') return
+        throw e
+      }
+      // 视图快速切换时，较早查询的结果不能覆盖较新的查询。
+      if (seq !== loadSeq) return
+      if (key !== viewKey()) continue
+      notes.value = rows
+      loadedKey.value = key
+      break
+    }
 
     // 当前选中项必须始终在当前列表里。切视图、恢复、彻底删除、清空回收站都会让它落空，
     // 留着一个指不到任何笔记的 currentId，详情页就是一块永远空白的板子。

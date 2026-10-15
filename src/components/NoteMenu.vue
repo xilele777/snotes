@@ -8,7 +8,7 @@ import AppIcon from './AppIcon.vue'
  * ≤720px 出现，桌面顶栏放得下，它们直接摆在顶栏；手机顶栏没有余量，⋯ 顶替的
  * 正是删除按钮的位置。
  */
-export type NoteMenuAction = 'info' | 'history' | 'wordcount' | 'reading' | 'home-feed' | 'home-follow' | 'copy' | 'download' | 'import' | 'share' | 'print' | 'trash'
+export type NoteMenuAction = 'info' | 'notebooks' | 'history' | 'wordcount' | 'reading' | 'home-feed' | 'home-follow' | 'copy' | 'download' | 'import' | 'share' | 'print' | 'trash'
 
 defineProps<{
   open: boolean
@@ -17,6 +17,10 @@ defineProps<{
   showDelete: boolean
   /** 文档信息 / 历史版本 / 字数统计是否进菜单（桌面在顶栏直接可见） */
   showDocItems: boolean
+  /** 「加入笔记本」是否进菜单（桌面顶栏有独立入口，窄屏顶栏排不下） */
+  showNotebooks?: boolean
+  /** 当前笔记已加入的笔记本数量，进菜单时给个上下文 */
+  notebookCount?: number
   importing?: boolean
   /** 这条笔记此刻是否不上首页信息流 */
   homeHidden?: boolean
@@ -33,6 +37,9 @@ const emit = defineEmits<{ action: [NoteMenuAction]; close: [] }>()
 
 <template>
   <ActionMenu :open="open" :anchor="anchor" label="更多操作" menu-class="note-menu" @close="emit('close')">
+    <button v-if="showNotebooks" type="button" role="menuitem" class="menu-item" data-action="notebooks" @click="emit('action', 'notebooks')">
+      <AppIcon name="book" :size="15" /><span>加入笔记本{{ notebookCount ? `（已加入 ${notebookCount} 本）` : '' }}</span>
+    </button>
     <template v-if="showDocItems">
       <button type="button" role="menuitem" class="menu-item" data-action="info" @click="emit('action', 'info')">
         <AppIcon name="info" :size="15" /><span>文档信息</span>

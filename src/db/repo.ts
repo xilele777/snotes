@@ -339,12 +339,33 @@ export async function openNote(id: string): Promise<OpenNoteResult | undefined> 
   return result
 }
 
+/**
+ * 被笔记本目录引用的笔记 id —— 也就是「属于笔记本」的那些笔记。
+ * 归属由目录推导，不在笔记行上另设字段：一条笔记进了某本笔记本的目录，
+ * 它就只属于笔记本，外形（全部笔记 / 星标 / 已隐藏 / 统计）一律看不到它。
+ * 只算未被移除（invalid !== 1）的笔记本：笔记本被删掉后，它的笔记重新回到外面。
+ */
+export async function notebookOwnedNoteIds(): Promise<Set<string>> {
+  const books = await db.knowledgeBases.filter((b) => b.invalid !== 1).toArray()
+  if (!books.length) return new Set()
+  const ids = new Set(books.map((b) => b.id))
+  const tocs = await db.knowledgeBaseTocs.where('knowledge_base_id').anyOf([...ids]).toArray()
+  const owned = new Set<string>()
+  for (const toc of tocs) for (const node of toc.nodes) if (node.note_id) owned.add(node.note_id)
+  return owned
+}
+
 export async function listNotes(filter: ListFilter): Promise<LocalNote[]> {
   const all = await db.notes.toArray()
+  // 笔记本笔记不算「外面的笔记」：全部 / 星标 / 已隐藏都不该看到它们。
+  // 回收站例外——「从笔记本移除」是把笔记丢进回收站，那里必须能看到、能恢复，
+  // 所以回收站视图完全不走这道过滤。
+  const owned = filter.view === 'trash' ? undefined : await notebookOwnedNoteIds()
 
   const matched = all.filter((n) => {
     if (filter.view === 'trash') return n.invalid === 1
     if (n.invalid === 1) return false
+    if (owned?.has(n.id)) return false
     if (filter.view === 'star') return n.star === 1
     if (filter.view === 'group') return n.group_id === filter.groupId
     return true

@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, defineAsyncComponent, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import { countWords } from '../../shared/derive'
+import type { KnowledgeBaseMeta } from '../../shared/knowledge-base'
 import { homeHiddenGroupIds, isHiddenFromHome } from '../../shared/home-feed'
 import type MilkdownEditorComponent from '../editor/MilkdownEditor.vue'
 import { useGroupsStore } from '../stores/groups'
@@ -22,9 +23,12 @@ import { copyMarkdown, downloadMarkdown, shareMarkdown } from '../export/share'
 import { importBackup } from '../export/backup'
 import { notify } from '../notify'
 import { trashDaysLeft, useUiStore } from '../stores/ui'
+import { useKnowledgeBasesStore } from '../stores/knowledge-bases'
+import { addKnowledgeBaseNode, createKnowledgeBase } from '../db/knowledge-base-repo'
+import KnowledgeBaseForm from './KnowledgeBaseForm.vue'
 import { useMediaQuery } from './useMediaQuery'
 import { useWorkspaceScroll } from './useWorkspaceScroll'
-import { pushNav, isMobile, switchListView } from '../navigation'
+import { pushNav, isMobile, showKnowledgeBases, switchListView } from '../navigation'
 
 const MilkdownEditor = defineAsyncComponent({
   loader: () => import('../editor/MilkdownEditor.vue'),
@@ -43,6 +47,60 @@ const editorReady = ref(false)
 watch(() => notes.current, note => { if (!note) editorReady.value = false })
 
 const currentGroup = computed(() => groups.groups.find(group => group.group_id === notes.current?.group_id)?.name ?? '未分组')
+
+/** 笔记只属于一本笔记本；旧备份已有的共享引用保留，不再新增共享。 */
+const libraries = useKnowledgeBasesStore()
+const memberBooks = computed(() => {
+  const id = notes.current?.id
+  if (!id) return []
+  return libraries.books.filter(book => book.invalid === 0 && libraries.tocs.some(toc => toc.knowledge_base_id === book.id && toc.nodes.some(node => node.kind === 'note' && node.note_id === id)))
+})
+const addableBooks = computed(() => memberBooks.value.length ? [] : libraries.books.filter(book => book.invalid === 0))
+const notebookBusy = ref(false)
+const notebookForm = ref(false)
+
+/** 删除统一走已有确认与回收站流程，不摘掉恢复所需的归属。 */
+async function toggleNotebook(bookId: string, join: boolean) {
+  const id = notes.current?.id
+  if (!id || notebookBusy.value) return
+  if (!join) { if (canEdit.value) { openPop.value = null; confirmAction.value = 'trash' }; return }
+  notebookBusy.value = true
+  try {
+    editorRef.value?.flush?.()
+    const book = libraries.books.find(b => b.id === bookId)
+    const nodeId = await addKnowledgeBaseNode(bookId, { kind: 'note', note_id: id, title: null })
+    openPop.value = null
+    await showKnowledgeBases(bookId)
+    ui.activeTocNodeId = nodeId
+    notes.currentId = id
+    if (isMobile()) ui.mobilePane = 'editor'
+    notify(`已加入「${book?.name ?? '笔记本'}」`)
+  } catch (e) {
+    notify(e instanceof Error ? e.message : String(e))
+  } finally { notebookBusy.value = false }
+}
+
+/** 现场新建一本笔记本并立刻收录当前笔记，省掉「先建库再回来加入」的往返。 */
+async function saveNotebookForm(meta: KnowledgeBaseMeta) {
+  const id = notes.current?.id
+  if (!id || notebookBusy.value) return
+  notebookBusy.value = true
+  try {
+    editorRef.value?.flush?.()
+    const nodeId = crypto.randomUUID()
+    const created = await createKnowledgeBase({ ...meta, ord: libraries.books.length }, crypto.randomUUID(), [
+      { id: nodeId, kind: 'note', note_id: id, title: null, parent_id: null, ord: 0 },
+    ])
+    notebookForm.value = false
+    await showKnowledgeBases(created.id)
+    ui.activeTocNodeId = nodeId
+    notes.currentId = id
+    if (isMobile()) ui.mobilePane = 'editor'
+    notify(`已新建「${created.name}」并加入这条笔记`)
+  } catch (e) {
+    notify(e instanceof Error ? e.message : String(e))
+  } finally { notebookBusy.value = false }
+}
 
 /** 「不上首页」的分组集合：判断当前笔记与所属分组的默认值都靠它 */
 const hiddenGroups = computed(() => homeHiddenGroupIds(groups.groups))
@@ -118,10 +176,10 @@ async function resetHomeFeed() {
   await alignViewWithVisibility(note.id, willHide ? 'hidden' : 'all')
 }
 
-/** 颜色和分组浮层一次只展开一个。 */
-const openPop = ref<'color' | 'group' | null>(null)
+/** 颜色、分组和笔记本浮层一次只展开一个。 */
+const openPop = ref<'color' | 'group' | 'notebook' | null>(null)
 
-async function toggle(pop: 'color' | 'group') {
+async function toggle(pop: 'color' | 'group' | 'notebook') {
   menuOpen.value = false
   openPop.value = openPop.value === pop ? null : pop
   if (openPop.value) {
@@ -132,6 +190,9 @@ async function toggle(pop: 'color' | 'group') {
 
 function onDocClick(e: MouseEvent) {
   const target = e.target as HTMLElement
+  // 菜单是 Teleport 到 body 的，所以点它的条目时 target 不在 .op-wrap 里。
+  // 那条路径要先让菜单项自己的动作跑完（比如打开笔记本浮层），这里不能顺手关掉浮层。
+  if (target?.closest?.('.action-menu')) return
   if (openPop.value && !target.closest('.op-wrap')) openPop.value = null
 }
 
@@ -144,13 +205,17 @@ function onPopoverKeydown(event: KeyboardEvent) {
   document.querySelector<HTMLButtonElement>(`[data-op="${trigger}"]`)?.focus()
 }
 
+/** 顶栏的笔记本浮层要现取「哪几本收录了这条笔记」，所以这里也要订阅笔记本数据。 */
+let librarySubscription: ReturnType<typeof libraries.subscribe> | undefined
 onMounted(() => {
   document.addEventListener('click', onDocClick)
   window.addEventListener('keydown', onPopoverKeydown, true)
+  librarySubscription = libraries.subscribe()
 })
 onUnmounted(() => {
   document.removeEventListener('click', onDocClick)
   window.removeEventListener('keydown', onPopoverKeydown, true)
+  librarySubscription?.unsubscribe()
 })
 
 /** 顶栏「⋯」菜单（回收站里没有）：收拢复制、下载、导入、分享、打印，手机上还有文档信息、历史、字数与删除 */
@@ -171,6 +236,7 @@ async function onMenuAction(action: NoteMenuAction) {
   moreButton.value?.focus({ preventScroll: true })
   switch (action) {
     case 'info': showInfo.value = true; return
+    case 'notebooks': if (!props.readonly) openPop.value = 'notebook'; return
     case 'history': showHistory.value = true; return
     case 'wordcount': showWordCount.value = true; return
     case 'reading': await toggleReading(); return
@@ -431,6 +497,70 @@ async function runShare() {
         </div>
       </div>
 
+      <!-- 笔记本是引用关系，可能同时属于多本，所以入口和文案都与相邻的单一分组不同 -->
+      <!-- 320px 顶栏排不下，窄屏走「⋯」菜单，和文档信息、删除同一个道理 -->
+      <div v-if="!readonly && !compact" class="op-wrap">
+        <button
+          class="editor-location"
+          data-op="notebook"
+          :class="{ open: openPop === 'notebook' }"
+          :title="memberBooks.length ? `已加入 ${memberBooks.length} 本笔记本` : '加入笔记本'"
+          aria-label="加入笔记本"
+          aria-haspopup="true"
+          :aria-expanded="openPop === 'notebook'"
+          @click="toggle('notebook')"
+        >
+          <AppIcon name="book" :size="16" />
+          <span>{{ memberBooks.length ? `${memberBooks.length} 本笔记本` : '加入笔记本' }}</span>
+          <AppIcon name="chevron" :size="12" class="group-chevron" />
+        </button>
+      </div>
+
+      <!--
+        窄屏的入口在「⋯」菜单里，但这块容器没有跟着一起被 !compact 收掉：
+        浮层需要它做定位锚点，收掉就再也渲染不出来了。
+      -->
+      <div v-if="!readonly" class="op-wrap notebook-wrap">
+        <div v-if="openPop === 'notebook'" class="op-popover groups-pop notebook-pop" role="group" aria-label="加入笔记本">
+          <span class="popover-heading">加入笔记本</span>
+          <p class="notebook-pop-hint">每条笔记只属于一本笔记本。删除会移入回收站，恢复后回到原位置。</p>
+          <div v-if="memberBooks.length" class="notebook-pop-members">
+            <button
+              v-for="b in memberBooks"
+              :key="b.id"
+              type="button"
+              class="book-opt member"
+              :data-book-id="b.id"
+              :disabled="notebookBusy"
+              :aria-pressed="true"
+              title="从笔记本删除这条笔记"
+              @click="toggleNotebook(b.id, false)"
+            >
+              <AppIcon name="check" :size="14" /><span>{{ b.name }}</span><small>删除</small>
+            </button>
+          </div>
+          <p v-else class="notebook-pop-empty">还没加入任何笔记本</p>
+          <div v-if="!memberBooks.length" class="notebook-pop-addable">
+            <span v-if="addableBooks.length" class="popover-heading notebook-pop-heading">加入其它笔记本</span>
+            <button
+              v-for="b in addableBooks"
+              :key="b.id"
+              type="button"
+              class="book-opt addable"
+              :data-book-id="b.id"
+              :disabled="notebookBusy"
+              :aria-pressed="false"
+              @click="toggleNotebook(b.id, true)"
+            >
+              <AppIcon name="plus" :size="14" /><span>{{ b.name }}</span>
+            </button>
+            <button type="button" class="book-opt" data-book-id="__new" :disabled="notebookBusy" @click="notebookForm = true; openPop = null">
+              <AppIcon name="plus" :size="14" /><span>新建笔记本并加入</span>
+            </button>
+          </div>
+        </div>
+      </div>
+
       <!-- 回收站详情：只读，只剩恢复 / 彻底删除两个动作，顶栏说明还有几天被自动删除 -->
       <template v-if="readonly">
         <span v-if="notes.current" class="trash-notice">{{ trashNotice }}</span>
@@ -599,6 +729,8 @@ async function runShare() {
       :can-share="canShare"
       :show-delete="compact"
       :show-doc-items="compact"
+      :show-notebooks="compact"
+      :notebook-count="memberBooks.length"
       :importing="importing"
       :home-hidden="homeHidden"
       :can-follow-group="homeOverridden && groupHidesHome"
@@ -621,6 +753,8 @@ async function runShare() {
     />
 
     <NoteInfoDialog :open="showInfo" :note="notes.current" @close="showInfo = false" />
+    <!-- 顶栏浮层里「新建笔记本并加入」复用笔记本表单，保存后直接收录当前笔记 -->
+    <KnowledgeBaseForm :open="notebookForm" :busy="notebookBusy" @save="saveNotebookForm" @close="notebookForm = false" />
     <HistoryDialog :open="showHistory" :note="notes.current" :readonly="!canEdit" @close="showHistory = false" @restore="onRestoreHistory" />
     <WordCountDialog :open="showWordCount" :count="wordCount" @close="showWordCount = false" />
     <TableDialog :open="tableDialog" @submit="submitTable" @close="tableDialog = false" />
@@ -640,3 +774,28 @@ async function runShare() {
     />
   </main>
 </template>
+
+<style scoped>
+/*
+ * 笔记本浮层：沿用分组浮层的外观，但每行要能同时表达「已加入」和「可加入」两种状态。
+ * 这里只写 .book-opt / .notebook-pop，不动全局的 .group-opt，避免影响分组浮层。
+ */
+.notebook-pop { width: min(240px, calc(100vw - 48px)); }
+/*
+ * 窄屏时这颗按钮不渲染，.notebook-wrap 只剩一个零宽的锚点、又贴在顶栏右侧；
+ * 默认的 right: 0 会把浮层整块推到屏幕左边。改成以锚点左缘为起点、整体右移一点。
+ * 锚点必须保留定位（position: relative 来自 .op-wrap）：改成 static 会让浮层
+ * 转而相对文档定位，直接掉到首屏之外。
+ */
+.notebook-wrap .notebook-pop { right: auto; left: 0; transform: translateX(6px); }
+.notebook-pop-hint { margin: 0 0 4px; padding: 0 10px 8px; border-bottom: 1px solid var(--border-light); color: var(--text-tertiary); font-size: 11px; line-height: 1.6; }
+.notebook-pop-heading { margin-top: 4px; padding-top: 10px; border-top: 1px solid var(--border-light); }
+.notebook-pop-empty { margin: 0; padding: 6px 10px; color: var(--text-tertiary); font-size: 12px; }
+.book-opt { display: flex; align-items: center; gap: 8px; padding: 8px 10px; border: 0; border-radius: 5px; background: transparent; color: var(--text-primary); font-size: 13px; text-align: left; }
+.book-opt:hover:not(:disabled) { background: var(--bg-hover); }
+.book-opt:disabled { opacity: .5; }
+.book-opt .app-icon { flex: none; }
+.book-opt span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.book-opt small { margin-left: auto; padding-left: 8px; color: var(--text-tertiary); font-size: 11px; white-space: nowrap; }
+.book-opt.addable { color: var(--text-secondary); }
+</style>

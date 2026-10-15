@@ -4,8 +4,9 @@ import { childrenOf, descendantsOf, flattenToc } from '../../shared/knowledge-ba
 import type { KnowledgeBase, TocNode } from '../../shared/knowledge-base'
 import type { LocalNote } from '../../shared/types'
 import type { KnowledgeBaseHistory } from '../db/knowledge-base-types'
-import { addKnowledgeBaseNode, changeToc, createKnowledgeBase, deleteKnowledgeBase, metadata, moveKnowledgeBaseNode, removeKnowledgeBaseNode, resolveKnowledgeBaseConflict, updateKnowledgeBase } from '../db/knowledge-base-repo'
+import { addKnowledgeBaseNode, changeToc, createKnowledgeBase, deleteKnowledgeBase, metadata, moveKnowledgeBaseNode, trashKnowledgeBaseNode, resolveKnowledgeBaseConflict, updateKnowledgeBase } from '../db/knowledge-base-repo'
 import { db } from '../db/schema'
+import { notebookOwnedNoteIds } from '../db/repo'
 import { isMobile, openDrawer, pushNav, showKnowledgeBases } from '../navigation'
 import { notify } from '../notify'
 import { useKnowledgeBasesStore } from '../stores/knowledge-bases'
@@ -113,7 +114,14 @@ async function run(action: () => Promise<unknown>) {
   try { await action() } catch (e) { error.value = e instanceof Error ? e.message : String(e) } finally { busy.value = false }
 }
 const rows = computed(() => {
-  const flat = flattenToc(nodes.value)
+  // Keep soft-deleted TOC nodes for recovery, but remove them from browsing.
+  const trashed = new Set(nodes.value.filter(n => n.note_id && noteMap.value.get(n.note_id)?.invalid === 1).map(n => n.id))
+  for (const folder of nodes.value.filter(n => n.kind === 'folder')) {
+    const subtree = descendantsOf(nodes.value, folder.id)
+    const refs = nodes.value.filter(n => subtree.has(n.id) && n.kind === 'note')
+    if (refs.length && refs.every(n => trashed.has(n.id))) for (const id of subtree) trashed.add(id)
+  }
+  const flat = flattenToc(nodes.value).filter(({ node }) => !trashed.has(node.id))
   const terms = splitTerms(ui.query)
   if (terms.length) return flat.filter(({ node }) => {
     const note = node.note_id ? noteMap.value.get(node.note_id) : undefined
@@ -173,7 +181,8 @@ async function saveChapter() {
   })
 }
 async function add(target: string | null = null) {
-  await run(async () => { candidates.value = (await db.notes.toArray()).filter(n => n.invalid === 0); chosen.value = []; pickerQuery.value = ''; createParent.value = target ?? ''; dialog.value = 'add' })
+  // 一条笔记只属于一本笔记本：已经在别人家的笔记不再出现在候选里。
+  await run(async () => { const owned = await notebookOwnedNoteIds(); candidates.value = (await db.notes.toArray()).filter(n => n.invalid === 0 && !owned.has(n.id)); chosen.value = []; pickerQuery.value = ''; createParent.value = target ?? ''; dialog.value = 'add' })
 }
 async function saveNotes() {
   await run(async () => {
@@ -187,11 +196,27 @@ async function saveNotes() {
     await notes.load()
   })
 }
+/**
+ * 「从本笔记本移除」= 删除。笔记独属于笔记本，一旦不再属于它就等于从系统里消失，
+ * 所以直接把正文丢进回收站（可恢复），而不是只摘掉目录节点、留下一条孤儿笔记。
+ * 章节要连子目录里的笔记一起丢；留在目录里的笔记由目录状态标成「在回收站」，可原样恢复。
+ */
 function removeNode(node: TocNode) {
   if (!book.value) return
   const id = book.value.id
-  confirm.value = { title: `移除${node.kind === 'folder' ? '章节' : '笔记引用'}？`, message: node.kind === 'folder' ? '章节及其子目录会从当前笔记本移除，笔记正文仍保留。' : '只移除当前笔记本的引用，原笔记仍然保留。',
-    run: async () => { await removeKnowledgeBaseNode(id, node.id); await notes.load() } }
+  const expectedNodes: TocNode[] = JSON.parse(JSON.stringify(nodes.value))
+  const removed = descendantsOf(expectedNodes, node.id)
+  const noteIds = [...new Set(expectedNodes.filter(n => removed.has(n.id) && n.note_id).map(n => n.note_id!))]
+  confirm.value = {
+    title: node.kind === 'folder' ? '删除这个章节？' : '从本笔记本删除这条笔记？',
+    message: node.kind === 'folder'
+      ? `章节、子目录及其中的 ${noteIds.length} 篇笔记会一起移入回收站，之后可以恢复。`
+      : '笔记只属于这本笔记本，删除后会移入回收站，可在回收站恢复。',
+    run: async () => {
+      await trashKnowledgeBaseNode(id, node.id, expectedNodes)
+      await notes.load()
+    },
+  }
 }
 function removeBook(b: KnowledgeBase) {
   deletionError.value = ''
@@ -339,12 +364,12 @@ watch(() => ui.restorePosition, async position => { if (position?.view === 'know
         <button class="menu-item" role="menuitem" :disabled="menuNodeIndex < 0 || menuNodeIndex >= menuSiblings.length - 1" @click="menuAction('down')">下移</button>
         <button class="menu-item" role="menuitem" @click="menuAction('move')">移动到…</button>
         <span class="menu-separator" aria-hidden="true"></span>
-        <button class="menu-item danger" role="menuitem" @click="menuAction('remove-node')">移除引用</button>
+        <button class="menu-item danger" role="menuitem" @click="menuAction('remove-node')">删除</button>
       </template>
     </ActionMenu>
     <DeleteNotebookDialog :open="!!deleting" :name="deleting?.name ?? ''" :count="deleting?.nodes.filter(n => n.kind === 'note').length ?? 0" :busy="deletionBusy" :error="deletionError" @confirm="confirmDelete" @cancel="deleting = null" />
     <Teleport to="body">
-      <ConfirmDialog :open="!!confirm" :title="confirm?.title ?? ''" :message="confirm?.message" :confirm-text="confirm?.title.includes('快照') ? '重新应用' : '移除'" @confirm="confirmAction" @cancel="confirm = null" />
+      <ConfirmDialog :open="!!confirm" :title="confirm?.title ?? ''" :message="confirm?.message" :confirm-text="confirm?.title.includes('快照') ? '重新应用' : '删除'" @confirm="confirmAction" @cancel="confirm = null" />
       <Transition name="dialog">
         <div v-if="dialog" class="dialog-mask" @click.self="dialog = null">
           <div ref="panel" class="dialog kb-workspace-dialog" role="dialog" aria-modal="true" :aria-label="dialog === 'chapter' ? '章节名称' : dialog === 'add' ? '加入已有笔记' : dialog === 'move' ? '移动目录' : '解决笔记本冲突'">

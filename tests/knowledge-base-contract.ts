@@ -24,7 +24,8 @@ export function knowledgeBaseContract(api: KnowledgeBaseTestApi, environment: ()
     const node: TocNode = { id: 'ref', kind: 'note', parent_id: null, ord: 0, note_id: noteId, title: null }
     expect((await toc(id, 0, [node])).status).toBe(200)
     const shared = await create()
-    expect((await toc(shared.id, 0, [{ ...node, id: 'shared' }])).status).toBe(200)
+    // Restore an old shared reference to retain legacy-data deletion coverage.
+    expect((await api(`/api/knowledge-bases/${shared.id}/toc`, 'PUT', { nodes: [{ ...node, id: 'shared' }], base_toc_version: 0, operation_id: crypto.randomUUID(), preserve_missing_references: true })).status).toBe(200)
     const env = environment()
     const key = `${noteId}/image.png`
     await env.R2.put(key, new Uint8Array([1, 2, 3]).buffer)
@@ -81,6 +82,17 @@ export function knowledgeBaseContract(api: KnowledgeBaseTestApi, environment: ()
     expect((await api('/api/knowledge-bases', 'POST', { ...request, name: '另一内容' })).status).toBe(400)
     const result = await get(id)
     expect(result.book).toMatchObject({ name: '改名', meta_version: 2, toc_version: 0 })
+  })
+
+  it('allows only one concurrent notebook to claim a previously unowned note', async () => {
+    const a = await create()
+    const b = await create()
+    const noteId = crypto.randomUUID()
+    expect((await api('/api/notes', 'POST', { id: noteId, title: '唯一归属', summary: '', content: '# 唯一归属', create_time: Date.now() })).status).toBe(200)
+    const node: TocNode = { id: 'ref', kind: 'note', parent_id: null, ord: 0, note_id: noteId, title: null }
+    const responses = await Promise.all([toc(a.id, 0, [node]), toc(b.id, 0, [node])])
+    expect(responses.map(r => r.status).sort()).toEqual([200, 409])
+    expect((await get(a.id)).toc.nodes.length + (await get(b.id)).toc.nodes.length).toBe(1)
   })
 
   it('rejects concurrent tree writes atomically and keeps one winner', async () => {

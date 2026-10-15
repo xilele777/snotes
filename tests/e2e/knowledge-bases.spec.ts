@@ -14,6 +14,41 @@ async function enterLibraries(page: Page, width: number) {
 }
 test.beforeEach(() => resetServer())
 
+test('directory trash recovery retains notebook ownership and original chapter', async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 })
+  const noteId = crypto.randomUUID()
+  const bookId = crypto.randomUUID()
+  await page.request.post('/api/notes', { headers, data: { id: noteId, title: '独属笔记', summary: '', content: '# 独属笔记', create_time: Date.now() } })
+  await page.request.post('/api/knowledge-bases', { headers, data: { id: bookId, operation_id: crypto.randomUUID(), name: '恢复位置验收', description: '', icon: '', ord: 0, invalid: 0 } })
+  const nodes = [
+    { id: 'chapter', kind: 'folder', parent_id: null, ord: 0, title: '原章节', note_id: null },
+    { id: 'note-ref', kind: 'note', parent_id: 'chapter', ord: 0, title: null, note_id: noteId },
+  ]
+  expect((await page.request.put(`/api/knowledge-bases/${bookId}/toc`, { headers, data: { nodes, base_toc_version: 0, operation_id: crypto.randomUUID() } })).status()).toBe(200)
+  await signIn(page)
+  await enterLibraries(page, 1440)
+  await page.locator('.kb-card-link').filter({ hasText: '恢复位置验收' }).click()
+  await expect(page.locator('.kb-tree-row')).toHaveCount(2)
+  await page.locator('.kb-tree-row').filter({ hasText: '原章节' }).locator('.kb-node-menu').click()
+  await page.getByRole('menuitem', { name: '删除', exact: true }).click()
+  await page.getByRole('alertdialog', { name: '删除这个章节？' }).getByRole('button', { name: '删除', exact: true }).click()
+  await expect(page.locator('.kb-tree-row')).toHaveCount(0)
+  await page.getByRole('button', { name: '回收站', exact: true }).click()
+  await page.locator('.note-item').filter({ hasText: '独属笔记' }).click()
+  await page.locator('[data-op="recover"]').click()
+  await page.getByRole('button', { name: '全部笔记', exact: true }).click()
+  await expect(page.locator('.note-item')).toHaveCount(0)
+  await enterLibraries(page, 1440)
+  await page.locator('.kb-card-link').filter({ hasText: '恢复位置验收' }).click()
+  await expect(page.locator('.kb-tree-row')).toHaveCount(2)
+  await expect(page.locator('.kb-node-link').filter({ hasText: '独属笔记' })).toBeVisible()
+  const recovered = await page.evaluate(async () => {
+    const db = await new Promise<IDBDatabase>(resolve => { const req = indexedDB.open('snotes'); req.onsuccess = () => resolve(req.result) })
+    try { return await new Promise<unknown>(resolve => { const req = db.transaction('knowledgeBaseTocs').objectStore('knowledgeBaseTocs').getAll(); req.onsuccess = () => resolve(req.result) }) } finally { db.close() }
+  })
+  expect(recovered).toEqual(expect.arrayContaining([expect.objectContaining({ knowledge_base_id: bookId, nodes })]))
+})
+
 for (const width of [1440, 720, 390, 320]) {
   test(`personal library offline creation and sync at ${width}px`, async ({ page, browser }, testInfo) => {
     await page.setViewportSize({ width, height: 900 })

@@ -4,6 +4,7 @@ import { db } from './schema'
 import type { KnowledgeBaseTask } from './knowledge-base-types'
 import { emitLocalWrite, emitRemoteApplied } from '../sync/signal'
 import { ApiError, apiFetch } from '../api/client'
+import { trashNote } from './repo'
 
 export const knowledgeBaseTables = () => [db.knowledgeBases, db.knowledgeBaseTocs, db.knowledgeBaseOutbox, db.knowledgeBaseTocHistory, db.knowledgeBaseNoteStates]
 export const taskId = (id: string, kind: 'meta' | 'toc') => `${id}:${kind}`
@@ -24,12 +25,24 @@ async function enqueueIn(book: KnowledgeBase, kind: 'meta' | 'toc', payload: Kno
   })
 }
 
+async function assertUnownedIn(bookId: string, noteIds: string[]) {
+  if (!noteIds.length) return
+  const active = new Set((await db.knowledgeBases.toArray()).filter(b => !b.invalid && !b.deleted && b.id !== bookId).map(b => b.id))
+  const requested = new Set(noteIds)
+  const otherTocs = await db.knowledgeBaseTocs.toArray()
+  if (otherTocs.some(t => active.has(t.knowledge_base_id) && t.nodes.some(n => n.note_id && requested.has(n.note_id)))) {
+    throw new Error('笔记已属于其他笔记本，请刷新后重试')
+  }
+}
+
 export async function createKnowledgeBase(meta: KnowledgeBaseMeta, id: string = crypto.randomUUID(), nodes: TocNode[] = [], imported = false): Promise<KnowledgeBase> {
   const clean = validateKnowledgeBaseMeta(meta)
   const structure = validateToc(nodes)
   const now = Date.now()
   const book: KnowledgeBase = { ...clean, id, meta_version: 0, toc_version: 0, create_time: now, update_time: now, change_seq: 0 }
   await db.transaction('rw', knowledgeBaseTables(), async () => {
+    // Legacy imports preserve their existing references without silently dropping data.
+    if (!imported) await assertUnownedIn(id, structure.flatMap(n => n.note_id ? [n.note_id] : []))
     await db.knowledgeBases.add(book)
     await db.knowledgeBaseTocs.add({ knowledge_base_id: id, version: 0, nodes: structure, update_time: now })
     await enqueueIn(book, 'meta', metadata(book))
@@ -59,6 +72,9 @@ export async function changeToc(id: string, change: (nodes: TocNode[]) => TocNod
     const toc = await db.knowledgeBaseTocs.get(id)
     if (!book || !toc || book.invalid) throw new Error('笔记本不可用')
     const nodes = validateToc(change(toc.nodes))
+    // Serialize ownership checks with TOC writes, including stale pickers in other tabs.
+    const previous = new Set(toc.nodes.flatMap(n => n.note_id ? [n.note_id] : []))
+    await assertUnownedIn(id, nodes.flatMap(n => n.note_id && !previous.has(n.note_id) ? [n.note_id] : []))
     for (const parent of new Set(nodes.map(n => n.parent_id))) childrenOf(nodes, parent).forEach((n, ord) => { n.ord = ord })
     const time = Date.now()
     await db.knowledgeBaseTocs.put({ ...toc, nodes, update_time: time })
@@ -77,6 +93,28 @@ export async function addKnowledgeBaseNode(id: string, node: Pick<TocNode, 'kind
 export async function removeKnowledgeBaseNode(id: string, nodeId: string) {
   await changeToc(id, nodes => { const removed = descendantsOf(nodes, nodeId); return nodes.filter(n => !removed.has(n.id)) })
 }
+/** Soft deletion keeps directory ownership and placement for recovery. */
+export async function trashKnowledgeBaseNode(id: string, nodeId: string, expectedNodes: TocNode[]) {
+  await db.transaction('rw', [...knowledgeBaseTables(), db.notes, db.outbox], async () => {
+    const book = await db.knowledgeBases.get(id)
+    const toc = await db.knowledgeBaseTocs.get(id)
+    if (!book || book.invalid || book.deleted || !toc) throw new Error('笔记本不可用')
+    if (JSON.stringify(toc.nodes) !== JSON.stringify(expectedNodes)) throw new Error('目录已更新，请重新确认删除')
+    const removed = descendantsOf(toc.nodes, nodeId)
+    const ids = [...new Set(toc.nodes.flatMap(n => removed.has(n.id) && n.note_id ? [n.note_id] : []))]
+    // Do not claim success if referenced content has not arrived on this device.
+    for (const noteId of ids) {
+      const note = await db.notes.get(noteId)
+      if (!note && (await db.knowledgeBaseNoteStates.get(noteId))?.state !== 'purged') throw new Error('笔记尚未同步到本机，请同步后重试')
+      if (note?.invalid === 0) await trashNote(noteId)
+    }
+    // Empty chapters have no recoverable content. Other subtrees remain as
+    // placeholders; recovering a note restores its original notebook/chapter.
+    if (!ids.length) await removeKnowledgeBaseNode(id, nodeId)
+  })
+  emitLocalWrite()
+}
+
 export async function moveKnowledgeBaseNode(id: string, nodeId: string, parent: string | null, position: number) {
   await changeToc(id, nodes => moveTocNode(nodes, nodeId, parent, position))
 }
