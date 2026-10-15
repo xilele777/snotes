@@ -324,3 +324,8 @@
   - 生产数据：迁移前 SQL 备份保存在部署机 `backups/pre-v0.22.0-20261015.sql`（SHA256 `5A6C745F4AF40330F8148659BA09797F9F1259735B131B259D0EB4B18F6E0C64`），未纳入 Git。`0008_commit_ordered_sync.sql` 已成功应用，复查无待执行迁移；生产只读查询核实四个同步触发器及提交水位均已就绪，未改写现有正文。
   - 发布结果：功能与修复分成七个提交，发布提交 `f26ded7`（`chore(release): v0.22.0`）与注解标签 `v0.22.0` 已推送；保留并合入远端 README 新提交 `c7293f4`，未强推覆盖。Cloudflare Version ID `ac9bb67c-63ea-4475-8464-25f41c58e471`，经 `wrangler deployments list` 确认承接 100% 流量；正式站点 https://note.alover.me；GitHub Release https://github.com/xilele777/snotes/releases/tag/v0.22.0，已核对为 Latest 稳定版。
   - 上线核验限制：本次正式域名 `/api/health` 返回 302 至 Cloudflare Access，首页与 workers.dev 健康请求连接超时；未绕过访问控制，因此未完成经过登录的线上页面、健康响应与静态资源比对。部署、生产数据库迁移与 100% 流量已通过 Wrangler 确认；不以本轮测试宣称项目绝对没有其他缺陷。
+- 2026-10-15：v0.22.1 修复回收站及已彻底删除笔记在笔记本目录中残留占位、再次删除无法清理引用的问题，保留可恢复笔记的原章节位置并修正计数。首页改为封面与四项信息格，标签在左、加粗数值在右，窄屏自动单列。中英文 README 精简为项目介绍与快速开始，完整使用、开发及部署指南迁入文档目录。
+  - 验证：`npm run test:all` 965 项通过（客户端/领域 752、Worker 171、Node/SQLite 42）；Cloudflare 本地全量浏览器回归 63 项、Node.js 笔记本与首页回归 7 项通过。类型检查、Web/Node 生产构建和部署构建通过；10 份文档的 99 个本地链接与锚点检查通过。没有新增数据库迁移，已确认生产无待执行迁移。
+  - 提交：`69cd7aa`（删除与恢复修复）、`13a60c3`（首页布局）、`4a37b2d`（文档整理）、`09551d4`（`chore(release): v0.22.1`）；提交及注解标签 `v0.22.1` 已推送。无关演示页 `1.html` 与历史设计产物 `output/` 保留本地，未纳入发布。
+  - 发布结果：Cloudflare Version ID `970bed0a-5265-4f35-8a39-43d7828f6d0c`，Deployment ID `3db3a047-f70c-4c10-9669-ea0636f99be2`；经 Wrangler 确认承接 100% 流量。正式站点 https://note.alover.me；GitHub Release https://github.com/xilele777/snotes/releases/tag/v0.22.1，已核对为 Latest 稳定版。
+  - 上线核验限制：正式域名首页和 `/api/health` 返回 302 至 Cloudflare Access 登录页，workers.dev 健康请求连接失败。本次未完成登录后的线上页面、健康响应与静态资源比对；部署和流量状态已通过 Cloudflare 确认。
