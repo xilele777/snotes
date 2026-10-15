@@ -62,7 +62,7 @@ npx wrangler secret put ACCESS_TOKEN
 
 ## 升级到新版本
 
-应用启动时，左下角版本按钮检查 GitHub 最新 Release，成功结果缓存 24 小时；检测到新版本会出现蓝点。先阅读 CHANGELOG、备份 D1 与 R2，并按 [README 的升级步骤](../README.md#8-更新到新版本)保存个人部署配置、拉取新代码、恢复配置并解决冲突，然后执行：
+应用启动时检查 GitHub 最新稳定版 Release，成功结果缓存 24 小时；检测到新版本时，侧栏「设置」出现蓝点，在「关于」页查看版本和升级说明。先阅读 [CHANGELOG](../CHANGELOG.md)、备份 D1 与 R2，并按 [Cloudflare 升级步骤](cloudflare-deployment.md#8-更新到新版本)保存个人部署配置、更新代码、恢复配置并解决冲突，然后执行：
 
 ```bash
 npm ci

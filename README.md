@@ -1,470 +1,148 @@
-<h1 align="center" style="display: none;">snotes</h1>
-<!-- 或者直接用一个不可见的锚点 -->
-<div id="snotes"></div>
-
 <div align="center">
 
-<img width="512" height="286" alt="snotes" src="https://github.com/user-attachments/assets/f70b7292-c7ef-4918-8efb-b835007639e6" />
+<img src="https://github.com/user-attachments/assets/f70b7292-c7ef-4918-8efb-b835007639e6" width="360" alt="snotes" />
 
-<p><strong>Your notes. Your server. Every device. Even offline.</strong></p>
+# snotes
 
-<p>一款轻量的个人笔记应用，支持离线编辑、多设备同步，以及 Cloudflare 或独立服务器自托管。</p>
+**你的笔记，你的服务器。多端同步，离线也能写。**
 
-<p>
-  <a href="https://github.com/xilele777/snotes/releases/latest"><img src="https://img.shields.io/github/v/release/xilele777/snotes" alt="Release"></a>
-  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="License"></a>
-  <a href="https://workers.cloudflare.com/"><img src="https://img.shields.io/badge/Cloudflare-Workers-F38020?logo=cloudflare&amp;logoColor=white" alt="Cloudflare Workers"></a>
-</p>
+轻量的个人 Markdown 笔记应用，支持部署到 Cloudflare 或自己的服务器。
 
-<p>中文 | <a href="README.en.md">English</a></p>
+[![Release](https://img.shields.io/github/v/release/xilele777/snotes)](https://github.com/xilele777/snotes/releases/latest)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![Vue 3](https://img.shields.io/badge/Vue-3-4FC08D?logo=vuedotjs&logoColor=white)](https://vuejs.org/)
 
-<p>当前稳定版：<a href="https://github.com/xilele777/snotes/releases/tag/v0.22.0"><strong>v0.22.0</strong></a>（<a href="https://github.com/xilele777/snotes/releases">全部发布</a>）。服务器部署从 <code>v0.7.0</code> 开始提供。</p>
+中文 · [English](README.en.md)
 
-<p>
-  <a href="#界面与操作">界面与操作</a> ·
-  <a href="#部署到你自己的-cloudflare-账号">Cloudflare 部署</a> ·
-  <a href="docs/server-deployment.md">服务器部署</a> ·
-  <a href="#本地开发">本地开发</a> ·
-  <a href="CHANGELOG.md">更新记录</a>
-</p>
+[功能特性](#功能特性) · [快速开始](#快速开始) · [部署指南](#部署方式) · [文档](#文档) · [更新日志](CHANGELOG.md)
 
 </div>
 
-笔记先保存在浏览器的 IndexedDB，再由后台增量同步。可以使用 Cloudflare Workers + D1 + R2，也可以在自己的服务器运行 Node.js + SQLite + 本地图片存储，两种方式共用笔记 API 与同步逻辑。适合在自己的电脑和手机之间记录、整理与继续写作。
+## 简介
 
-## 选择部署方式与版本
+snotes 面向想自己掌握数据的个人用户：随手记录日常笔记，用笔记本整理长文档，在电脑和手机之间继续写作。
 
-| 方式 | 环境要求 | 数据保存位置 | 指引 |
-| --- | --- | --- | --- |
-| Cloudflare | Cloudflare 账号、D1、R2；部署机 Node.js 22.12+ | D1 数据库、R2 图片桶 | [部署步骤](#部署到你自己的-cloudflare-账号) |
-| 直接运行 Node.js | Node.js 24 LTS、持久化磁盘 | SQLite、本地图片目录 | [快速开始](#能否部署到自己的服务器) |
-| Docker Compose | Docker Engine、Compose 插件 | `snotes-data` 持久化卷 | [完整指引](docs/server-deployment.md#docker-compose) |
+笔记先保存在浏览器本地，联网后与自己的服务端同步。前端与 API 既可以运行在 Cloudflare Workers 上，也可以由一个 Node.js 服务提供；不需要依赖第三方笔记平台。
 
-未指定标签的克隆命令默认跟踪 `main`。要安装固定版本，在克隆后、安装或构建前执行 `git switch --detach v0.22.0`；下方服务器快速开始已在克隆命令中指定此标签。`main` 可能包含尚未发布的后续改动；需要固定版本时请选择明确的发布标签。
+> **项目定位：单用户、自托管。** 使用一枚访问令牌保护整个实例，不提供多用户账户、协作编辑或分级权限。
 
-已有部署先完成同步、备份数据并保存本地配置，再执行 `git fetch origin --tags` 和 `git switch --detach v0.22.0`，随后按对应部署方式重新安装、构建和启动。固定标签处于 detached HEAD 状态，后续升级需获取并切换到新标签，不能直接 `git pull`；Cloudflare 配置的保存与恢复见下方[更新步骤](#8-更新到新版本)。不要使用强制切换覆盖本地改动。
+## 功能特性
 
-应用内更新提醒只查询 GitHub 最新**稳定版**，成功结果缓存 24 小时，不自动提示预览版，也不会自动更新服务端。预览版需在 [Releases](https://github.com/xilele777/snotes/releases) 手动选择。直接运行 Node.js 与 Playwright 端到端已验证；Docker Compose 配置检查已通过，镜像构建与容器运行尚未实测。
+- **离线优先** — 已同步到设备的笔记可以离线阅读和编辑，重新联网后自动同步。
+- **Markdown 写作** — 支持标题、列表、待办、表格、代码块、图片与高亮，提供格式工具栏、阅读模式和专注模式。
+- **两种整理方式** — 普通笔记支持分组、星标、置顶和搜索；笔记本提供独立首页与章节目录，不混入外部信息流。
+- **多设备同步** — 正文与属性分别同步，并发编辑保留冲突副本，便于人工合并。
+- **历史与恢复** — 自动保存正文历史；回收站支持预览和恢复，笔记本目录中的笔记可恢复到原位置。
+- **数据可携带** — 导入 Markdown 或备份包，导出包含图片和属性的 Markdown ZIP，支持单篇下载、分享与打印。
+- **桌面与手机** — 响应式界面、深浅色主题和 PWA 安装；支持图片灯箱与系统分享入口，具体能力取决于浏览器。
+- **写作统计** — 查看字数、连续写作、活动热力图、分组分布与跨设备打开记录。
 
-## 特点
+## 快速开始
 
-- **离线优先**：已同步到本机的笔记可离线阅读和编辑，联网后自动同步。
-- **Markdown 编辑**：支持标题、编号列表、任务清单、表格、图片和撤销重做，正文以 Markdown 保存。
-- **日常整理**：分组（重命名、颜色、排序、删除）、星标、置顶、颜色标记；搜索支持多个关键词按空格分隔取交集，正文命中时摘要显示命中附近的片段。
-- **笔记本**：独立首页与章节目录，可加入未归属的已有笔记、在笔记本中新建、移动排序和搜索，支持离线同步与冲突选择。笔记独属于笔记本，不混入外面的笔记列表和统计；目录删除进入回收站，恢复回到原笔记本和章节。删除整本笔记本需联网输入名称确认，将永久删除其中内容。从侧栏「笔记本」进入总览、新建和管理。[使用与升级说明](docs/knowledge-bases.md)。
-- **首页信息流**：未归属笔记本的普通笔记默认都在「全部笔记」里；可以让某个分组默认不上首页，也可以单独设置某一条笔记，「已隐藏」入口汇总所有被摘出去的笔记随时找回。
-- **阅读模式**：一键把当前笔记切成只读，编辑工具一并收起，读长文时怎么点怎么划都不会误改正文。
-- **数据可携带**：一键把全部笔记导出为 Markdown 压缩包（含图片与属性），也能把 `.md` 或备份包导入回来，重复导入不产生副本、同名分组自动复用；单条笔记可复制、下载、分享到其他应用或打印 / 存为 PDF。
-- **深色模式与个性化**：主题跟随系统或手动选择浅色、深色，正文字号与编辑区宽度可调，设置按设备保存。
-- **回收站**：删除后可预览并恢复，每条笔记显示还剩几天被自动删除（默认 30 天）；彻底删除和清空需要确认。
-- **写作统计**：查看字数、连续写作、更新热力图、分组分布和跨设备打开记录；「不上首页」的条数单列，统计总数与首页列表对得上账。
-- **多设备同步**：属性与正文分开同步；并发编辑时保存冲突副本，供后续合并。
-- **正文历史**：正文改动间隔满 5 分钟或一次改动较大时自动留存旧版本，本机浏览器和服务端各存一份，每条笔记各保留最近 20 条、最长 30 天；顶栏「历史版本」把两边合并显示，可预览并一键恢复，恢复前会把当前正文也存进历史。换设备也能找回其他设备上留存的版本。
-- **图片与 PWA**：粘贴图片上传到自己的服务端，双击或长按可在灯箱里放大、翻页、下载原图；已缓存的图片可离线查看；支持安装到桌面或手机主屏，安装后可作为系统分享目标接收文字和链接，主屏图标长按提供「新建笔记」快捷方式。
-- **轻量界面**：系统字体、共享 SVG 图标，编辑器与统计内容按需加载。
+### 使用 Node.js 运行
 
-## 界面与操作
-
-桌面采用固定的导航、笔记目录和正文三栏。回收站位于“已隐藏”下方，切换后沿用相同的列表和预览尺寸。统计和设置在侧栏旁作为独立页面打开，返回后保留原来的编辑位置与撤销记录。统计热力图独占一行，窄屏可在卡片内横向浏览。
-
-| 入口 | 操作 |
-| --- | --- |
-| 全部笔记 / 星标 / 分组 | 筛选笔记，点击列表条目阅读或编辑 |
-| 已隐藏 | 汇总所有「不上首页信息流」的笔记（分组菜单「不上首页信息流」、笔记「⋯」菜单「不在首页信息流显示」） |
-| 回收站 | 查看已删除笔记，恢复或彻底删除，详情顶栏显示还剩几天被删除；返回笔记时恢复之前的筛选与阅读位置 |
-| 左侧统计图标 | 打开统计页面，支持返回工作区和系统返回 |
-| 左侧图标栏底部「设置」 | 独立分页页面：**外观**（主题、列表密度、摘要显隐、字号、编辑区宽度、正文行距、表格密度，只对当前设备生效）、**数据**（导出全部、导入备份）、**快捷键**（含 Markdown 速查）、**关于**（版本、升级步骤、退出登录）；快捷键 `Ctrl / Cmd + ,` |
-| 正文顶栏 | 桌面直接显示字数（点开看详细统计）、文档信息、历史版本；「⋯」收拢复制 Markdown、下载 .md、分享到其他应用（支持系统分享的浏览器）、打印 / 存为 PDF，以及「不在首页信息流显示」。手机上字数、信息、历史和「删除」都在「⋯」里 |
-| 顶栏的书本图标 | 阅读模式：正文只读、编辑工具收起；再点一次或按 `Esc` 退出 |
-| 操作提示 | 复制、下载、恢复历史等结果以顶部浮出的短消息呈现，3.5 秒自动消失 |
-| 正文上方的格式工具栏 | 标题、加粗、斜体、删除线、行内代码、无序/有序/待办清单、引用、代码块、链接、表格；光标落在某种格式里时对应按钮自动点亮 |
-| 正文里的链接 | 光标落到链接上时浮出气泡，可打开、编辑地址、复制、移除；Ctrl/Cmd 加点击直接新标签打开（外链带 `rel="noopener noreferrer"`） |
-
-手机默认展示目录，打开笔记后进入正文；左上角按钮展开导航，返回按钮或系统返回回到列表。桌面正文可切换专注模式。
-
-| 快捷键 | 功能 |
-| --- | --- |
-| `Alt / Option + N` | 新建笔记（`Ctrl + N` 是浏览器新窗口，网页拦不住） |
-| `Ctrl / Cmd + K` 或 `Ctrl / Cmd + F` | 聚焦笔记搜索 |
-| `Ctrl / Cmd + ,` | 打开设置 |
-| `Ctrl / Cmd + Shift + S` / `P` / `D` | 当前笔记星标 / 置顶 / 删除（删除先弹确认） |
-| `Ctrl / Cmd + Shift + E` | 阅读模式（正文只读） |
-| `Ctrl / Cmd + Alt + ↑` / `↓` | 列表里切到上一条 / 下一条 |
-| `Ctrl / Cmd + Shift + F` | 专注模式 |
-| `Ctrl / Cmd + Shift + U` | 立即同步 |
-| `Ctrl / Cmd + Z` / `Y` | 在编辑器中撤销 / 重做 |
-| `Ctrl / Cmd + P` | 打印当前笔记 |
-| `Esc` | 关闭当前弹窗或侧栏、退出阅读模式或专注模式，或清除搜索 |
-
-完整清单（含编辑器内快捷键与 Markdown 速查）见设置的「快捷键」页。
-
-## 技术栈
-
-| 层 | 技术 |
-| --- | --- |
-| 前端 | Vue 3、Pinia、Milkdown（Markdown 编辑器）、Dexie（IndexedDB） |
-| PWA | vite-plugin-pwa（Workbox） |
-| 后端 | Hono，运行于 Cloudflare Workers 或 Node.js 24 |
-| 存储 | Cloudflare D1 / R2，或 SQLite / 本地磁盘 |
-| 测试 | Vitest（单元/集成）、Playwright（端到端） |
-
-## 架构
-
-```mermaid
-flowchart LR
-  UI[Vue / Markdown 编辑器] <--> Local[IndexedDB]
-  Local <--> Sync[增量同步与任务队列]
-  Sync <-->|同源 API| Worker[Hono API / Workers 或 Node.js]
-  UI <-->|图片| Worker
-  Worker <--> D1[D1 或 SQLite / 笔记与分组]
-  Worker <--> R2[R2 或磁盘 / 图片]
-```
-
-- 数据 API 使用 `Authorization: Bearer <token>` 鉴权；图片请求支持同源 Cookie（`Path=/api/images/`），健康检查 `/api/health` 无需令牌。
-- 同步引擎在 `src/sync/`：`pull` 拉版本清单与缺失正文，`push` 消费 outbox 队列，`conflict` 处理并发冲突副本
-- 数据库 schema 在 `migrations/`，前后端共用类型在 `shared/types.ts`
-
-## 部署到你自己的 Cloudflare 账号
-
-需要一个 Worker、一个 D1 数据库和一个 R2 桶。各产品提供免费额度，实际费用取决于用量，参见[免费额度](#免费额度)。
-
-### 0. 前置条件
-
-- **Node.js 22.12 或更高版本**（wrangler 4 要求 `>=22.0.0`，vite 8 要求 `>=22.12.0`）
-- **一个 Cloudflare 账号**，并且**已在控制台开通 R2**：进入 Dashboard → R2 按提示开通。未开通时第 2 步创建桶会失败。
-- 登录 wrangler：
-
-  ```bash
-  npx wrangler login
-  ```
-
-### 1. 克隆并安装
+需要 **Node.js 24 LTS**。不需要 Cloudflare 账号，笔记存入 SQLite，图片保存在本地磁盘。
 
 ```bash
-git clone https://github.com/xilele777/snotes.git
-cd snotes
-npm ci
-```
-
-### 2. 创建 D1 数据库与 R2 桶
-
-```bash
-npx wrangler d1 create snotes
-npx wrangler r2 bucket create snotes-images
-```
-
-第一条命令会打印一段配置片段，其中的 `database_id` 是**你自己账号的**，下一步要用：
-
-```
-[[d1_databases]]
-binding = "DB"
-database_name = "snotes"
-database_id = "你的-数据库-uuid"
-```
-
-> 想换名字请看下面的[改名与自定义域名](#改名与自定义域名)。现在保持默认名最省事。
-
-### 3. 把 database_id 填进 wrangler.jsonc（必做）
-
-仓库里的 `wrangler.jsonc` 带着原作者账号的数据库 ID，**不改这一步部署必然失败**。需要替换的是**两处**：
-
-```diff
-   "d1_databases": [
-     {
-       "binding": "DB",
-       "database_name": "snotes",
--      "database_id": "66325ab4-c335-4976-9a62-b0c9e5e21e97",
-+      "database_id": "第 2 步返回的你自己的 uuid",
-       "migrations_dir": "migrations"
-     }
-   ],
-   ...
-   "vars": {
--    "D1_DATABASE_ID": "66325ab4-c335-4976-9a62-b0c9e5e21e97",
-+    "D1_DATABASE_ID": "同一个 uuid",
-     "R2_BUCKET_NAME": "snotes-images"
-   }
-```
-
-两处的值相同但用途不同：`d1_databases[].database_id` 是运行时数据库绑定，缺它应用起不来；`vars.D1_DATABASE_ID` 只给用量监控页查询 Analytics 用，填错不影响笔记功能，但监控页会读不到 D1 数据。这两个 ID 和桶名都不是机密，可以放心提交进仓库。
-
-### 4. 设置访问令牌
-
-这是保护你笔记的唯一凭据，请用随机串，不要用生日或常见密码：
-
-```bash
-# 生成一个 32 字节随机令牌
-node -e "console.log(Buffer.from(crypto.getRandomValues(new Uint8Array(32))).toString('base64url'))"
-
-# 把它写进 Worker 密钥（命令会提示粘贴）
-npx wrangler secret put ACCESS_TOKEN
-```
-
-`ACCESS_TOKEN` 必须以密钥形式存在，**不要写进 `wrangler.jsonc` 的 `vars`**——那里的内容是明文配置，会随仓库一起公开。未设置时，除健康检查外的数据 API 返回 401。
-
-### 5. 应用数据库迁移
-
-```bash
-npx wrangler d1 migrations apply snotes --remote
-```
-
-`--remote` 打的是线上库，`--local` 只影响本机开发库，两者互不相通。
-
-### 6. 构建并部署
-
-```bash
-npm run deploy
-```
-
-该命令等价于「类型检查 → vite 构建 → wrangler 部署」。成功后终端会给出一个形如 `https://snotes.<你的子域>.workers.dev` 的地址。
-
-先做一次免鉴权冒烟检查：
-
-```bash
-curl https://snotes.<你的子域>.workers.dev/api/health
-# 期望输出：{"ok":true}
-```
-
-`/api/health` 返回服务状态，不包含笔记或令牌，用于部署后验活。
-
-### 7. 首次使用
-
-浏览器打开 Worker 地址，粘贴第 4 步的令牌即可进入。令牌存在浏览器本地，每台设备输入一次。
-
-在手机 Safari / Chrome 里选择「添加到主屏幕」，即可作为独立 PWA 使用；桌面 Chrome / Edge 地址栏右侧有安装按钮。
-
-### 8. 更新到新版本
-
-仓库发布新版本后，手动部署的 Worker **不会自动更新**，需要在部署机上重新拉代码并部署。应用启动时查询 GitHub 最新稳定版 Release，成功结果缓存 24 小时：有新版本时图标栏「设置」出现蓝点，设置的「关于」页显示最新版本号、发布说明链接和更新步骤。若想收到发布通知，可在 GitHub 仓库页面点 **Watch → Custom → Releases**，并在 GitHub 通知设置中启用邮件。以下 `git pull` 步骤用于跟踪分支的部署；固定标签部署请改用上方的[标签升级步骤](#选择部署方式与版本)。
-
-先阅读 [CHANGELOG](CHANGELOG.md)，按[运维手册](docs/operations.md)备份数据，进入项目目录运行 `git status` 检查本地改动。**如果 `wrangler.jsonc` 有未提交的个人配置**，先在仓库外备份一份，再暂存到 Git stash：
-
-```bash
-git stash push -m "snotes deployment config" -- wrangler.jsonc
-```
-
-仅在确有配置改动时执行该命令，并记录输出确认已创建 stash；其他代码改动也应先妥善保存。如果以前设置过 `skip-worktree`，先执行 `git update-index --no-skip-worktree wrangler.jsonc` 再检查状态。`skip-worktree` 不是解决上游冲突的办法。
-
-```bash
-git pull --ff-only                                  # 拉取当前分支最新代码
-```
-
-如果刚才创建了配置 stash，接着执行 `git stash apply 'stash@{0}'` 恢复它（期间不要创建其他 stash）。有冲突时手动合并，保留自己的 Worker 名、两处数据库 ID 和桶名，同时合入上游新增字段；确认配置正确后再继续。stash 会保留，验收完成后可自行删除。使用 fork 且上游不在 `origin` 时，需要先把原仓库的更新同步到自己的分支；此处 `git pull` 只更新当前跟踪分支。
-
-```bash
-npm ci                                              # 按锁文件安装依赖
-npx wrangler d1 migrations apply snotes --remote    # 有新迁移时执行；没有新迁移会直接返回
-npm run deploy                                      # 构建并部署
-```
-
-数据库改过名时，迁移命令中的 `snotes` 也要替换。密钥（`ACCESS_TOKEN` 等）保存在 Cloudflare 侧，无需重新输入。部署完成后，保持联网等待浏览器下载新的 Service Worker 和缓存，再刷新或关闭所有应用窗口后重新打开，并在设置「关于」页核对版本号；离线或仍在使用旧缓存时不会立即变为新版。
-
-### 可选：配置用量监控 API
-
-当前保留 `/api/metrics` 和监控组件，侧栏暂不显示监控入口。不配置不影响笔记与写作统计；调用未配置的用量接口会返回 503 与 `not_configured`。
-
-需要两个密钥：
-
-```bash
-npx wrangler secret put CF_ACCOUNT_ID   # Cloudflare 账号 ID，在 Dashboard 右侧栏
-npx wrangler secret put CF_API_TOKEN    # 需要 Account > Analytics > Read 权限
-```
-
-已有 Worker 时，`wrangler secret put` 会创建并立即部署含新密钥的版本；如果同时改了代码，再执行 `npm run deploy`。详见 [Wrangler secret 命令](https://developers.cloudflare.com/workers/wrangler/commands/workers/#secret)。
-
-创建 API Token 的路径是 Dashboard → My Profile → API Tokens → Create Token → Custom token，权限只勾 **Account · Account Analytics · Read** 即可，不要给多余权限。
-
-### 改名与自定义域名
-
-想换 Worker 名、数据库名或桶名，改 `wrangler.jsonc` 中对应字段，并保证与你实际创建的资源一致：
-
-| 字段 | 作用 | 对应命令 |
-| --- | --- | --- |
-| `name` | Worker 名，决定 `<name>.<子域>.workers.dev` | 无需预先创建 |
-| `d1_databases[].database_name` | D1 数据库名 | `wrangler d1 create <名字>` |
-| `r2_buckets[].bucket_name` | R2 桶名 | `wrangler r2 bucket create <名字>` |
-| `vars.R2_BUCKET_NAME` | 监控页查询用，须与上一行一致 | —— |
-
-改了数据库名之后，迁移命令里的名字也要跟着换：`wrangler d1 migrations apply <新名字> --remote`。
-
-绑自定义域名：在 Cloudflare Dashboard → Workers & Pages → 选中该 Worker → Settings → Domains & Routes → Add Custom Domain。域名需要托管在同一个 Cloudflare 账号下。
-
-### 部署故障排查
-
-| 现象 | 原因与处理 |
-| --- | --- |
-| 部署报 `Couldn't find DB` / D1 相关的 not found | 第 3 步的 `database_id` 没换成你自己的，或换错了一处 |
-| `wrangler r2 bucket create` 失败 | 账号未开通 R2，先到 Dashboard → R2 完成开通 |
-| 迁移报错找不到数据库 | 第 2 步没执行，或迁移命令里的数据库名与 `wrangler.jsonc` 不一致 |
-| 打开页面反复要求输入令牌 | 确认浏览器输入与 Worker 的 `ACCESS_TOKEN` 一致；需要更换时使用 `wrangler secret put ACCESS_TOKEN` |
-| `/api/health` 通但笔记加载空白且报 401 | 同上，令牌不一致；浏览器端清空令牌重新输入 |
-| 部署成功但没有 workers.dev 地址 | 账号的 workers.dev 子域被关闭了，去 Workers & Pages → Settings 启用，或直接绑自定义域名 |
-| 图片破图、其他功能正常 | R2 桶名与 `wrangler.jsonc` 不一致；或 `snotes_token` Cookie 丢失，见[运维手册](docs/operations.md) |
-| 监控页显示「未配置」 | 未设置 `CF_ACCOUNT_ID` / `CF_API_TOKEN`，或 Token 缺少 Account Analytics Read 权限 |
-| Windows Git Bash 下交互式命令报 `stdin is not a tty` | `wrangler secret put` 这类需要输入的命令改用 PowerShell 或 CMD 执行，或在命令前加 `winpty` |
-
-## 能否部署到自己的服务器
-
-支持。可以使用 **Docker Compose**，也可以直接运行 **Node.js 24 LTS**。服务同时提供网页和 API，笔记保存到 SQLite，图片保存在磁盘；不需要 Cloudflare 账号。
-
-直接运行 Node.js：
-
-```bash
-git clone --branch v0.22.0 https://github.com/xilele777/snotes.git
+git clone --branch v0.22.1 https://github.com/xilele777/snotes.git
 cd snotes
 npm ci
 npm run build:server
 cp server.env.example .env.server
-# 编辑 .env.server，设置自己的随机 ACCESS_TOKEN
+```
+
+编辑 `.env.server`，将 `ACCESS_TOKEN` 设置为自己的随机令牌，然后启动：
+
+```bash
 npm start
 ```
 
-或使用 Docker Compose（独立安装，二选一）：
+打开 **<http://127.0.0.1:3000>**，输入令牌即可使用。首次启动会自动创建数据库并应用迁移。
+
+<details>
+<summary>如何生成令牌？Windows 如何复制配置文件？</summary>
+
+生成至少 32 字节的随机令牌：
 
 ```bash
-git clone --branch v0.22.0 https://github.com/xilele777/snotes.git
-cd snotes
-cp server.env.example .env
-# 编辑 .env，设置自己的随机 ACCESS_TOKEN
-docker compose up -d --build
+node -e "console.log(require('node:crypto').randomBytes(32).toString('base64url'))"
 ```
 
-使用密码管理器生成至少 32 字节的随机令牌，或执行 `node -e "console.log(crypto.randomBytes(32).toString('base64url'))"`。Node.js 使用 `.env.server`，Compose 使用 `.env`；两者均已被 Git 忽略。Compose 将数据保存在 `snotes-data` 命名卷，升级时保留该卷；`docker compose down -v` 会删除它。
+在 Windows PowerShell 中，用下面的命令代替 `cp`：
 
-默认地址为 `http://127.0.0.1:3000`，首次启动自动建库和迁移。远程访问需配置 HTTPS 反向代理。完整的 Docker、systemd、域名、备份和升级步骤见[服务器部署文档](docs/server-deployment.md)。原 Cloudflare 实例的数据不会自动迁入新服务器。
+```powershell
+Copy-Item server.env.example .env.server
+```
 
-源码可以放在 GitHub、GitLab、Gitee 或本地。应用内版本提醒查询原项目的 GitHub Releases，查询失败不影响笔记功能；服务器版不提供 Cloudflare 用量监控，写作统计照常可用。
+不要提交 `.env.server`，也不要把示例令牌用于公网部署。
 
-## 本地开发
+</details>
+
+默认数据目录为 `data/`。升级时保留整个目录；远程访问请配置 **HTTPS 反向代理**。完整步骤见[服务器部署指南](docs/server-deployment.md)。
+
+### 部署方式
+
+| 方式 | 适合的场景 | 数据存储 | 指南 |
+| --- | --- | --- | --- |
+| **Cloudflare** | 不想维护独立服务器 | D1 + R2 | [部署与升级](docs/cloudflare-deployment.md) |
+| **Node.js** | 已有 VPS、家用服务器或本地主机 | SQLite + 本地图片目录 | [服务器部署](docs/server-deployment.md#直接运行-nodejs) |
+| **Docker Compose** | 希望用容器管理服务 | SQLite + 持久化数据卷 | [Compose 部署](docs/server-deployment.md#docker-compose) |
+
+Cloudflare 部署需要创建自己的 D1 数据库和 R2 桶，替换仓库中的资源配置，并设置访问令牌。免费额度与费用以平台政策和实际用量为准。
+
+> **验证范围：** Cloudflare 和直接运行 Node.js 已完成集成及浏览器测试；Docker Compose 目前仅验证了配置，尚未实测镜像构建和容器运行。
+
+固定版本安装请使用 [Releases](https://github.com/xilele777/snotes/releases) 中的标签；`main` 可能包含未发布改动。升级前先同步并备份，按对应部署指南操作。应用内更新提醒不会自动升级服务端。
+
+## 数据与安全
+
+- **令牌就是访问权限。** 持有 `ACCESS_TOKEN` 的人可以读写整个实例的笔记和图片，请使用随机令牌并妥善保管。
+- **自托管不等于端到端加密。** 请使用 HTTPS，并保护服务器、数据库、图片目录和备份。
+- **离线缓存不等于备份。** 浏览器可能清理本地存储；尚未同步的改动不会出现在服务端备份中。
+- **优先使用应用内导出迁移。** 在「设置 → 数据」导出完整备份包。服务端备份还需覆盖图片；D1 SQL 导出不包含 R2 对象。
+- **注意永久删除。** 普通删除进入回收站；删除整本笔记本会永久删除其中内容，不经过回收站。
+
+更多说明见[使用指南](docs/usage.md)、[备份与排错](docs/operations.md)及[服务器备份与恢复](docs/server-deployment.md#备份升级与恢复)。
+
+## 开发
+
+建议使用 **Node.js 24 LTS**，以同时运行前端、Worker 和 Node.js 后端测试。
 
 ```bash
 npm ci
-
-# 首次开发时创建本地令牌配置
-echo "ACCESS_TOKEN=dev-token" > .dev.vars
-
-# 初始化本地数据库（本地库与线上库互不影响）
-npx wrangler d1 migrations apply snotes --local
-
-npm run dev:worker   # 终端 1：Worker 跑在 8787
-npm run dev          # 终端 2：前端跑在 5173
+npm run test:all
+npm run build
 ```
 
-打开 <http://localhost:5173>，输入 `dev-token` 进入。前端经 vite proxy 访问 8787 的 API，与生产同源形态一致。`.dev.vars` 已在 `.gitignore` 中，不会入库。
+本地开发启动、环境配置、浏览器测试和架构说明见[开发与贡献](docs/development.md)。
 
-本地开发不需要真实的 D1/R2 资源，wrangler 会用本地模拟；因此这一步可以在还没改 `database_id` 的情况下进行。
-
-### 测试
-
-```bash
-npm test            # 前端与 shared 纯逻辑
-npm run test:worker # Worker 集成测试（跑在真实 Workers 运行时里）
-npm run test:server # 服务器 SQLite / 磁盘 / API 集成测试
-npm run test:all    # 以上全部
-npm run test:e2e    # Playwright 端到端
-npm run test:e2e:server # 相同浏览器用例，改用 Node.js 服务
-npm run typecheck   # 类型检查
-```
-
-E2E 会自己构建、应用迁移并在 `8790` 端口拉起 `wrangler dev`，打的是生产形态（同源静态资源 + API），不需要手动先起服务。测试使用 `tests/e2e/wrangler.jsonc` 中的固定测试令牌，数据独立保存在 `tmp/e2e-state`。
-
-服务器测试使用 Node.js 24；`test:e2e:server` 在 `8791` 端口启动真实 Node.js 服务，数据位于 `tmp/e2e-server-state`。两种 E2E 都构建到 `dist/`，请顺序执行。
-
-提交前请跑通 `npm run test:all && npm run build`。
-
-## 自动清理
-
-服务端每天执行一次维护任务（`worker/maintenance.ts`），Cloudflare 版由 `wrangler.jsonc` 里的 `triggers.crons` 触发，独立服务器版在进程内每 24 小时执行一次：
-
-- **孤儿图片回收**：从正文里删掉的图片不会立刻消失，上传满 7 天且不再被所属笔记引用时才删除对象和索引行，给撤销和多端同步留出时间。
-- **回收站过期清理**：默认 30 天。进入回收站超过该天数的笔记会被自动彻底删除，效果与手动「彻底删除」一致，删除信号照常同步到其他设备；回收站里每条笔记显示还剩几天。要改天数，Cloudflare 在 `wrangler.jsonc` 的 `vars` 里加 `"TRASH_RETENTION_DAYS": "7"` 后重新部署；独立服务器在 `.env.server` 或 `.env` 里设置同名变量后重启。值必须是正整数天数，`0` 或 `off` 表示关闭，非法值会让服务器拒绝启动。
-- **墓碑回收**：彻底删除的笔记在数据库里保留 30 天的删除标记供其他设备同步，超期后物理删除；此前只有手动清空回收站时才回收。
-
-Cloudflare 本地调试可用 `npx wrangler dev --test-scheduled` 启动后访问 `http://localhost:8787/__scheduled` 手动触发。
-
-## 免费额度
-
-费用取决于请求、数据库读写、图片存储和操作量，不保证所有使用方式都免费。最新额度与计费规则以官方文档为准：
-
-- [Workers 计费](https://developers.cloudflare.com/workers/platform/pricing/)
-- [D1 计费](https://developers.cloudflare.com/d1/platform/pricing/)
-- [R2 计费](https://developers.cloudflare.com/r2/pricing/)
-
-可选用量监控的计算逻辑位于 `worker/metrics/collect.ts`；平台政策调整时需同步更新。
-
-## 数据备份与迁移
-
-**应用内导出 / 导入**：图标栏「设置」的「数据」页可把全部笔记打包成 zip 下载，每个分组一个文件夹、每条笔记一个 `.md`，图片放在 `images/` 并改成相对路径，`index.json` 记录分组、星标、置顶、颜色与创建时间。同一份包可以导入回任意部署（Cloudflare 或独立服务器），图片会重新上传；重复导入不会产生副本。这是迁移和日常备份的推荐方式，不依赖命令行。
-
-**独立服务器 / Docker**：先让客户端同步，再停止服务并备份整个数据目录或数据卷，包括 SQLite、可能存在的 WAL/SHM 文件和图片。具体命令及恢复方法见[服务器备份、升级与恢复](docs/server-deployment.md#备份升级与恢复)。Cloudflare 与服务器的数据不会自动互相迁移。
-
-**Cloudflare**：以下为 D1 备份与恢复命令（Bash）：
-
-```bash
-# 定期导出，升级前也应备份
-npx wrangler d1 export snotes --remote --output "backup-$(date +%Y%m).sql"
-
-# 恢复
-npx wrangler d1 execute snotes --remote --file backup-YYYYMM.sql
-```
-
-SQL 导出包含已同步到 D1 的笔记、分组与元数据。图片位于 R2，完整备份还需单独保存 R2 对象；浏览器里尚未同步的数据不包含在服务端备份中。
-
-## 项目结构
-
-```
-src/            前端（Vue 3 + Pinia）
-  components/    列表、详情、侧栏、监控等组件
-  editor/        Milkdown 编辑器封装
-  stores/        Pinia 状态（notes / ui / groups）
-  sync/          同步引擎（pull / push / conflict）
-  db/            Dexie schema 与 repo
-  api/           与 Worker 通信的客户端
-  navigation.ts  视图、统计与设置页面和阅读位置的 History 导航
-worker/         共用 Hono API 与 Cloudflare 入口
-  routes/        notes / opens / groups / sync / trash / images / metrics
-  metrics/       D1/R2/HTTP 指标采集
-  auth.ts        Bearer + Cookie 鉴权中间件
-server/         Node.js 入口、SQLite 与本地图片适配器
-deploy/         systemd 与 HTTPS 反向代理示例
-shared/         前后端共用类型与逻辑（同步归并、排序、清洗）
-migrations/     D1 / SQLite 数据库迁移
-tests/          端到端、Worker 集成、单元测试与 setup
-docs/           设计文档、运维手册
-```
+| 层 | 技术 |
+| --- | --- |
+| 界面与编辑器 | Vue 3 · Pinia · Milkdown |
+| 离线与 PWA | Dexie / IndexedDB · Workbox |
+| API | Hono · Cloudflare Workers / Node.js |
+| 存储 | D1 / SQLite · R2 / 本地磁盘 |
+| 验证 | TypeScript · Vitest · Playwright |
 
 ## 文档
 
-- [设计文档](docs/superpowers/specs/2026-08-22-snotes-design.md)
-- [实施计划](docs/superpowers/plans/2026-08-22-snotes.md)
-- [运维手册](docs/operations.md) —— 令牌机制、同步失败排查、备份、常见问题
-- [服务器部署](docs/server-deployment.md) —— Node.js、Docker、systemd、HTTPS、备份与升级
-- [界面设计与验收](docs/ui-refresh.md)
-- [功能建议与待办](docs/roadmap.md) —— 功能与运维改进的评估、决策与逐版实施记录，四档条目已全部完成
-- [变更记录](CHANGELOG.md)
+| 我想…… | 查看 |
+| --- | --- |
+| 了解界面、快捷键和数据导入导出 | [使用指南](docs/usage.md) |
+| 使用笔记本和章节目录 | [笔记本说明](docs/knowledge-bases.md) |
+| 部署到 Cloudflare | [Cloudflare 部署](docs/cloudflare-deployment.md) |
+| 使用 Node.js、Docker、systemd 或 HTTPS | [服务器部署](docs/server-deployment.md) |
+| 升级、备份或排查同步问题 | [运维手册](docs/operations.md) |
+| 参与开发、运行测试或了解目录结构 | [开发与贡献](docs/development.md) |
+| 查看版本变化 | [更新日志](CHANGELOG.md) · [Releases](https://github.com/xilele777/snotes/releases) |
 
-## 安全说明
+设计文档与历史实施记录收录在[文档索引](docs/README.md)，不作为当前功能承诺。
 
-这是**单用户自托管**应用，鉴权模型只有一个共享令牌，请在此前提下使用：
+## 参与贡献
 
-- 拿到 `ACCESS_TOKEN` 的人可以读写你的全部笔记与图片，没有多用户、分享或权限分级
-- 令牌保存在浏览器 `localStorage`，另有一个作用域限定为 `Path=/api/images/` 的 Cookie 专供 `<img>` 使用
-- 更换令牌：Cloudflare 使用 `wrangler secret put ACCESS_TOKEN`；直接运行 Node.js 时修改 `.env.server` 或服务环境文件并重启进程；Docker 修改 `.env` 后执行 `docker compose up -d --force-recreate snotes`。使用旧令牌的客户端会收到 401 并回到输入页，本地数据不受影响
-- 不要把令牌写进 `wrangler.jsonc` 或任何会进仓库的文件；服务器令牌仅保存在被忽略的环境文件或服务端密钥文件中
-- 独立服务器版内置登录限流：同一来源连续 5 次令牌错误后封锁 1 分钟，封锁期满再错则时长翻倍，最长 1 小时；期间该来源的全部 `/api/` 请求返回 429，`/api/health` 不受影响。来源按 socket 地址判定，只有本机或内网反向代理带来的 `X-Forwarded-For` 才被采信，详见[服务器部署文档](docs/server-deployment.md)
-- Cloudflare 版不在代码里做限流，建议在 Cloudflare 控制台的 **Security → WAF → Rate limiting rules** 里添加规则：匹配 URI 路径以 `/api/` 开头且响应状态码为 401 的请求，同一 IP 在 1 分钟内超过 5 次即封锁 10 分钟。免费套餐允许 1 条速率限制规则，按响应状态码计数需要在规则里启用「按响应特征计数」
+欢迎通过 [Issues](https://github.com/xilele777/snotes/issues) 反馈可复现的问题或提出建议，也欢迎提交 Pull Request。贡献前请阅读[开发说明](docs/development.md#贡献代码)。
 
-发现安全问题请通过 GitHub 的 [Security Advisory](https://github.com/xilele777/snotes/security/advisories/new) 私下报告，不要开公开 issue。
-
-## 贡献
-
-欢迎 issue 与 PR。提交前请注意：
-
-- 先跑通 `npm run test:all && npm run build`
-- Commit 信息遵循 [Conventional Commits](https://www.conventionalcommits.org/)，格式见 [CLAUDE.md](CLAUDE.md)
-- 数据库 schema 变更一律新增 `migrations/000N_*.sql` 递增迁移，不改动已有迁移文件；迁移编号与应用版本号是两套独立序列
-- 版本号唯一来源是根目录 `package.json` 的 `version`，发布流程见 [CLAUDE.md](CLAUDE.md)
-- 行为变更请附对应测试
+安全问题请通过 [GitHub Security Advisory](https://github.com/xilele777/snotes/security/advisories/new) 私下报告，不要在公开 Issue 中泄露令牌或笔记数据。
 
 ## 许可证
 
