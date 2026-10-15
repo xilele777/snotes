@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="https://github.com/user-attachments/assets/f70b7292-c7ef-4918-8efb-b835007639e6" width="360" alt="snotes" />
+<img src="https://github.com/user-attachments/assets/f70b7292-c7ef-4918-8efb-b835007639e6" width="600" alt="snotes" />
 
 # snotes
 
