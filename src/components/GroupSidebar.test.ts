@@ -46,7 +46,7 @@ async function typeName(name: string) {
 }
 
 describe('GroupSidebar', () => {
-  it('侧栏底部有「设置」入口，点开走 overlay 并落在外观页', async () => {
+  it('侧栏底部有「设置」入口，点开走 workspacePage 并落在外观页', async () => {
     const ui = useUiStore()
     ui.drawerOpen = true
     const wrapper = mount(GroupSidebar)
@@ -55,7 +55,7 @@ describe('GroupSidebar', () => {
     const button = wrapper.find('.sidebar-footer [data-view="settings"]')
     expect(button.exists()).toBe(true)
     expect(button.text()).toBe('设置')
-    expect(button.attributes('aria-haspopup')).toBe('dialog')
+    expect(button.attributes('aria-haspopup')).toBeUndefined()
     expect(wrapper.find('[data-action="settings"]').exists()).toBe(false)
     expect(wrapper.find('[data-action="backup"]').exists()).toBe(false)
     expect(wrapper.find('.user-area .icon-button').exists()).toBe(false)
@@ -63,10 +63,10 @@ describe('GroupSidebar', () => {
     await button.trigger('click')
     await nextTick()
 
-    expect(ui.overlay).toBe('settings')
+    expect(ui.workspacePage).toBe('settings')
     expect(ui.settingsTab).toBe('appearance')
     expect(ui.drawerOpen).toBe(false)
-    expect(button.attributes('aria-expanded')).toBe('true')
+    expect(button.attributes('aria-current')).toBe('page')
     expect(button.classes()).toContain('active')
     wrapper.unmount()
   })
@@ -132,7 +132,7 @@ describe('GroupSidebar', () => {
     wrapper.unmount()
   })
 
-  it('知识库同步失败也反映在共用云朵入口', async () => {
+  it('笔记本同步失败也反映在共用云朵入口', async () => {
     useUiStore().knowledgeBaseSyncError = '目录同步失败'
     const wrapper = mount(GroupSidebar)
     expect(wrapper.get('.sync-idle').attributes('title')).toContain('目录同步失败')
@@ -161,7 +161,7 @@ describe('GroupSidebar', () => {
     expect(entry.exists()).toBe(false)
   })
 
-  it('统计打开弹窗并收起抽屉，保留底下的分组视图', async () => {
+  it('统计打开页面并收起抽屉，保留底下的分组视图', async () => {
     const ui = useUiStore()
     ui.view = 'group'
     ui.activeGroupId = 'work'
@@ -171,12 +171,12 @@ describe('GroupSidebar', () => {
     await wrapper.vm.$nextTick()
     await wrapper.find('[data-view="stats"]').trigger('click')
 
-    expect(ui.overlay).toBe('stats')
+    expect(ui.workspacePage).toBe('stats')
     expect(ui.view).toBe('group')
     expect(ui.activeGroupId).toBe('work')
     expect(ui.drawerOpen).toBe(false)
     expect(wrapper.find('.sidebar-content').exists()).toBe(true)
-    expect(wrapper.get('[data-view="stats"]').attributes('aria-expanded')).toBe('true')
+    expect(wrapper.get('[data-view="stats"]').attributes('aria-current')).toBe('page')
     wrapper.unmount()
   })
 

@@ -21,11 +21,11 @@ function save() {
   <Teleport to="body">
     <Transition name="dialog">
       <div v-if="open" class="dialog-mask" @click.self="emit('close')">
-        <form ref="panel" class="dialog kb-form" role="dialog" aria-modal="true" :aria-label="initial ? '编辑知识库' : '新建知识库'" @submit.prevent="save">
-          <h3 class="dialog-title">{{ initial ? '编辑知识库' : '新建知识库' }}</h3>
-          <label>名称<input v-model="name" class="dialog-input" aria-label="知识库名称" placeholder="例如：产品设计、读书笔记" maxlength="100" required /></label>
-          <label>图标<input v-model="icon" class="dialog-input" aria-label="知识库图标" maxlength="32" /></label>
-          <label>简介<textarea v-model="description" class="dialog-input" aria-label="知识库简介" placeholder="这套知识库记录什么？" maxlength="2000" rows="3"></textarea></label>
+        <form ref="panel" class="dialog kb-form" role="dialog" aria-modal="true" :aria-label="initial ? '编辑笔记本' : '新建笔记本'" @submit.prevent="save">
+          <h3 class="dialog-title">{{ initial ? '编辑笔记本' : '新建笔记本' }}</h3>
+          <label>名称<input v-model="name" class="dialog-input" aria-label="笔记本名称" placeholder="例如：产品设计、读书笔记" maxlength="100" required /></label>
+          <label>图标<input v-model="icon" class="dialog-input" aria-label="笔记本图标" maxlength="32" /></label>
+          <label>简介<textarea v-model="description" class="dialog-input" aria-label="笔记本简介" placeholder="这个笔记本记录什么？" maxlength="2000" rows="3"></textarea></label>
           <p v-if="error" role="alert">{{ error }}</p>
           <div class="dialog-footer"><button type="button" class="dialog-btn cancel" :disabled="busy" @click="emit('close')">取消</button><button class="dialog-btn ok" :disabled="!name.trim() || busy" :aria-busy="busy">{{ busy ? '保存中…' : '保存' }}</button></div>
         </form>

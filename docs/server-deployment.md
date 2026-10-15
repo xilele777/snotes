@@ -78,7 +78,7 @@ data/
   images/            图片，以笔记 ID / 图片 ID 分目录
 ```
 
-仅 `dist/` 被公开提供为静态文件，数据和配置不会通过静态资源接口暴露。服务器必须保留 `dist/`、`dist-server/`、`migrations/`、`package.json` 及生产 `node_modules/`。`npm run build:server` 会构建带服务器升级提示的网页；Cloudflare 使用原来的 `npm run deploy`。
+仅 `dist/` 被公开提供为静态文件，数据和配置不会通过静态资源接口暴露。服务器必须保留 `dist/`、`dist-server/`、`migrations/`、`package.json` 及生产 `node_modules/`。`npm run build:server` 构建网页和 Node.js 服务；Cloudflare 使用 `npm run deploy`。关于页通过已登录的 `/api/runtime` 请求识别实际运行环境，并显示相应升级步骤。
 
 ## systemd 常驻运行
 

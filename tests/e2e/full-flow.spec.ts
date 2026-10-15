@@ -13,10 +13,7 @@ async function signIn(page: Page) {
   await page.reload()
 }
 
-/**
- * 新建笔记。不能用 getByRole('button', { name: '新建笔记' })：
- * 列表空态里那颗引导按钮文案也是「新建笔记」，两个都匹配会触发 strict mode 违例。
- */
+/** 新建笔记统一使用列表顶部入口。 */
 const createNote = (page: Page) => page.locator('.header-create').click()
 
 /**
@@ -114,10 +111,10 @@ async function seedLongNotes(page: Page, titles: string[]) {
   await page.reload()
 }
 
-async function openStatsDialog(page: Page) {
+async function openStatsPage(page: Page) {
   if (page.viewportSize()!.width <= 1020) await page.getByRole('button', { name: '打开侧栏' }).click()
   await page.getByRole('button', { name: '记录统计', exact: true }).click()
-  await expect(page.getByRole('dialog', { name: '记录统计' }).locator('.stats-grid')).toBeVisible()
+  await expect(page.getByRole('region', { name: '记录统计' }).locator('.stats-grid')).toBeVisible()
 }
 
 /** 1×1 的 PNG，够小到可以直接内联 */
@@ -579,7 +576,7 @@ test('窄屏下侧栏收进抽屉，点 ☰ 能拿回全部入口', async ({ pag
   await expect(page.locator('.drawer-mask')).toHaveCount(0)
   await expect(page.locator('.list-pane .note-search input')).toBeVisible()
 
-  await page.locator('.drawer-btn').click()
+  await page.getByRole('button', { name: '打开侧栏', exact: true }).click()
 
   await expect(page.locator('.sidebar-pane')).toHaveClass(/is-open/)
   // 抽屉里该有的入口一个都不能少
@@ -590,42 +587,42 @@ test('窄屏下侧栏收进抽屉，点 ☰ 能拿回全部入口', async ({ pag
   // 打开时立即接住键盘焦点；关闭后回到触发按钮。
   await expect(page.locator('.sidebar-close')).toBeFocused()
   await page.keyboard.press('Escape')
-  await expect(page.locator('.drawer-btn')).toBeFocused()
-  await page.locator('.drawer-btn').click()
+  await expect(page.getByRole('button', { name: '打开侧栏', exact: true })).toBeFocused()
+  await page.getByRole('button', { name: '打开侧栏', exact: true }).click()
   await expect(page.locator('.sidebar-close')).toBeFocused()
 
   // 选完视图自动收起
   await page.locator('[data-view="star"]').click()
   await expect(page.locator('.sidebar-pane')).not.toHaveClass(/is-open/)
 
-  // 统计覆盖在当前分组上，关闭后回到原视图和可见的抽屉入口。
-  await page.locator('.drawer-btn').click()
+  // 统计作为独立页面，返回后恢复原视图和可见的抽屉入口。
+  await page.getByRole('button', { name: '打开侧栏', exact: true }).click()
   await page.locator('.group-sidebar [data-view="stats"]').click()
-  await expect(page.getByRole('dialog', { name: '记录统计' })).toBeVisible()
-  await expect(page.locator('.layout')).toHaveAttribute('data-view', 'star')
+  await expect(page.getByRole('region', { name: '记录统计' })).toBeVisible()
+  await expect(page.locator('.layout')).toHaveAttribute('data-view', 'stats')
   await expect(page.locator('.drawer-mask')).toHaveCount(0)
-  await expect(page.getByRole('button', { name: '关闭统计' })).toBeFocused()
-  await page.keyboard.press('Escape')
-  await expect(page.getByRole('dialog', { name: '记录统计' })).toHaveCount(0)
-  await expect(page.locator('.drawer-btn')).toBeFocused()
+  await expect(page.getByRole('heading', { name: '记录统计' })).toBeFocused()
+  await page.getByRole('button', { name: '返回工作区' }).click()
+  await expect(page.getByRole('region', { name: '记录统计' })).toHaveCount(0)
+  await expect(page.getByRole('button', { name: '打开侧栏', exact: true })).toBeFocused()
 
   // 回收站属于笔记导航，保留同样的侧栏和关闭抽屉的入口。
-  await page.locator('.drawer-btn').click()
+  await page.getByRole('button', { name: '打开侧栏', exact: true }).click()
   await page.locator('.group-sidebar [data-view="trash"]').click()
   await expect(page.locator('.sidebar-content')).toHaveCount(1)
   await expect(page.locator('.drawer-mask')).toHaveCount(0)
-  await page.locator('.drawer-btn').click()
+  await page.getByRole('button', { name: '打开侧栏', exact: true }).click()
   await expect(page.locator('.sidebar-close')).toBeFocused()
   await page.locator('.sidebar-close').click()
-  await expect(page.locator('.drawer-btn')).toBeFocused()
-  await page.locator('.drawer-btn').click()
+  await expect(page.getByRole('button', { name: '打开侧栏', exact: true })).toBeFocused()
+  await page.getByRole('button', { name: '打开侧栏', exact: true }).click()
   await page.getByRole('button', { name: '笔记', exact: true }).click()
   await expect(page.locator('.layout')).toHaveAttribute('data-view', 'star')
-  await page.locator('.drawer-btn').click()
+  await page.getByRole('button', { name: '打开侧栏', exact: true }).click()
   await expect(page.getByRole('button', { name: '新建分组', exact: true })).toBeVisible()
 })
 
-test('统计弹窗保留编辑器、撤销和滚动位置，支持焦点循环与关闭', async ({ page }) => {
+test('统计页面保留编辑器、撤销和滚动位置，侧栏可切换页面', async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 900 })
   const groupId = await seedNavigationNotes(page)
   await page.locator('[data-note-id="navigation-12"] .note-select').click()
@@ -637,19 +634,21 @@ test('统计弹窗保留编辑器、撤销和滚动位置，支持焦点循环�
   await editor.evaluate(el => el.setAttribute('data-preserved-editor', 'yes'))
   await page.locator('.note-list').evaluate(el => { el.scrollTop = 610 })
   await page.locator('.editor-body').evaluate(el => { el.scrollTop = 880 })
-  const before = await page.locator('.editor-pane').boundingBox()
-
-  await openStatsDialog(page)
-  const dialog = page.getByRole('dialog', { name: '记录统计' })
-  await expect(page.locator('.layout')).toHaveAttribute('data-view', 'group')
-  await expect(page.locator('.layout')).toHaveAttribute('inert', '')
-  expect(await page.locator('.editor-pane').boundingBox()).toEqual(before)
-  await expect(dialog.getByRole('button', { name: '关闭统计' })).toBeFocused()
-  await page.keyboard.press('Shift+Tab')
-  await expect(dialog.locator('button').last()).toBeFocused()
-  await page.keyboard.press('Tab')
-  await expect(dialog.getByRole('button', { name: '关闭统计' })).toBeFocused()
-  await page.keyboard.press('Escape')
+  await openStatsPage(page)
+  const dialog = page.getByRole('region', { name: '记录统计' })
+  await expect(page.locator('.layout')).toHaveAttribute('data-view', 'stats')
+  await expect(page.locator('.layout')).not.toHaveAttribute('inert')
+  await expect(editor).toBeHidden()
+  await expect(editor).toHaveAttribute('data-preserved-editor', 'yes')
+  await expect(dialog.getByRole('heading', { name: '记录统计' })).toBeFocused()
+  const grid = (await dialog.locator('.stats-grid').boundingBox())!
+  const heatmap = (await dialog.locator('.panel-heatmap').boundingBox())!
+  expect(heatmap.width).toBeCloseTo(grid.width, 0)
+  await page.getByRole('button', { name: '设置', exact: true }).click()
+  await expect(page.getByRole('region', { name: '设置', exact: true })).toBeVisible()
+  await expect(page.locator('.sidebar-tool[data-view="settings"]')).toHaveAttribute('aria-current', 'page')
+  await page.getByRole('button', { name: '记录统计', exact: true }).click()
+  await dialog.getByRole('button', { name: '返回工作区' }).click()
 
   await expect(dialog).toHaveCount(0)
   await expect(page.getByRole('button', { name: '记录统计', exact: true })).toBeFocused()
@@ -663,14 +662,11 @@ test('统计弹窗保留编辑器、撤销和滚动位置，支持焦点循环�
   // 撤销不能跨笔记：切换笔记后按撤销，绝不会把上一条笔记的正文倒回当前这条
   await expect(editor.locator('h1')).toHaveText('项目记录 13')
 
-  await openStatsDialog(page)
-  await page.mouse.click(8, 8)
-  await expect(dialog).toHaveCount(0)
-  await openStatsDialog(page)
-  await page.getByRole('button', { name: '关闭统计' }).click()
+  await openStatsPage(page)
+  await page.getByRole('button', { name: '返回工作区' }).click()
   await expect(dialog).toHaveCount(0)
 
-  await openStatsDialog(page)
+  await openStatsPage(page)
   // 打开榜只统计「用户真的点开过」的笔记：本用例点开的是 navigation-12（项目记录 13），
   // 自动选中不再计入打开次数。
   await dialog.locator('.opened-title').filter({ hasText: /^项目记录 13$/ }).click()
@@ -702,9 +698,9 @@ test('回收站预览与正文对齐，返回后恢复分组、搜索和阅读�
   await expect(page.getByRole('searchbox', { name: '搜索笔记', exact: true })).toHaveValue('')
   await expect(page.locator('.ProseMirror')).toHaveAttribute('contenteditable', 'false')
 
-  await openStatsDialog(page)
-  await page.keyboard.press('Escape')
-  await expect(page.getByRole('dialog', { name: '记录统计' })).toHaveCount(0)
+  await openStatsPage(page)
+  await page.getByRole('button', { name: '返回工作区' }).click()
+  await expect(page.getByRole('region', { name: '记录统计' })).toHaveCount(0)
   await expect(page.locator('.layout')).toHaveAttribute('data-view', 'trash')
   await expect(page.locator('.note-item')).toHaveCount(3)
   await page.getByRole('button', { name: '笔记', exact: true }).click()
@@ -852,11 +848,11 @@ for (const width of [390, 320]) {
     await page.getByRole('searchbox', { name: '搜索笔记', exact: true }).fill('项目')
     await page.locator('.note-list').evaluate(el => { el.scrollTop = 420 })
 
-    await openStatsDialog(page)
-    const dialog = page.getByRole('dialog', { name: '记录统计' })
+    await openStatsPage(page)
+    const dialog = page.getByRole('region', { name: '记录统计' })
     const bounds = await dialog.boundingBox()
-    expect(bounds!.x).toBeGreaterThan(0)
-    expect(bounds!.width).toBeLessThan(width)
+    expect(bounds!.x).toBe(0)
+    expect(bounds!.width).toBe(width)
     expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(width)
     await page.goBack()
     await expect(dialog).toHaveCount(0)
@@ -1152,7 +1148,7 @@ test.describe('手机操作', () => {
     await expect(page.locator('.list-pane')).toBeVisible()
     await expect(page.locator('.editor-pane')).toBeHidden()
     await expect(page.getByRole('searchbox')).toBeVisible()
-    await page.locator('.drawer-btn').click()
+    await page.getByRole('button', { name: '打开侧栏', exact: true }).click()
     await expect(page.locator('.sidebar-pane')).toHaveClass(/is-open/)
     await page.locator('.group-sidebar [data-view="all"]').click()
     await expect(page.locator('.drawer-mask')).toHaveCount(0)

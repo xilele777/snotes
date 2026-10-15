@@ -34,7 +34,7 @@
   border: 0;
   border-radius: 16px;
   background: var(--accent);
-  color: white;
+  color: var(--on-accent);
   font-size: 13px;
   cursor: pointer;
 }
@@ -192,36 +192,36 @@
 .legend-item i { width: 8px; height: 8px; border-radius: 2px; display: inline-block; }
 
 
-/* === 统计弹窗内容（按容器宽度适配） === */
+/* === 统计页面（按工作区宽度适配） === */
 /* 统计页的结构：一排 KPI 卡 + 6 个面板。KPI 的副标题承担次要指标（回收站、置顶、
    历史最长…），因此不再为每个数字单开一个面板——旧版把同一个「活跃度」在热力图、
    近 7 天、近 30 天里画了三遍，这里只留热力图与近 30 天。 */
 .stats-view { flex: 1; min-height: 0; container-type: inline-size; }
-.stats-view .metrics-body { max-width: 1320px; padding: 24px 32px 32px; }
+.stats-view .metrics-body { max-width: 1280px; padding: 28px 32px 40px; }
 
-.stats-kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(132px, 1fr)); gap: 12px; margin-bottom: 14px; }
-.kpi-card { border: 1px solid var(--border-light); border-radius: 12px; padding: 14px 16px; background: var(--bg-surface); display: flex; flex-direction: column; gap: 2px; min-width: 0; }
-.kpi-label { font-size: 12px; color: var(--text-tertiary); }
+.stats-kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(132px, 1fr)); gap: 14px; margin-bottom: 24px; }
+.kpi-card { border: 1px solid var(--border-default); border-radius: 12px; padding: 20px; background: var(--bg-surface); display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.kpi-label { font-size: 13px; color: var(--text-tertiary); }
 .kpi-value { margin: 2px 0 0; display: flex; align-items: baseline; gap: 3px; color: var(--text-primary); }
-.kpi-value b { font-size: 24px; font-weight: 700; line-height: 1.15; letter-spacing: -.5px; font-variant-numeric: tabular-nums; }
+.kpi-value b { font-size: 28px; font-weight: 700; line-height: 1.15; letter-spacing: -.5px; font-variant-numeric: tabular-nums; }
 .kpi-value i { font-size: 12px; font-style: normal; color: var(--text-secondary); }
-.kpi-sub { font-size: 11px; color: var(--text-tertiary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.kpi-sub { font-size: 12px; color: var(--text-tertiary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
-.stats-grid { display: grid; grid-template-columns: repeat(12, minmax(0, 1fr)); gap: 14px; }
-.stats-panel { border: 1px solid var(--border-light); border-radius: 12px; padding: 16px 18px; background: var(--bg-surface); min-width: 0; display: flex; flex-direction: column; }
-.panel-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; min-width: 0; margin-bottom: 14px; }
-.panel-title { margin: 0; font-size: 13px; font-weight: 600; color: var(--text-primary); white-space: nowrap; }
+.stats-grid { display: grid; grid-template-columns: repeat(12, minmax(0, 1fr)); gap: 20px; }
+.stats-panel { border: 1px solid var(--border-default); border-radius: 12px; padding: 24px; background: var(--bg-surface); min-width: 0; display: flex; flex-direction: column; }
+.panel-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; min-width: 0; margin-bottom: 22px; }
+.panel-title { margin: 0; font-size: 15px; font-weight: 600; color: var(--text-primary); white-space: nowrap; }
 .panel-title small { margin-left: 6px; font-size: 11px; font-weight: 400; color: var(--text-tertiary); }
-.panel-meta { flex: none; font-size: 11px; color: var(--text-tertiary); font-variant-numeric: tabular-nums; white-space: nowrap; }
-.panel-foot { margin: 14px 0 0; font-size: 11px; color: var(--text-tertiary); }
+.panel-meta { flex: none; font-size: 12px; color: var(--text-tertiary); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.panel-foot { margin: auto 0 0; padding-top: 18px; font-size: 12px; color: var(--text-tertiary); }
 .panel-empty { flex: 1; min-height: 96px; display: flex; align-items: center; justify-content: center; margin: 0; font-size: 12px; color: var(--text-tertiary); }
 .link-button { border: 0; padding: 0; background: transparent; color: var(--accent); font: inherit; cursor: pointer; }
 .link-button:hover { text-decoration: underline; }
 
-.panel-heatmap { grid-column: span 8; }
-.panel-hours { grid-column: span 4; }
-.panel-daily { grid-column: span 7; }
-.panel-opened { grid-column: span 5; }
+.panel-heatmap { grid-column: 1 / -1; }
+.panel-hours { grid-column: span 6; }
+.panel-daily { grid-column: span 6; }
+.panel-opened { grid-column: 1 / -1; }
 .panel-group, .panel-length { grid-column: span 6; }
 
 /* 写作时段：24 根柱，高峰那根用强调色点出来。
@@ -242,7 +242,7 @@
 .legend-dot.created { background: var(--accent); }
 .legend-dot.updated { background: #ccd6fb; }
 
-/* 更新热力图：53 周 × 7 天，列宽随可用空间收缩，不产生横向滚动。
+/* 更新热力图：53 周 × 7 天，桌面铺满一行，窄屏在卡片内部横向浏览。
    单色顺序色阶：OKLCH 亮度约 0.95 → 0.85 → 0.74 → 0.57 → 0.48，相邻级之间的差距肉眼可辨；
    0 级用中性灰而不是浅蓝，避免「无更新」与「少量更新」混在一起。 */
 .heatmap-grid { display: grid; grid-template-columns: repeat(53, minmax(0, 1fr)); gap: 2px; width: 100%; }
@@ -267,7 +267,7 @@
 .opened-tabs { display: flex; flex: none; gap: 2px; padding: 2px; border-radius: 7px; background: var(--bg-app); }
 .opened-tabs button { border: 0; border-radius: 5px; padding: 3px 9px; background: transparent; color: var(--text-secondary); font-size: 11px; cursor: pointer; }
 .opened-tabs button.active { background: var(--selected-bg); color: var(--selected-text); }
-.opened-list { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 9px; }
+.opened-list { margin: 0; padding: 0; list-style: none; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px 32px; }
 .opened-item { position: relative; display: grid; grid-template-columns: 20px minmax(0, 1fr) auto; align-items: center; gap: 10px; min-height: 22px; padding-bottom: 4px; }
 .opened-rank { position: relative; z-index: 1; width: 20px; height: 20px; border-radius: 50%; background: var(--bg-press); color: var(--text-secondary); font-size: 11px; font-weight: 600; display: flex; align-items: center; justify-content: center; }
 .opened-track { position: absolute; left: 30px; right: 0; bottom: 0; height: 3px; border-radius: 2px; background: var(--bg-app); overflow: hidden; }
@@ -300,7 +300,8 @@
 
 @container (max-width: 960px) {
   .stats-grid { grid-template-columns: repeat(6, minmax(0, 1fr)); }
-  .panel-heatmap, .panel-hours, .panel-daily, .panel-opened { grid-column: span 6; }
+  .panel-heatmap, .panel-opened { grid-column: 1 / -1; }
+  .panel-hours, .panel-daily { grid-column: span 3; }
   .panel-group, .panel-length { grid-column: span 3; }
 }
 @media (max-width: 720px) {
@@ -312,7 +313,9 @@
 @container (max-width: 620px) {
   .stats-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .stats-grid { grid-template-columns: 1fr; }
-  .stats-panel { grid-column: span 1; }
+  .stats-panel { grid-column: 1 / -1; }
+  .opened-list { grid-template-columns: 1fr; }
+  .panel-head { flex-wrap: wrap; gap: 8px; }
   .hour-bars, .daily-bars { height: 96px; }
   .panel-empty { min-height: 72px; }
   .group-bars { max-height: none; overflow-y: visible; }
@@ -334,3 +337,9 @@
 [data-theme="dark"] .quota-card[data-status='over'] { border-color: #6b3a37; }
 [data-theme="dark"] .quota-card[data-status='over'] .status-pill { background: var(--danger-bg); }
 [data-theme="dark"] .quota-warning-mark { background: rgb(255 255 255 / 30%); }
+
+.heatmap-scroll { overflow-x: auto; padding: 2px 2px 8px; scrollbar-width: thin; }
+.heatmap-calendar { min-width: 620px; }
+.heatmap-months { display: grid; grid-template-columns: repeat(53, minmax(0, 1fr)); gap: 2px; margin-bottom: 10px; font-size: 11px; color: var(--text-tertiary); }
+.heatmap-months span { white-space: nowrap; }
+.panel-heatmap .heatmap-legend { justify-content: flex-end; }

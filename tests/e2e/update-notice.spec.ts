@@ -20,7 +20,7 @@ for (const width of [1440, 390, 320]) {
     await expect(page.locator('.sidebar-footer [data-view="settings"]')).toHaveClass(/has-update/)
     if (width < 1020) await page.getByRole('button', { name: '打开侧栏' }).click()
     await page.locator('.sidebar-footer [data-view="settings"]').click()
-    const dialog = page.getByRole('dialog', { name: '设置', exact: true })
+    const dialog = page.getByRole('region', { name: '设置', exact: true })
     const about = dialog.getByRole('tab', { name: '关于' })
     await about.click()
     await expect(about).toHaveAttribute('aria-selected', 'true')
@@ -28,6 +28,7 @@ for (const width of [1440, 390, 320]) {
     const pane = dialog.getByRole('tabpanel')
     await expect(pane).toContainText('v9.9.9')
     await expect(pane).toContainText('git pull --ff-only')
+    await expect(pane.locator('[data-runtime-label]')).toHaveText(process.env.E2E_BACKEND === 'server' ? 'Node.js 服务' : 'Cloudflare Worker')
     if (process.env.E2E_BACKEND === 'server') {
       await expect(pane).toContainText('docker compose up -d --build')
       await expect(pane).not.toContainText('wrangler')
@@ -38,15 +39,13 @@ for (const width of [1440, 390, 320]) {
     await page.keyboard.press('Tab')
     await expect(release).toBeFocused()
     await page.keyboard.press('Tab')
-    await expect(logout).toBeFocused()
-    // 焦点在弹窗内循环：最后一项再 Tab 回到关闭按钮
+    await expect(pane.getByRole('button', { name: '登录状态说明' })).toBeFocused()
     await page.keyboard.press('Tab')
-    await expect(dialog.getByRole('button', { name: '关闭设置' })).toBeFocused()
-    await page.keyboard.press('Shift+Tab')
     await expect(logout).toBeFocused()
+    // 页面不捕获 Tab，设置分页和内容仍保留正常的键盘顺序。
     expect(await dialog.evaluate((el) => el.scrollWidth <= el.clientWidth)).toBe(true)
     await page.screenshot({ path: `tmp/update-review/version-${width}.png` })
-    await page.keyboard.press('Escape')
+    await dialog.getByRole('button', { name: '返回工作区' }).click()
     await expect(dialog).toHaveCount(0)
     // 打开设置时抽屉已收起：窄屏焦点回到可见的抽屉按钮，桌面回到图标栏「设置」
     if (width < 1020) await expect(page.getByRole('button', { name: '打开侧栏' })).toBeFocused()
@@ -84,7 +83,7 @@ for (const width of [1440, 390, 320]) {
     expect(checks).toBe(1)
     if (width < 1020) await page.getByRole('button', { name: '打开侧栏' }).click()
     await page.getByRole('button', { name: '记录统计', exact: true }).click()
-    const stats = page.getByRole('dialog', { name: '记录统计', exact: true })
+    const stats = page.getByRole('region', { name: '记录统计', exact: true })
     await expect(stats.locator('.heatmap-grid .heatmap-cell')).toHaveCount(371)
     const colors: string[] = []
     for (let level = 0; level <= 4; level++) {

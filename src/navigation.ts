@@ -1,6 +1,6 @@
 import { useNotesStore } from './stores/notes'
 import { useUiStore } from './stores/ui'
-import type { Overlay, SettingsTab, UiView, WorkspacePosition } from './stores/ui'
+import type { WorkspacePage, SettingsTab, UiView, WorkspacePosition } from './stores/ui'
 import type { ListView } from './db/repo'
 import { getNote, isNoteHiddenFromHome } from './db/repo'
 import { nextTick } from 'vue'
@@ -16,7 +16,9 @@ import { nextTick } from 'vue'
  */
 export interface NavSnapshot extends WorkspacePosition {
   drawerOpen: boolean
-  overlay: Overlay | null
+  workspacePage: WorkspacePage | null
+  /** 兼容旧版弹窗导航快照。 */
+  overlay?: WorkspacePage | null
   /** v0.13 及之前的快照字段；只在恢复旧条目时读取 */
   statsOpen?: boolean
 }
@@ -37,7 +39,7 @@ function snapshot(): NavSnapshot {
     query: ui.query,
     mobilePane: ui.mobilePane,
     drawerOpen: ui.drawerOpen,
-    overlay: ui.overlay,
+    workspacePage: ui.workspacePage,
     scroll: {
       list: document.querySelector('.note-list')?.scrollTop ?? 0,
       editor: document.querySelector('.editor-body')?.scrollTop ?? 0,
@@ -53,12 +55,13 @@ export function isNotesView(view: UiView): boolean {
 export async function switchListView(view: ListView, groupId: string | null = null) {
   const ui = useUiStore()
   ui.focusMode = false
-  if (ui.view === view && ui.activeGroupId === groupId) {
+  if (!ui.workspacePage && ui.view === view && ui.activeGroupId === groupId) {
     ui.drawerOpen = false
     return
   }
-  if (isNotesView(ui.view)) ui.lastNotesPosition = snapshot()
+  if (isNotesView(ui.view) && !ui.workspacePage) ui.lastNotesPosition = snapshot()
   pushNav()
+  ui.workspacePage = null
   if (ui.view === 'trash' || view === 'trash' || ui.view === 'knowledge-bases') ui.query = ''
   ui.restorePosition = null
   ui.view = view
@@ -74,6 +77,7 @@ export async function switchListView(view: ListView, groupId: string | null = nu
 export async function showNotes() {
   const ui = useUiStore()
   if (isNotesView(ui.view)) {
+    if (ui.workspacePage) { pushNav(); ui.workspacePage = null }
     ui.drawerOpen = false
     return
   }
@@ -82,16 +86,17 @@ export async function showNotes() {
   restore({
     ...(saved ?? { view: 'all', activeGroupId: null, currentId: null, query: '', mobilePane: 'list', scroll: { list: 0, editor: 0, groups: 0 } }),
     drawerOpen: false,
-    overlay: null,
+    workspacePage: null,
   })
   await useNotesStore().load()
 }
 
 export async function showKnowledgeBases(id: string | null = null) {
   const ui = useUiStore()
-  if (ui.view === 'knowledge-bases' && ui.activeKnowledgeBaseId === id && ui.knowledgeBaseFilter === 'active') { ui.drawerOpen = false; return }
-  if (isNotesView(ui.view)) ui.lastNotesPosition = snapshot()
+  if (!ui.workspacePage && ui.view === 'knowledge-bases' && ui.activeKnowledgeBaseId === id && ui.knowledgeBaseFilter === 'active') { ui.drawerOpen = false; return }
+  if (isNotesView(ui.view) && !ui.workspacePage) ui.lastNotesPosition = snapshot()
   pushNav()
+  ui.workspacePage = null
   ui.focusMode = false
   ui.readingMode = false
   ui.view = 'knowledge-bases'
@@ -108,11 +113,11 @@ export async function showKnowledgeBases(id: string | null = null) {
 }
 
 /** A management link replaces the settings layer so Back returns to its original workspace. */
-export async function openManagedView(target: 'hidden' | 'trash' | 'removed-knowledge-bases') {
+export async function openManagedView(target: 'hidden' | 'trash') {
   const ui = useUiStore()
   const notes = useNotesStore()
-  if (!ui.overlay) pushNav()
-  ui.overlay = null
+  if (!ui.workspacePage) pushNav()
+  ui.workspacePage = null
   ui.focusMode = false
   ui.readingMode = false
   ui.drawerOpen = false
@@ -121,12 +126,12 @@ export async function openManagedView(target: 'hidden' | 'trash' | 'removed-know
   ui.activeGroupId = null
   ui.activeKnowledgeBaseId = null
   ui.activeTocNodeId = null
-  ui.knowledgeBaseFilter = target === 'removed-knowledge-bases' ? 'removed' : 'active'
-  ui.view = target === 'removed-knowledge-bases' ? 'knowledge-bases' : target
+  ui.knowledgeBaseFilter = 'active'
+  ui.view = target
   notes.currentId = null
   ui.mobilePane = 'list'
   await notes.load()
-  if (!ui.overlay && ui.view === (target === 'removed-knowledge-bases' ? 'knowledge-bases' : target)) {
+  if (!ui.workspacePage && ui.view === target) {
     history.replaceState(snapshot(), '')
     await nextTick()
     document.querySelector<HTMLElement>('.list-pane .header-title, .kb-header h2')?.focus({ preventScroll: true })
@@ -134,42 +139,43 @@ export async function openManagedView(target: 'hidden' | 'trash' | 'removed-know
 }
 
 /**
- * 大弹窗（统计、设置）独占一层历史；关闭或系统返回都回到原工作区。
- * 已经开着同一个时只切分页；开着另一个时先原地替换，不再多压一层。
+ * 统计、设置作为独立工作区页面，保留原笔记位置和编辑器实例。
+ * 页面之间切换替换当前条目，返回按钮和浏览器返回都回到原工作区。
  */
-export function openOverlay(kind: Overlay, tab?: SettingsTab) {
+export function openWorkspacePage(kind: WorkspacePage, tab?: SettingsTab) {
   const ui = useUiStore()
   if (tab) ui.settingsTab = tab
   else if (kind === 'settings') ui.settingsTab = 'appearance'
-  if (ui.overlay === kind) return
+  if (ui.workspacePage === kind) return
   ui.drawerOpen = false
-  if (!ui.overlay) pushNav()
-  ui.overlay = kind
+  ui.focusMode = false
+  if (!ui.workspacePage) pushNav()
+  ui.workspacePage = kind
   history.replaceState(snapshot(), '')
 }
 
-export function closeOverlay() {
+export function closeWorkspacePage() {
   const ui = useUiStore()
-  if (!ui.overlay) return
-  if (history.state?.overlay) popNav()
-  else ui.overlay = null
+  if (!ui.workspacePage) return
+  if (history.state?.workspacePage) popNav()
+  else ui.workspacePage = null
 }
 
-/** @deprecated 保留给旧调用点；等同于 openOverlay('stats') */
+/** @deprecated 保留给旧调用点；等同于 openWorkspacePage('stats') */
 export function openStats() {
-  openOverlay('stats')
+  openWorkspacePage('stats')
 }
 
-/** @deprecated 等同于 closeOverlay() */
+/** @deprecated 等同于 closeWorkspacePage() */
 export function closeStats() {
-  closeOverlay()
+  closeWorkspacePage()
 }
 
-/** 榜单中的笔记是一次明确跳转，用目标笔记替换弹窗这层历史。 */
+/** 榜单中的笔记是一次明确跳转，用目标笔记替换统计页这层历史。 */
 export async function openStatsNote(id: string) {
   const ui = useUiStore()
   const notes = useNotesStore()
-  ui.overlay = null
+  ui.workspacePage = null
   ui.focusMode = false
   ui.drawerOpen = false
   ui.restorePosition = null
@@ -230,20 +236,27 @@ export function openDrawer() {
 function restore(s: NavSnapshot) {
   const ui = useUiStore()
   const notes = useNotesStore()
+  const previousPage = ui.workspacePage
   // 先恢复 currentId（它的 watcher 会同步 mobilePane），再显式覆盖 mobilePane，
   // 顺序保证了快照里两个字段都不会被 watcher 的中间态盖掉。
   notes.currentId = s.currentId
   ui.view = s.view
   ui.activeGroupId = s.activeGroupId
   ui.activeKnowledgeBaseId = s.activeKnowledgeBaseId ?? null
-  ui.knowledgeBaseFilter = s.knowledgeBaseFilter ?? 'active'
+  ui.knowledgeBaseFilter = 'active'
   ui.activeTocNodeId = s.activeTocNodeId ?? null
   ui.collapsedKnowledgeBaseNodes = s.collapsedKnowledgeBaseNodes ?? []
   ui.query = s.query ?? ''
   ui.mobilePane = s.mobilePane
   ui.drawerOpen = s.drawerOpen
-  ui.overlay = s.overlay ?? (s.statsOpen ? 'stats' : null)
+  ui.workspacePage = s.workspacePage ?? s.overlay ?? (s.statsOpen ? 'stats' : null)
   ui.restorePosition = { ...s, query: ui.query, scroll: s.scroll ?? { list: 0, editor: 0, groups: 0 } }
+  if (previousPage && !ui.workspacePage && !ui.drawerOpen) {
+    void nextTick(() => {
+      const candidates = document.querySelectorAll<HTMLElement>(`[data-view="${previousPage}"].sidebar-tool, .drawer-btn, .back-btn`)
+      Array.from(candidates).find(el => el.getClientRects().length && !el.closest<HTMLElement>('[inert]')?.inert)?.focus({ preventScroll: true })
+    })
+  }
 }
 
 /** 防重入：双击系统返回时 popstate 可能在同一任务里连发两次，第二次直接忽略 */

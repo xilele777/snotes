@@ -196,7 +196,7 @@ describe('App 数据监控视图', () => {
   })
 })
 
-describe('App 统计弹窗', () => {
+describe('App 统计页面', () => {
   it('打开统计保留分组、搜索、笔记组件和编辑器，关闭后恢复焦点', async () => {
     const ui = useUiStore()
     const notes = useNotesStore()
@@ -211,6 +211,7 @@ describe('App 统计弹窗', () => {
     const detailId = wrapper.getComponent(NoteDetail).vm.$.uid
     const editor = wrapper.get('.editor-body').element
     const trigger = wrapper.get<HTMLButtonElement>('[data-view="stats"]')
+    vi.spyOn(trigger.element, 'getClientRects').mockReturnValue({ length: 1 } as DOMRectList)
     trigger.element.focus()
 
     await trigger.trigger('click')
@@ -222,18 +223,19 @@ describe('App 统计弹窗', () => {
     expect(notes.currentId).toBe(note.id)
     expect(wrapper.getComponent(NoteDetail).vm.$.uid).toBe(detailId)
     expect(wrapper.get('.editor-body').element).toBe(editor)
-    expect(wrapper.get('.layout').attributes('inert')).toBeDefined()
-    const dialog = document.querySelector('[role="dialog"][aria-label="记录统计"]')!
-    const close = dialog.querySelector<HTMLButtonElement>('[aria-label="关闭统计"]')!
-    expect(document.activeElement).toBe(close)
+    expect(wrapper.get('.layout').attributes('inert')).toBeUndefined()
+    expect(wrapper.get('.list-pane').attributes('inert')).toBeDefined()
+    const dialog = document.querySelector('[role="region"][aria-label="记录统计"]')!
+    const close = dialog.querySelector<HTMLButtonElement>('[aria-label="返回工作区"]')!
+    expect(document.activeElement).toBe(dialog.querySelector('h1'))
     const create = vi.spyOn(notes, 'create')
     window.dispatchEvent(new KeyboardEvent('keydown', { key: 'n', altKey: true, cancelable: true }))
     expect(create).not.toHaveBeenCalled()
 
-    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', cancelable: true }))
-    await vi.waitFor(() => expect(history.state.overlay).toBeNull())
+    close.click()
+    await vi.waitFor(() => expect(history.state.workspacePage).toBeNull())
     await flushPromises()
-    expect(document.querySelector('[role="dialog"][aria-label="记录统计"]')).toBeNull()
+    expect(document.querySelector('[role="region"][aria-label="记录统计"]')).toBeNull()
     expect(document.activeElement).toBe(trigger.element)
     expect(wrapper.getComponent(NoteDetail).vm.$.uid).toBe(detailId)
     expect(notes.currentId).toBe(note.id)
@@ -289,25 +291,27 @@ describe('App 扩展快捷键', () => {
     wrapper.unmount()
   })
 
-  it('Ctrl+, 打开设置弹窗，工作区 inert，Esc 关闭后焦点回到原处', async () => {
+  it('Ctrl+, 打开设置页面，侧栏仍可操作，返回后恢复笔记', async () => {
     const ui = useUiStore()
     await useNotesStore().create()
     const wrapper = mount(App, { attachTo: document.body })
     await flushPromises()
     const trigger = wrapper.get<HTMLButtonElement>('[data-view="settings"]')
+    vi.spyOn(trigger.element, 'getClientRects').mockReturnValue({ length: 1 } as DOMRectList)
     trigger.element.focus()
 
     window.dispatchEvent(new KeyboardEvent('keydown', { key: ',', ctrlKey: true, cancelable: true }))
     await flushPromises()
 
-    expect(ui.overlay).toBe('settings')
-    expect(wrapper.get('.layout').attributes('inert')).toBeDefined()
-    expect(document.querySelector('[role="dialog"][aria-label="设置"]')).not.toBeNull()
+    expect(ui.workspacePage).toBe('settings')
+    expect(wrapper.get('.layout').attributes('inert')).toBeUndefined()
+    expect(wrapper.get('.list-pane').attributes('inert')).toBeDefined()
+    expect(document.querySelector('[role="region"][aria-label="设置"]')).not.toBeNull()
 
-    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', cancelable: true }))
-    await vi.waitFor(() => expect(ui.overlay).toBeNull())
+    document.querySelector<HTMLButtonElement>('.settings-page [aria-label="返回工作区"]')!.click()
+    await vi.waitFor(() => expect(ui.workspacePage).toBeNull())
     await flushPromises()
-    expect(document.querySelector('[role="dialog"][aria-label="设置"]')).toBeNull()
+    expect(document.querySelector('[role="region"][aria-label="设置"]')).toBeNull()
     expect(document.activeElement).toBe(trigger.element)
     wrapper.unmount()
   })

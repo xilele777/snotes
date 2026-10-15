@@ -2,12 +2,16 @@ import { mount } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
 import { nextTick } from 'vue'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import SettingsDialog from './SettingsDialog.vue'
-import { resetSettingsForTest, settings } from '../settings'
+import SettingsPage from './SettingsPage.vue'
+import { DEFAULT_SETTINGS, resetSettingsForTest, settings } from '../settings'
 import { useUiStore } from '../stores/ui'
 import { updateInfo } from '../update-check'
 
 const clearToken = vi.hoisted(() => vi.fn())
+const apiFetch = vi.hoisted(() => vi.fn())
+vi.mock('../api/client', async importOriginal => ({
+  ...(await importOriginal<typeof import('../api/client')>()), apiFetch,
+}))
 vi.mock('../api/token', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../api/token')>()),
   clearToken,
@@ -30,36 +34,39 @@ beforeEach(() => {
   resetSettingsForTest()
   updateInfo.value = null
   clearToken.mockReset()
+  apiFetch.mockReset()
+  apiFetch.mockResolvedValue({ runtime: 'cloudflare' })
   buildBackup.mockReset()
   downloadBlob.mockReset()
   window.history.replaceState(null, '')
 })
 afterEach(() => { document.body.innerHTML = '' })
 
-const dialog = () => document.querySelector<HTMLElement>('.settings-dialog')
+const dialog = () => document.querySelector<HTMLElement>('.settings-page')
 const tab = (id: string) => document.querySelector<HTMLButtonElement>(`.settings-tab[data-tab="${id}"]`)
 const radio = (setting: string, value: string) =>
   document.querySelector<HTMLButtonElement>(`[data-setting="${setting}"] [data-value="${value}"]`)
 
-/** 弹窗的开合走 ui.overlay；这里直接摆 store 状态，不经过 navigation 的历史栈 */
+/** 页面切换走 ui.workspacePage；这里直接摆 store 状态，不经过 navigation 的历史栈 */
 async function mountOpen(tabId: 'appearance' | 'data' | 'shortcuts' | 'about' = 'appearance') {
   const ui = useUiStore()
-  ui.overlay = 'settings'
+  ui.workspacePage = 'settings'
   ui.settingsTab = tabId
-  const wrapper = mount(SettingsDialog, { props: { open: true }, attachTo: document.body })
+  const wrapper = mount(SettingsPage, { props: { open: true }, attachTo: document.body })
   await nextTick()
   return { ui, wrapper }
 }
 
-describe('SettingsDialog 分页壳', () => {
+describe('SettingsPage 分页壳', () => {
   it('四个分页，默认停在外观，当前值处于选中态', async () => {
     const { wrapper } = await mountOpen()
 
     expect(dialog()).not.toBeNull()
-    expect(dialog()!.getAttribute('aria-modal')).toBe('true')
+    expect(dialog()!.getAttribute('role')).toBe('region')
+    expect(dialog()!.hasAttribute('aria-modal')).toBe(false)
     expect(Array.from(document.querySelectorAll('.settings-tab')).map(el => el.textContent)).toEqual(['外观', '数据', '快捷键', '关于'])
     expect(tab('appearance')!.getAttribute('aria-selected')).toBe('true')
-    expect(document.activeElement).toBe(tab('appearance'))
+    expect(document.activeElement).toBe(dialog()!.querySelector('h1'))
     expect(radio('theme', 'system')!.getAttribute('aria-checked')).toBe('true')
     expect(radio('fontSize', 'medium')!.getAttribute('aria-checked')).toBe('true')
     expect(radio('editorWidth', 'medium')!.getAttribute('aria-checked')).toBe('true')
@@ -74,9 +81,12 @@ describe('SettingsDialog 分页壳', () => {
     radio('fontSize', 'large')!.click()
     radio('editorWidth', 'wide')!.click()
     radio('tableDensity', 'compact')!.click()
+    radio('noteDensity', 'compact')!.click()
+    radio('lineSpacing', 'relaxed')!.click()
+    document.querySelector<HTMLButtonElement>('[role="switch"]')!.click()
     await nextTick()
 
-    expect(settings.value).toEqual({ theme: 'dark', fontSize: 'large', editorWidth: 'wide', tableDensity: 'compact' })
+    expect(settings.value).toEqual({ ...DEFAULT_SETTINGS, theme: 'dark', fontSize: 'large', editorWidth: 'wide', tableDensity: 'compact', noteDensity: 'compact', showNotePreview: false, lineSpacing: 'relaxed' })
     expect(radio('theme', 'dark')!.getAttribute('aria-checked')).toBe('true')
     expect(radio('theme', 'system')!.getAttribute('aria-checked')).toBe('false')
     wrapper.unmount()
@@ -112,31 +122,23 @@ describe('SettingsDialog 分页壳', () => {
     wrapper.unmount()
   })
 
-  it('关闭按钮、Esc 与遮罩都清掉 overlay', async () => {
+  it('页面没有遮罩，Escape 不退出，返回按钮回到工作区', async () => {
     const { ui, wrapper } = await mountOpen()
-
-    dialog()!.querySelector<HTMLButtonElement>('[aria-label="关闭设置"]')!.click()
-    expect(ui.overlay).toBeNull()
-
-    ui.overlay = 'settings'
-    await nextTick()
+    expect(document.querySelector('.settings-mask')).toBeNull()
     window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }))
-    expect(ui.overlay).toBeNull()
-
-    ui.overlay = 'settings'
-    await nextTick()
-    document.querySelector<HTMLElement>('.settings-mask')!.click()
-    expect(ui.overlay).toBeNull()
+    expect(ui.workspacePage).toBe('settings')
+    dialog()!.querySelector<HTMLButtonElement>('[aria-label="返回工作区"]')!.click()
+    expect(ui.workspacePage).toBeNull()
     wrapper.unmount()
   })
 
   it('关闭态不渲染任何内容', () => {
-    mount(SettingsDialog, { props: { open: false } })
+    mount(SettingsPage, { props: { open: false } })
     expect(dialog()).toBeNull()
   })
 })
 
-describe('SettingsDialog 快捷键页', () => {
+describe('SettingsPage 快捷键页', () => {
   it('列出全局快捷键（含 Mod ,）、编辑器快捷键与 Markdown 速查', async () => {
     const { wrapper } = await mountOpen('shortcuts')
     const text = document.querySelector('.settings-pane')!.textContent!
@@ -149,7 +151,7 @@ describe('SettingsDialog 快捷键页', () => {
   })
 })
 
-describe('SettingsDialog 数据页', () => {
+describe('SettingsPage 数据页', () => {
   it('导出全部：调用 buildBackup 并下载，成功后给出结果文案', async () => {
     buildBackup.mockResolvedValue({ blob: new Blob(['zip']), notes: 3, groups: 1, images: 2, missingImages: 0 })
     const { wrapper } = await mountOpen('data')
@@ -184,7 +186,31 @@ describe('SettingsDialog 数据页', () => {
   })
 })
 
-describe('SettingsDialog 关于页', () => {
+describe('SettingsPage 关于页', () => {
+  it.each([
+    ['server', 'Node.js 服务', 'npm run build:server', 'wrangler'],
+    ['cloudflare', 'Cloudflare Worker', 'npm run deploy', 'docker compose'],
+  ])('按服务端返回的 %s 环境显示部署信息和升级命令', async (runtime, label, command, absent) => {
+    apiFetch.mockResolvedValue({ runtime })
+    updateInfo.value = { latest: '9.9.9', url: 'https://github.com/xilele777/snotes/releases/tag/v9.9.9', hasUpdate: true }
+    const { wrapper } = await mountOpen('about')
+    await vi.waitFor(() => expect(document.querySelector('[data-runtime-label]')?.textContent).toBe(label))
+    expect(apiFetch).toHaveBeenCalledWith('/api/runtime', { cache: 'no-store' })
+    expect(document.querySelector('.about-upgrade')?.textContent).toContain(command)
+    expect(document.querySelector('.about-upgrade')?.textContent).not.toContain(absent)
+    wrapper.unmount()
+  })
+
+  it('离线或旧服务端无法识别时不猜测部署方式或显示错误的升级命令', async () => {
+    apiFetch.mockRejectedValue(new Error('offline'))
+    updateInfo.value = { latest: '9.9.9', url: 'https://github.com/xilele777/snotes/releases/tag/v9.9.9', hasUpdate: true }
+    const { wrapper } = await mountOpen('about')
+    await vi.waitFor(() => expect(document.querySelector('[data-runtime-label]')?.textContent).toBe('暂未识别'))
+    const instructions = document.querySelector('.about-upgrade')!.textContent!
+    expect(instructions).not.toContain('wrangler')
+    expect(instructions).not.toContain('docker compose')
+    wrapper.unmount()
+  })
   it('显示当前版本；没有新版本时链接指向全部版本', async () => {
     const { wrapper } = await mountOpen('about')
     const pane = document.querySelector('.settings-pane')!
@@ -219,11 +245,11 @@ describe('SettingsDialog 关于页', () => {
     expect(confirm.textContent).toContain('本机已同步的笔记会保留')
     expect(clearToken).not.toHaveBeenCalled()
 
-    // 两层弹窗同时开着时 Esc 只关最上面的确认框
+    // 设置中的确认框打开时 Esc 只关最上面的确认框
     window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }))
     await nextTick()
     expect(document.querySelector('.confirm-dialog')).toBeNull()
-    expect(ui.overlay).toBe('settings')
+    expect(ui.workspacePage).toBe('settings')
 
     document.querySelector<HTMLButtonElement>('[data-action="logout"]')!.click()
     await nextTick()
@@ -231,7 +257,7 @@ describe('SettingsDialog 关于页', () => {
     await nextTick()
 
     expect(clearToken).toHaveBeenCalledTimes(1)
-    expect(ui.overlay).toBeNull()
+    expect(ui.workspacePage).toBeNull()
     wrapper.unmount()
   })
 })

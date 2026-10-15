@@ -2,16 +2,16 @@ import { defineStore } from 'pinia'
 import { ref } from 'vue'
 import type { ListView } from '../db/repo'
 
-/** 统计作为弹窗显示，不参与主界面的视图切换。 */
+/** 笔记内容视图；统计和设置由 workspacePage 保存，切换时保留编辑位置。 */
 export type UiView = ListView | 'metrics' | 'knowledge-bases'
 
 /** <720px 时列表与编辑器互斥，这里是当前显示哪一格 */
 export type MobilePane = 'list' | 'editor'
 
-/** 覆盖在工作区之上的大弹窗：统计与设置各占一层导航历史，同一时刻只开一个 */
-export type Overlay = 'stats' | 'settings'
+/** 侧栏导航中的独立功能页面。 */
+export type WorkspacePage = 'stats' | 'settings'
 
-/** 设置弹窗的分页 */
+/** 设置页面的分页 */
 export type SettingsTab = 'appearance' | 'data' | 'shortcuts' | 'about'
 
 export interface WorkspacePosition {
@@ -65,8 +65,8 @@ export const useUiStore = defineStore('ui', () => {
    * 与回收站的只读不同，这只是本机的显示状态，不进同步、不改数据；退出即恢复编辑。
    */
   const readingMode = ref(false)
-  /** 当前打开的大弹窗；null = 没有 */
-  const overlay = ref<Overlay | null>(null)
+  /** 当前功能页面；null 时展示原笔记或笔记本工作区。 */
+  const workspacePage = ref<WorkspacePage | null>(null)
   const settingsTab = ref<SettingsTab>('appearance')
   /**
    * 删除当前笔记的请求计数。快捷键只把它加一，NoteDetail 监听到变化就弹确认；
@@ -84,5 +84,5 @@ export const useUiStore = defineStore('ui', () => {
   const lastNotesPosition = ref<WorkspacePosition | null>(null)
   const restorePosition = ref<WorkspacePosition | null>(null)
 
-  return { view, activeGroupId, activeKnowledgeBaseId, knowledgeBaseFilter, activeTocNodeId, collapsedKnowledgeBaseNodes, knowledgeBaseSyncError, query, syncing, lastSyncError, failedCount, drawerOpen, mobilePane, focusMode, readingMode, overlay, settingsTab, trashRequest, readingRequest, trashRetentionDays, lastNotesPosition, restorePosition }
+  return { view, activeGroupId, activeKnowledgeBaseId, knowledgeBaseFilter, activeTocNodeId, collapsedKnowledgeBaseNodes, knowledgeBaseSyncError, query, syncing, lastSyncError, failedCount, drawerOpen, mobilePane, focusMode, readingMode, workspacePage, settingsTab, trashRequest, readingRequest, trashRetentionDays, lastNotesPosition, restorePosition }
 })

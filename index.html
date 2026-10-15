@@ -8,7 +8,7 @@
     <link rel="icon" type="image/svg+xml" sizes="any" href="/snotes.svg" />
     <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png" />
     <title>snotes</title>
-    <style>html[data-theme="dark"] { color-scheme: dark; background: #1b1c20; }</style>
+    <style>html[data-theme="dark"] { color-scheme: dark; background: #1e1f24; }</style>
     <script>
       // 首帧前就把主题落到 <html> 上，避免深色用户每次打开都先闪一下白。
       // 读的是 src/settings.ts 里的 snotes_settings，两处的键名和取值要保持一致。
@@ -20,8 +20,11 @@
         root.dataset.theme = dark ? 'dark' : 'light'
         root.dataset.fontSize = ['small', 'medium', 'large'].indexOf(saved.fontSize) >= 0 ? saved.fontSize : 'medium'
         root.dataset.editorWidth = ['narrow', 'medium', 'wide'].indexOf(saved.editorWidth) >= 0 ? saved.editorWidth : 'medium'
+        root.dataset.noteDensity = saved.noteDensity === 'compact' ? 'compact' : 'comfortable'
+        root.dataset.notePreview = saved.showNotePreview === false ? 'hidden' : 'visible'
+        root.dataset.lineSpacing = ['compact', 'standard', 'relaxed'].indexOf(saved.lineSpacing) >= 0 ? saved.lineSpacing : 'standard'
         var meta = document.querySelector('meta[name="theme-color"]')
-        if (meta) meta.content = dark ? '#232428' : '#ffffff'
+        if (meta) meta.content = dark ? '#27282f' : '#ffffff'
       })()
     </script>
   </head>

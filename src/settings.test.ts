@@ -42,9 +42,14 @@ describe('parseSettings', () => {
     expect(parseSettings('{"theme":"neon","fontSize":"huge","editorWidth":5}')).toEqual(DEFAULT_SETTINGS)
   })
 
+  it('列表和阅读偏好校验枚举及布尔值', () => {
+    expect(parseSettings(JSON.stringify({ noteDensity: 'compact', showNotePreview: false, lineSpacing: 'relaxed' }))).toEqual({ ...DEFAULT_SETTINGS, noteDensity: 'compact', showNotePreview: false, lineSpacing: 'relaxed' })
+    expect(parseSettings(JSON.stringify({ noteDensity: 'dense', showNotePreview: 'false', lineSpacing: 2 }))).toEqual(DEFAULT_SETTINGS)
+  })
+
   it('合法取值原样保留，缺失字段补默认', () => {
-    expect(parseSettings('{"theme":"dark"}')).toEqual({ theme: 'dark', fontSize: 'medium', editorWidth: 'medium', tableDensity: 'medium' })
-    expect(parseSettings('{"fontSize":"large","editorWidth":"wide"}')).toEqual({ theme: 'system', fontSize: 'large', editorWidth: 'wide', tableDensity: 'medium' })
+    expect(parseSettings('{"theme":"dark"}')).toEqual({ ...DEFAULT_SETTINGS, theme: 'dark' })
+    expect(parseSettings('{"fontSize":"large","editorWidth":"wide"}')).toEqual({ ...DEFAULT_SETTINGS, fontSize: 'large', editorWidth: 'wide' })
     expect(parseSettings('{"tableDensity":"loose"}').tableDensity).toBe('loose')
     expect(parseSettings('{"tableDensity":"huge"}').tableDensity).toBe('medium')
   })
@@ -61,7 +66,7 @@ describe('resolveTheme', () => {
 
 describe('applySettings', () => {
   it('把主题、字号、宽度写到 <html> 并更新 theme-color', () => {
-    applySettings({ theme: 'dark', fontSize: 'large', editorWidth: 'wide', tableDensity: 'compact' })
+    applySettings({ ...DEFAULT_SETTINGS, theme: 'dark', fontSize: 'large', editorWidth: 'wide', tableDensity: 'compact' })
 
     const root = document.documentElement
     expect(root.dataset.theme).toBe('dark')
@@ -83,12 +88,16 @@ describe('initSettings', () => {
     initSettings()
     expect(document.documentElement.dataset.theme).toBe('light')
 
-    updateSettings({ theme: 'dark', fontSize: 'small' })
+    updateSettings({ theme: 'dark', fontSize: 'small', noteDensity: 'compact', showNotePreview: false, lineSpacing: 'relaxed' })
     await nextTick()
 
     expect(document.documentElement.dataset.theme).toBe('dark')
     expect(document.documentElement.dataset.fontSize).toBe('small')
-    expect(JSON.parse(localStorage.getItem(SETTINGS_KEY)!)).toEqual({ theme: 'dark', fontSize: 'small', editorWidth: 'medium', tableDensity: 'medium' })
+    expect(document.documentElement.dataset.noteDensity).toBe('compact')
+    expect(document.documentElement.dataset.notePreview).toBe('hidden')
+    expect(document.documentElement.dataset.lineSpacing).toBe('relaxed')
+    expect(parseSettings(localStorage.getItem(SETTINGS_KEY))).toEqual(settings.value)
+    expect(JSON.parse(localStorage.getItem(SETTINGS_KEY)!)).toEqual({ ...DEFAULT_SETTINGS, theme: 'dark', fontSize: 'small', noteDensity: 'compact', showNotePreview: false, lineSpacing: 'relaxed' })
   })
 
   it('跟随系统时系统切换深色会跟着变；手动选了浅色则不跟', () => {

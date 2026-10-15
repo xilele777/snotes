@@ -2,7 +2,7 @@
 import { computed } from 'vue'
 import { useUiStore } from '../stores/ui'
 import { useKnowledgeBasesStore } from '../stores/knowledge-bases'
-import { openManagedView } from '../navigation'
+import { showKnowledgeBases } from '../navigation'
 import KnowledgeBaseInfo from './KnowledgeBaseInfo.vue'
 const ui = useUiStore()
 const libraries = useKnowledgeBasesStore()
@@ -10,11 +10,11 @@ const book = computed(() => libraries.books.find(b => b.id === ui.activeKnowledg
 </script>
 
 <template>
-  <section class="editor-pane knowledge-base-home" aria-label="知识库首页">
+  <section class="editor-pane knowledge-base-home" aria-label="笔记本首页">
     <div v-if="book && !book.invalid" class="kb-home-content">
       <KnowledgeBaseInfo :book="book" />
     </div>
-    <div v-else class="kb-home-content"><h1>知识库已移除</h1><button class="dialog-btn cancel" @click="openManagedView('removed-knowledge-bases')">查看已移除的知识库</button></div>
+    <div v-else class="kb-home-content"><h1>笔记本不可用</h1><button class="dialog-btn cancel" @click="showKnowledgeBases()">返回笔记本列表</button></div>
   </section>
 </template>
 

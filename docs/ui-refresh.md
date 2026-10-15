@@ -22,7 +22,7 @@
 - 启动时检查原项目的 GitHub 最新 Release，成功结果缓存 24 小时。检测到新版后，侧栏版本按钮显示蓝点，弹窗提供发布说明及升级步骤；Tab 可在发布链接和关闭按钮间循环，Esc 关闭后恢复焦点。
 - 请求超过 8 秒取消；离线、限流或请求失败时回退到已有缓存，缓存不可写时仍显示本次结果。版本检查不会阻止笔记加载。
 - 热力图的无更新日期使用中性灰和细描边，四档活动量使用 `#bacdfd`、`#86a4f7`、`#4668e8`、`#314ec7`，按单日最大值分档。53 周格子横纵均为 1px 间距，去掉 `space-between`，图表在宽屏上也不会把列拉开。
-- 版本弹窗按构建目标显示升级说明：Cloudflare 使用 Wrangler；服务器版提供 Docker Compose 和 Node.js 的更新步骤，启动自动迁移。详见 [README](../README.md#8-更新到新版本) 与[服务器部署文档](server-deployment.md)。
+- 设置「关于」页通过 `/api/runtime` 查询服务端实际运行环境后显示升级说明：Cloudflare 使用 Wrangler；服务器版提供 Docker Compose 和 Node.js 的更新步骤，启动自动迁移。离线或旧版服务端无法识别时，引导按 README 选择部署方式。详见 [README](../README.md#8-更新到新版本) 与[服务器部署文档](server-deployment.md)。
 
 ## 入口整理（2026-09-20）
 

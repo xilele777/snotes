@@ -1,7 +1,7 @@
 import { createPinia, setActivePinia } from 'pinia'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { db } from './db/schema'
-import { backToList, closeOverlay, initNavigation, isMobile, openDrawer, openOverlay, openStatsNote, openManagedView, popNav, pushNav, showKnowledgeBases, showNotes, switchListView } from './navigation'
+import { backToList, closeWorkspacePage, initNavigation, isMobile, openDrawer, openWorkspacePage, openStatsNote, openManagedView, popNav, pushNav, showKnowledgeBases, showNotes, switchListView } from './navigation'
 import { useNotesStore } from './stores/notes'
 import { useUiStore } from './stores/ui'
 import { useGroupsStore } from './stores/groups'
@@ -23,10 +23,10 @@ describe('navigation 导航栈', () => {
     ui.query = '原来的搜索'
     initNavigation()
     const previous = window.history.state
-    openOverlay('settings', 'data')
+    openWorkspacePage('settings', 'data')
     const length = window.history.length
     await openManagedView('hidden')
-    expect(ui.overlay).toBeNull()
+    expect(ui.workspacePage).toBeNull()
     expect(ui.view).toBe('hidden')
     expect(ui.query).toBe('')
     expect(window.history.length).toBe(length)
@@ -37,21 +37,17 @@ describe('navigation 导航栈', () => {
     expect(ui.query).toBe('原来的搜索')
   })
 
-  it('已移除知识库的导航状态可以恢复，总览入口回到正常知识库', async () => {
+  it('旧版已移除笔记本导航状态回到正常笔记本总览', async () => {
     const ui = useUiStore()
     initNavigation()
     await showKnowledgeBases()
-    await openManagedView('removed-knowledge-bases')
-    const removed = window.history.state
-    expect(ui.knowledgeBaseFilter).toBe('removed')
-    await showKnowledgeBases()
-    expect(ui.knowledgeBaseFilter).toBe('active')
+    const removed = { ...window.history.state, view: 'knowledge-bases', knowledgeBaseFilter: 'removed' }
     window.dispatchEvent(new PopStateEvent('popstate', { state: removed }))
     expect(ui.view).toBe('knowledge-bases')
-    expect(ui.knowledgeBaseFilter).toBe('removed')
+    expect(ui.knowledgeBaseFilter).toBe('active')
   })
 
-  it('知识库与分组切换时清除另一种目录上下文', async () => {
+  it('笔记本与分组切换时清除另一种目录上下文', async () => {
     const ui = useUiStore()
     ui.view = 'group'
     ui.activeGroupId = 'work'
@@ -79,7 +75,7 @@ describe('navigation 导航栈', () => {
       query: '',
       mobilePane: 'list',
       drawerOpen: false,
-      overlay: null,
+      workspacePage: null,
       scroll: { list: 0, editor: 0, groups: 0 },
     })
   })
@@ -192,19 +188,19 @@ describe('navigation 导航栈', () => {
     const ui = useUiStore()
     ui.query = '保留查询'
     initNavigation()
-    openOverlay('stats')
+    openWorkspacePage('stats')
 
-    expect(ui.overlay).toBe('stats')
+    expect(ui.workspacePage).toBe('stats')
     expect(ui.view).toBe('all')
     expect(notes.currentId).toBe(note.id)
-    closeOverlay()
-    await vi.waitFor(() => expect(history.state.overlay).toBeNull())
+    closeWorkspacePage()
+    await vi.waitFor(() => expect(history.state.workspacePage).toBeNull())
     expect(ui.query).toBe('保留查询')
     expect(notes.currentId).toBe(note.id)
 
-    openOverlay('stats')
+    openWorkspacePage('stats')
     history.back()
-    await vi.waitFor(() => expect(ui.overlay).toBeNull())
+    await vi.waitFor(() => expect(ui.workspacePage).toBeNull())
     expect(notes.currentId).toBe(note.id)
     expect(ui.query).toBe('保留查询')
   })
@@ -217,41 +213,41 @@ describe('navigation 导航栈', () => {
     notes.currentId = first.id
     ui.query = '原筛选'
     initNavigation()
-    openOverlay('stats')
+    openWorkspacePage('stats')
 
     await openStatsNote(second.id)
-    expect(ui.overlay).toBeNull()
+    expect(ui.workspacePage).toBeNull()
     expect(notes.currentId).toBe(second.id)
     expect(ui.query).toBe('')
 
     history.back()
     await vi.waitFor(() => expect(notes.currentId).toBe(first.id))
     expect(ui.query).toBe('原筛选')
-    expect(ui.overlay).toBeNull()
+    expect(ui.workspacePage).toBeNull()
   })
 
-  it('设置弹窗独占一层历史，可指定分页打开，系统返回关闭并回到原工作区', async () => {
+  it('设置页面独占一层历史，可指定分页打开，系统返回关闭并回到原工作区', async () => {
     const ui = useUiStore()
     ui.drawerOpen = true
     initNavigation()
     // jsdom 的 history.length 会被前面用例的 back() 截断，这里数 pushState 的次数
     const push = vi.spyOn(history, 'pushState')
-    openOverlay('settings', 'about')
+    openWorkspacePage('settings', 'about')
 
-    expect(ui.overlay).toBe('settings')
+    expect(ui.workspacePage).toBe('settings')
     expect(ui.settingsTab).toBe('about')
     expect(ui.drawerOpen).toBe(false)
     expect(push).toHaveBeenCalledTimes(1)
-    expect(history.state.overlay).toBe('settings')
+    expect(history.state.workspacePage).toBe('settings')
 
     // 已经开着时再开只切分页，不多压一层
-    openOverlay('settings', 'data')
+    openWorkspacePage('settings', 'data')
     expect(ui.settingsTab).toBe('data')
     expect(push).toHaveBeenCalledTimes(1)
     push.mockRestore()
 
     history.back()
-    await vi.waitFor(() => expect(ui.overlay).toBeNull())
+    await vi.waitFor(() => expect(ui.workspacePage).toBeNull())
     // 打开前抽屉已收起，返回后也不应重新弹出
     expect(ui.drawerOpen).toBe(false)
   })
@@ -259,33 +255,33 @@ describe('navigation 导航栈', () => {
   it('不带分页打开设置时回到「外观」，不记忆上次停留的分页', () => {
     const ui = useUiStore()
     initNavigation()
-    openOverlay('settings', 'shortcuts')
-    closeOverlay()
-    ui.overlay = null
-    openOverlay('settings')
+    openWorkspacePage('settings', 'shortcuts')
+    closeWorkspacePage()
+    ui.workspacePage = null
+    openWorkspacePage('settings')
     expect(ui.settingsTab).toBe('appearance')
   })
 
   it('开着统计时打开设置原地替换，不再多压一层历史', () => {
     const ui = useUiStore()
     initNavigation()
-    openOverlay('stats')
+    openWorkspacePage('stats')
     const push = vi.spyOn(history, 'pushState')
-    openOverlay('settings')
-    expect(ui.overlay).toBe('settings')
+    openWorkspacePage('settings')
+    expect(ui.workspacePage).toBe('settings')
     expect(push).not.toHaveBeenCalled()
-    expect(history.state.overlay).toBe('settings')
+    expect(history.state.workspacePage).toBe('settings')
     push.mockRestore()
   })
 
-  it('恢复 v0.13 的旧快照时 statsOpen 仍能映射成统计弹窗', async () => {
+  it('恢复 v0.13 的旧快照时 statsOpen 仍能映射成统计页面', async () => {
     const ui = useUiStore()
     initNavigation()
-    window.dispatchEvent(new PopStateEvent('popstate', { state: { ...window.history.state, overlay: undefined, statsOpen: true } }))
-    expect(ui.overlay).toBe('stats')
+    window.dispatchEvent(new PopStateEvent('popstate', { state: { ...window.history.state, workspacePage: undefined, statsOpen: true } }))
+    expect(ui.workspacePage).toBe('stats')
     // popstate 有同一任务内的防重入守卫，第二次派发要等一个微任务
     await Promise.resolve()
-    window.dispatchEvent(new PopStateEvent('popstate', { state: { ...window.history.state, overlay: undefined, statsOpen: false } }))
-    expect(ui.overlay).toBeNull()
+    window.dispatchEvent(new PopStateEvent('popstate', { state: { ...window.history.state, workspacePage: undefined, statsOpen: false } }))
+    expect(ui.workspacePage).toBeNull()
   })
 })

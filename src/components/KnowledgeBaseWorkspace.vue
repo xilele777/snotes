@@ -4,18 +4,19 @@ import { childrenOf, descendantsOf, flattenToc } from '../../shared/knowledge-ba
 import type { KnowledgeBase, TocNode } from '../../shared/knowledge-base'
 import type { LocalNote } from '../../shared/types'
 import type { KnowledgeBaseHistory } from '../db/knowledge-base-types'
-import { addKnowledgeBaseNode, changeToc, createKnowledgeBase, metadata, moveKnowledgeBaseNode, removeKnowledgeBaseNode, resolveKnowledgeBaseConflict, updateKnowledgeBase } from '../db/knowledge-base-repo'
+import { addKnowledgeBaseNode, changeToc, createKnowledgeBase, deleteKnowledgeBase, metadata, moveKnowledgeBaseNode, removeKnowledgeBaseNode, resolveKnowledgeBaseConflict, updateKnowledgeBase } from '../db/knowledge-base-repo'
 import { db } from '../db/schema'
-import { isMobile, openDrawer, openManagedView, pushNav, showKnowledgeBases } from '../navigation'
+import { isMobile, openDrawer, pushNav, showKnowledgeBases } from '../navigation'
 import { notify } from '../notify'
 import { useKnowledgeBasesStore } from '../stores/knowledge-bases'
 import { useNotesStore } from '../stores/notes'
 import { useUiStore } from '../stores/ui'
-import { syncNow } from '../sync/engine'
+import { retrySyncNow, syncNow } from '../sync/engine'
 import { matchesAll, splitTerms } from './SearchBar'
 import { useDialogFocus } from './useDialogFocus'
 import AppIcon from './AppIcon.vue'
 import ConfirmDialog from './ConfirmDialog.vue'
+import DeleteNotebookDialog from './DeleteNotebookDialog.vue'
 import KnowledgeBaseForm from './KnowledgeBaseForm.vue'
 import ActionMenu from './ActionMenu.vue'
 import SortMenu from './SortMenu.vue'
@@ -25,10 +26,9 @@ import { workspacePreferences as preferences, updateWorkspacePreferences, toggle
 const libraries = useKnowledgeBasesStore()
 const notes = useNotesStore()
 const ui = useUiStore()
-const removed = computed(() => ui.knowledgeBaseFilter === 'removed')
 const book = computed(() => libraries.books.find(b => b.id === ui.activeKnowledgeBaseId))
 const nodes = computed(() => libraries.tocs.find(t => t.knowledge_base_id === book.value?.id)?.nodes ?? [])
-const books = computed(() => libraries.books.filter(b => b.invalid === Number(removed.value) && matchesAll(`${b.name}\n${b.description}`, splitTerms(ui.query))).sort((a, b) => Number(preferences.value.pinnedKnowledgeBaseIds.includes(b.id)) - Number(preferences.value.pinnedKnowledgeBaseIds.includes(a.id)) || (preferences.value.librarySort === 'name' ? a.name.localeCompare(b.name, 'zh-CN') : b.update_time - a.update_time) || a.id.localeCompare(b.id)))
+const books = computed(() => libraries.books.filter(b => !b.invalid && matchesAll(`${b.name}\n${b.description}`, splitTerms(ui.query))).sort((a, b) => Number(preferences.value.pinnedKnowledgeBaseIds.includes(b.id)) - Number(preferences.value.pinnedKnowledgeBaseIds.includes(a.id)) || (preferences.value.librarySort === 'name' ? a.name.localeCompare(b.name, 'zh-CN') : b.update_time - a.update_time) || a.id.localeCompare(b.id)))
 const noteMap = computed(() => new Map(libraries.notes.map(n => [n.id, n])))
 const createParent = ref('')
 const creationFolders = computed(() => flattenToc(nodes.value).filter(({ node }) => node.kind === 'folder'))
@@ -51,10 +51,13 @@ const pickerQuery = ref('')
 const candidates = ref<LocalNote[]>([])
 const chosen = ref<string[]>([])
 const confirm = ref<{ title: string; message: string; run: () => Promise<unknown> } | null>(null)
+const deleting = ref<{ id: string; name: string; nodes: TocNode[] } | null>(null)
+const deletionError = ref('')
+const deletionBusy = ref(false)
 const dragging = ref<string | null>(null)
 const dropTarget = ref<string | null>(null)
-const menu = ref<{ kind: 'book' | 'node' | 'create' | 'tree' | 'overview'; anchor: HTMLElement; book?: KnowledgeBase; node?: TocNode } | null>(null)
-function openMenu(event: MouseEvent, kind: 'book' | 'node' | 'create' | 'tree' | 'overview', item?: KnowledgeBase | TocNode) {
+const menu = ref<{ kind: 'book' | 'node' | 'create' | 'tree'; anchor: HTMLElement; book?: KnowledgeBase; node?: TocNode } | null>(null)
+function openMenu(event: MouseEvent, kind: 'book' | 'node' | 'create' | 'tree', item?: KnowledgeBase | TocNode) {
   const anchor = event.currentTarget as HTMLElement
   if (menu.value?.anchor === anchor) { menu.value = null; return }
   menu.value = { kind, anchor, book: kind === 'book' ? item as KnowledgeBase : undefined, node: kind === 'node' ? item as TocNode : undefined }
@@ -187,11 +190,36 @@ async function saveNotes() {
 function removeNode(node: TocNode) {
   if (!book.value) return
   const id = book.value.id
-  confirm.value = { title: `移除${node.kind === 'folder' ? '章节' : '笔记引用'}？`, message: node.kind === 'folder' ? '章节及其子目录会从当前知识库移除，笔记正文仍保留。' : '只移除当前知识库的引用，原笔记仍然保留。',
+  confirm.value = { title: `移除${node.kind === 'folder' ? '章节' : '笔记引用'}？`, message: node.kind === 'folder' ? '章节及其子目录会从当前笔记本移除，笔记正文仍保留。' : '只移除当前笔记本的引用，原笔记仍然保留。',
     run: async () => { await removeKnowledgeBaseNode(id, node.id); await notes.load() } }
 }
 function removeBook(b: KnowledgeBase) {
-  confirm.value = { title: `移除「${b.name}」？`, message: '知识库可以恢复，其中的笔记正文不会删除。', run: async () => { await updateKnowledgeBase(b.id, { invalid: 1 }); await showKnowledgeBases() } }
+  deletionError.value = ''
+  deleting.value = { id: b.id, name: b.name, nodes: JSON.parse(JSON.stringify(libraries.tocs.find(t => t.knowledge_base_id === b.id)?.nodes ?? [])) }
+}
+async function confirmDelete() {
+  if (!deleting.value || deletionBusy.value) return
+  deletionBusy.value = true
+  deletionError.value = ''
+  const target = deleting.value
+  try {
+    if (!navigator.onLine) throw new Error('请连接网络后重试删除')
+    await retrySyncNow()
+    const latest = await db.knowledgeBases.get(target.id)
+    const toc = await db.knowledgeBaseTocs.get(target.id)
+    if (!latest?.deleted && (latest?.name !== target.name || JSON.stringify(toc?.nodes ?? []) !== JSON.stringify(target.nodes))) {
+      throw new Error('笔记本内容已更新，请取消后重新确认删除')
+    }
+    await deleteKnowledgeBase(target.id, target.name)
+    notes.currentId = null
+    deleting.value = null
+    await showKnowledgeBases()
+    await notes.load()
+    notify('笔记本及其中的内容已永久删除')
+    await nextTick()
+    document.querySelector<HTMLElement>('.kb-header h2')?.focus()
+  } catch (e) { deletionError.value = e instanceof Error ? e.message : String(e) }
+  finally { deletionBusy.value = false }
 }
 async function confirmAction() { const action = confirm.value; confirm.value = null; if (action) await run(action.run) }
 function move(node: TocNode) { moving.value = node; moveParent.value = node.parent_id ?? ''; dialog.value = 'move' }
@@ -223,7 +251,6 @@ async function drop(event: DragEvent, target: TocNode | null) {
 async function resolve(id: string, kind: 'meta' | 'toc', choice: 'local' | 'remote') {
   await run(async () => { await resolveKnowledgeBaseConflict(id, kind, choice); await notes.load(); dialog.value = null; void syncNow() })
 }
-async function openRemoved() { menu.value = null; await nextTick(); await run(() => openManagedView('removed-knowledge-bases')) }
 function history(id: string) { historyBookId.value = id; dialog.value = 'history' }
 function restoreSnapshot(h: KnowledgeBaseHistory) {
   dialog.value = null
@@ -237,6 +264,7 @@ let subscription: ReturnType<typeof libraries.subscribe> | undefined
 onMounted(() => { subscription = libraries.subscribe(); void notes.load() })
 onUnmounted(() => subscription?.unsubscribe())
 watch(() => ui.activeKnowledgeBaseId, () => { error.value = ''; dialog.value = null; menu.value = null; void notes.load() })
+watch(() => book.value?.deleted, deleted => { if (deleted) void showKnowledgeBases() })
 watch(() => ui.restorePosition, async position => { if (position?.view === 'knowledge-bases') { await nextTick(); if (tree.value) tree.value.scrollTop = position.knowledgeBaseScroll ?? 0 } })
 </script>
 
@@ -244,37 +272,34 @@ watch(() => ui.restorePosition, async position => { if (position?.view === 'know
   <div class="knowledge-base-workspace">
     <header class="kb-header">
       <button class="icon-button drawer-btn" aria-label="打开侧栏" @click="openDrawer"><AppIcon name="menu" /></button>
-      <button v-if="book" class="icon-button" aria-label="返回知识库列表" @click="showKnowledgeBases()"><AppIcon name="back" /></button>
-      <h2 tabindex="-1" :title="book?.name">{{ book ? book.name : removed ? '已移除的知识库' : '知识库' }}</h2>
-      <button v-if="book && !book.invalid" class="icon-button" aria-label="知识库操作" title="知识库操作" aria-haspopup="menu" :aria-expanded="menu?.kind === 'book'" @click="openMenu($event, 'book', book)"><AppIcon name="more" :size="19" /></button>
-      <button v-else-if="!removed" class="dialog-btn ok kb-create" aria-label="新建知识库" @click="create"><AppIcon name="plus" :size="15" />新建</button>
-      <button v-if="!book && !removed" class="icon-button" aria-label="知识库列表选项" title="知识库列表选项" aria-haspopup="menu" :aria-expanded="menu?.kind === 'overview'" @click="openMenu($event, 'overview')"><AppIcon name="more" :size="18" /></button>
+      <button v-if="book" class="icon-button" aria-label="返回笔记本列表" @click="showKnowledgeBases()"><AppIcon name="back" /></button>
+      <h2 tabindex="-1" :title="book?.name">{{ book ? book.name : '笔记本' }}</h2>
+      <button v-if="book && !book.invalid" class="icon-button" aria-label="笔记本操作" title="笔记本操作" aria-haspopup="menu" :aria-expanded="menu?.kind === 'book'" @click="openMenu($event, 'book', book)"><AppIcon name="more" :size="19" /></button>
+      <button v-else-if="!book" class="dialog-btn ok kb-create" aria-label="新建笔记本" @click="create"><AppIcon name="plus" :size="15" />新建</button>
     </header>
     <p v-if="error || libraries.error" class="kb-error" role="alert">{{ error || libraries.error }}</p>
-    <div v-if="conflicts.length" class="kb-sync-warning" role="status">知识库有同步冲突，两份修改已保留。<button @click="dialog = 'conflict'">查看并选择</button></div>
+    <div v-if="conflicts.length" class="kb-sync-warning" role="status">笔记本有同步冲突，两份修改已保留。<button @click="dialog = 'conflict'">查看并选择</button></div>
     <template v-if="!book">
-      <div v-if="removed" class="workspace-notice kb-removed-notice"><span>移除的知识库可以恢复，原笔记没有被删除。</span><button @click="showKnowledgeBases()">返回我的知识库</button></div>
       <div class="kb-overview-tools">
-        <label class="kb-search"><AppIcon name="search" :size="16" /><input v-model="ui.query" type="search" aria-label="搜索知识库" placeholder="搜索知识库名称或简介" /><button v-if="ui.query" class="search-clear" aria-label="清除知识库搜索" @click="ui.query = ''"><AppIcon name="close" :size="14" /></button></label>
-        <SortMenu label="知识库排序" :model-value="preferences.librarySort" :options="[{ value: 'updated', label: '最近更新' }, { value: 'name', label: '名称顺序' }]" @update:model-value="updateWorkspacePreferences({ librarySort: $event as LibrarySort })" />
+        <label class="kb-search"><AppIcon name="search" :size="16" /><input v-model="ui.query" type="search" aria-label="搜索笔记本" placeholder="搜索笔记本名称或简介" /><button v-if="ui.query" class="search-clear" aria-label="清除笔记本搜索" @click="ui.query = ''"><AppIcon name="close" :size="14" /></button></label>
+        <SortMenu label="笔记本排序" :model-value="preferences.librarySort" :options="[{ value: 'updated', label: '最近更新' }, { value: 'name', label: '名称顺序' }]" @update:model-value="updateWorkspacePreferences({ librarySort: $event as LibrarySort })" />
       </div>
       <div class="kb-card-grid">
         <article v-for="b in books" :key="b.id" class="kb-card" :data-book-id="b.id">
           <button class="kb-card-link" :disabled="!!b.invalid" @click="showKnowledgeBases(b.id)"><span class="kb-card-icon" aria-hidden="true">{{ b.icon || '📚' }}</span><span class="kb-card-body"><h3>{{ b.name }}</h3><p v-if="b.description">{{ b.description }}</p><small>{{ count(b.id) }} 篇笔记</small></span></button>
-          <div class="kb-card-actions"><button v-if="b.invalid" :disabled="busy" @click="run(() => updateKnowledgeBase(b.id, { invalid: 0 }))">恢复知识库</button><span v-else class="kb-card-updated">{{ preferences.pinnedKnowledgeBaseIds.includes(b.id) ? '已固定 · ' : '' }}{{ new Date(b.update_time).toLocaleDateString() }} 更新</span><button v-if="!b.invalid" class="icon-button" :aria-label="`知识库「${b.name}」操作`" aria-haspopup="menu" @click="openMenu($event, 'book', b)"><AppIcon name="more" :size="18" /></button><button v-else-if="libraries.histories.some(h => h.book_id === b.id && h.source === 'conflict')" @click="history(b.id)">保留的快照</button></div>
+          <div class="kb-card-actions"><span class="kb-card-updated">{{ preferences.pinnedKnowledgeBaseIds.includes(b.id) ? '已固定 · ' : '' }}{{ new Date(b.update_time).toLocaleDateString() }} 更新</span><button v-if="!b.invalid" class="icon-button" :aria-label="`笔记本「${b.name}」操作`" aria-haspopup="menu" @click="openMenu($event, 'book', b)"><AppIcon name="more" :size="18" /></button></div>
         </article>
-        <button v-if="!removed && !ui.query && !books.length" class="kb-card kb-new-card" @click="create"><AppIcon name="plus" :size="24" /><span>创建第一个知识库</span><small>从一个主题开始，随时加入已有笔记</small></button>
+        <button v-if="!ui.query && !books.length" class="kb-card kb-new-card" @click="create"><AppIcon name="plus" :size="24" /><span>创建第一本笔记本</span></button>
       </div>
-      <div v-if="ui.query && !books.length" class="kb-empty"><p>没有找到匹配的知识库</p><button class="dialog-btn cancel" @click="ui.query = ''">清除搜索</button></div>
-      <p v-else-if="removed && !books.length" class="kb-empty">没有已移除的知识库</p>
+      <div v-if="ui.query && !books.length" class="kb-empty"><p>没有找到匹配的笔记本</p><button class="dialog-btn cancel" @click="ui.query = ''">清除搜索</button></div>
     </template>
     <template v-else-if="!book.invalid">
-      <details class="kb-mobile-overview"><summary>知识库信息<AppIcon name="chevron" :size="13" /></summary><KnowledgeBaseInfo :book="book" compact /></details>
-      <div class="kb-toolbar"><button :class="{ active: !notes.currentId && !ui.activeTocNodeId }" @click="home"><AppIcon name="book" :size="15" />知识库首页</button><button aria-label="目录选项" title="展开或收起目录" aria-haspopup="menu" :aria-expanded="menu?.kind === 'tree'" @click="openMenu($event, 'tree')"><AppIcon name="sort" :size="15" /></button></div>
-      <label class="kb-search"><AppIcon name="search" :size="16" /><input v-model="ui.query" placeholder="搜索本库笔记" aria-label="搜索本库笔记" /><button v-if="ui.query" class="icon-button" aria-label="清除知识库搜索" @click="ui.query = ''"><AppIcon name="close" :size="14" /></button></label>
+      <details class="kb-mobile-overview"><summary>笔记本信息<AppIcon name="chevron" :size="13" /></summary><KnowledgeBaseInfo :book="book" compact /></details>
+      <div class="kb-toolbar"><button :class="{ active: !notes.currentId && !ui.activeTocNodeId }" @click="home"><AppIcon name="book" :size="15" />笔记本首页</button><button aria-label="目录选项" title="展开或收起目录" aria-haspopup="menu" :aria-expanded="menu?.kind === 'tree'" @click="openMenu($event, 'tree')"><AppIcon name="sort" :size="15" /></button></div>
+      <label class="kb-search"><AppIcon name="search" :size="16" /><input v-model="ui.query" placeholder="搜索本笔记本中的笔记" aria-label="搜索本笔记本中的笔记" /><button v-if="ui.query" class="icon-button" aria-label="清除笔记本搜索" @click="ui.query = ''"><AppIcon name="close" :size="14" /></button></label>
       <p v-if="ui.query" class="kb-search-hint">搜索标题与已下载正文 · {{ rows.length }} 个结果</p>
       <div class="kb-create-actions"><button class="kb-primary-create" :disabled="busy" @click="run(() => notes.create())"><AppIcon name="plus" :size="14" />新建笔记</button><button aria-haspopup="menu" :aria-expanded="menu?.kind === 'create'" @click="openMenu($event, 'create')">添加内容<AppIcon name="chevron" :size="12" class="expanded" /></button></div>
-      <div ref="tree" class="knowledge-base-tree" aria-label="知识库目录" @keydown="onTreeKeydown">
+      <div ref="tree" class="knowledge-base-tree" aria-label="笔记本目录" @keydown="onTreeKeydown">
         <div v-for="{ node, depth, path } in rows" :key="node.id" class="kb-tree-row" :class="{ selected: ui.activeTocNodeId === node.id, 'drop-target': dropTarget === node.id }" :style="{ paddingLeft: `${Math.min(depth, 5) * 14 + 8}px` }" :data-node-id="node.id" draggable="true" @dragstart="dragStart($event, node)" @dragend="dragging = dropTarget = null" @dragover.prevent="dropTarget = node.id" @dragleave="dropTarget = null" @drop.stop="drop($event, node)">
           <button class="kb-node-link" :aria-current="ui.activeTocNodeId === node.id ? 'true' : undefined" :aria-expanded="node.kind === 'folder' ? !ui.collapsedKnowledgeBaseNodes.includes(node.id) : undefined" :title="label(node)" @click="open(node)"><AppIcon :name="node.kind === 'folder' ? 'chevron' : 'note'" :size="15" :class="{ expanded: node.kind === 'folder' && !ui.collapsedKnowledgeBaseNodes.includes(node.id) }" /><span>{{ label(node) }}<small v-if="ui.query && path.length">{{ path.join(' / ') }}</small></span></button>
           <button class="kb-node-menu icon-button" :aria-label="`目录操作：${label(node)}`" aria-haspopup="menu" :aria-expanded="menu?.node?.id === node.id" @click="openMenu($event, 'node', node)"><AppIcon name="more" :size="16" /></button>
@@ -284,18 +309,15 @@ watch(() => ui.restorePosition, async position => { if (position?.view === 'know
       </div>
       <footer class="kb-directory-footer">{{ nodes.filter(n => n.kind === 'note').length }} 篇笔记</footer>
     </template>
-    <p v-else class="kb-empty">知识库已移除。<button @click="run(() => updateKnowledgeBase(book!.id, { invalid: 0 }))">恢复</button></p>
+    <p v-else class="kb-empty">笔记本不可用。<button @click="showKnowledgeBases()">返回笔记本列表</button></p>
     <KnowledgeBaseForm :error="error" :busy="busy" :open="formOpen" :initial="editing ? metadata(editing) : undefined" @save="saveForm" @close="formOpen = false" />
-    <ActionMenu :open="!!menu" :anchor="menu?.anchor ?? null" :label="menu?.kind === 'overview' ? '知识库列表选项' : menu?.kind === 'book' ? '知识库操作' : menu?.kind === 'create' ? '添加内容' : '目录操作'" menu-class="knowledge-base-menu" @close="menu = null">
-      <template v-if="menu?.kind === 'overview'">
-        <button class="menu-item" role="menuitem" @click="openRemoved"><AppIcon name="trash" :size="15" />已移除的知识库</button>
-      </template>
-      <template v-else-if="menu?.kind === 'book'">
-        <button class="menu-item" role="menuitem" @click="menuAction('edit')"><AppIcon name="edit" :size="15" />编辑知识库</button>
+    <ActionMenu :open="!!menu" :anchor="menu?.anchor ?? null" :label="menu?.kind === 'book' ? '笔记本操作' : menu?.kind === 'create' ? '添加内容' : '目录操作'" menu-class="knowledge-base-menu" @close="menu = null">
+      <template v-if="menu?.kind === 'book'">
+        <button class="menu-item" role="menuitem" @click="menuAction('edit')"><AppIcon name="edit" :size="15" />编辑笔记本</button>
         <button class="menu-item" role="menuitemcheckbox" :aria-checked="preferences.pinnedKnowledgeBaseIds.includes(menu.book!.id)" @click="menuAction('pin')"><AppIcon name="pin" :size="15" />{{ preferences.pinnedKnowledgeBaseIds.includes(menu.book!.id) ? '取消固定' : '固定到前面' }}</button>
         <button class="menu-item" role="menuitem" @click="menuAction('history')"><AppIcon name="clock" :size="15" />目录快照</button>
         <span class="menu-separator" aria-hidden="true"></span>
-        <button class="menu-item danger" role="menuitem" @click="menuAction('remove-book')"><AppIcon name="trash" :size="15" />移除知识库</button>
+        <button class="menu-item danger" role="menuitem" @click="menuAction('remove-book')"><AppIcon name="trash" :size="15" />删除笔记本</button>
       </template>
       <template v-else-if="menu?.kind === 'create'">
         <button class="menu-item" role="menuitem" @click="menuAction('add')"><AppIcon name="notes" :size="15" />加入笔记</button>
@@ -320,11 +342,12 @@ watch(() => ui.restorePosition, async position => { if (position?.view === 'know
         <button class="menu-item danger" role="menuitem" @click="menuAction('remove-node')">移除引用</button>
       </template>
     </ActionMenu>
+    <DeleteNotebookDialog :open="!!deleting" :name="deleting?.name ?? ''" :count="deleting?.nodes.filter(n => n.kind === 'note').length ?? 0" :busy="deletionBusy" :error="deletionError" @confirm="confirmDelete" @cancel="deleting = null" />
     <Teleport to="body">
       <ConfirmDialog :open="!!confirm" :title="confirm?.title ?? ''" :message="confirm?.message" :confirm-text="confirm?.title.includes('快照') ? '重新应用' : '移除'" @confirm="confirmAction" @cancel="confirm = null" />
       <Transition name="dialog">
         <div v-if="dialog" class="dialog-mask" @click.self="dialog = null">
-          <div ref="panel" class="dialog kb-workspace-dialog" role="dialog" aria-modal="true" :aria-label="dialog === 'chapter' ? '章节名称' : dialog === 'add' ? '加入已有笔记' : dialog === 'move' ? '移动目录' : '解决知识库冲突'">
+          <div ref="panel" class="dialog kb-workspace-dialog" role="dialog" aria-modal="true" :aria-label="dialog === 'chapter' ? '章节名称' : dialog === 'add' ? '加入已有笔记' : dialog === 'move' ? '移动目录' : '解决笔记本冲突'">
             <template v-if="dialog === 'chapter'">
               <h3 class="dialog-title">{{ chapterEditing ? '重命名章节' : '新建章节' }}</h3>
               <label class="dialog-field">章节名称<input v-model="chapterTitle" class="dialog-input" aria-label="章节名称" maxlength="100" @keydown.enter="!$event.isComposing && saveChapter()" /></label>
@@ -340,7 +363,7 @@ watch(() => ui.restorePosition, async position => { if (position?.view === 'know
             </template>
             <template v-else-if="dialog === 'move'"><h3 class="dialog-title">移动「{{ moving ? label(moving) : '' }}」</h3><label>目标章节<select v-model="moveParent" class="dialog-input" aria-label="目标章节"><option value="">根目录</option><option v-for="{ node, path } in folders" :key="node.id" :value="node.id">{{ [...path, node.title].join(' / ') }}</option></select></label><p>移动后放在目标章节的末尾。</p><div class="dialog-footer"><button class="dialog-btn cancel" @click="dialog = null">取消</button><button class="dialog-btn ok" @click="saveMove">移动</button></div></template>
             <template v-else-if="dialog === 'history'"><h3 class="dialog-title">本机保留的目录快照</h3><p>这些快照保存在本机，完整备份会包含它们。恢复快照不会恢复或删除笔记正文。</p><p v-if="!historyRows.length">暂无快照</p><details v-for="h in historyRows" :key="h.id" class="kb-conflict"><summary>{{ new Date(h.time).toLocaleString() }} · {{ h.source === 'conflict' ? '冲突 / 导入保留' : h.source === 'discarded' ? '选择前保留' : '已确认目录' }} · {{ h.nodes.length }} 个节点</summary><p v-if="h.meta">{{ h.meta.name }} · {{ h.meta.description }}</p><ol><li v-for="{ node, depth } in flattenToc(h.nodes)" :key="node.id" :style="{ marginLeft: `${depth * 12}px` }">{{ label(node) }}</li></ol><button class="dialog-btn ok" :disabled="libraries.books.find(b => b.id === h.book_id)?.invalid === 1 || libraries.tasks.some(t => t.book_id === h.book_id && t.blocked)" @click="restoreSnapshot(h)">重新应用快照</button></details><div class="dialog-footer"><button class="dialog-btn cancel" @click="dialog = null">关闭</button></div></template>
-            <template v-else><h3 class="dialog-title">解决知识库冲突</h3><p>请选择要保留的版本。两份内容均已保存为本机快照。</p><article v-for="conflict in conflicts" :key="conflict.id" class="kb-conflict"><h4>{{ libraries.books.find(b => b.id === conflict.book_id)?.name }} · {{ conflict.kind === 'toc' ? '目录' : '库信息与移除状态' }}</h4><div class="kb-conflict-versions"><div><b>本机修改</b><p v-if="conflict.kind === 'meta'">{{ libraries.books.find(b => b.id === conflict.book_id)?.name }}<br />{{ libraries.books.find(b => b.id === conflict.book_id)?.description }}<br />{{ libraries.books.find(b => b.id === conflict.book_id)?.invalid ? '已移除' : '正常使用' }}</p><ol v-else><li v-for="{ node, depth } in flattenToc(libraries.tocs.find(t => t.knowledge_base_id === conflict.book_id)?.nodes ?? [])" :key="node.id" :style="{ marginLeft: `${depth * 12}px` }">{{ label(node) }}</li></ol><button class="dialog-btn ok" @click="resolve(conflict.book_id, conflict.kind, 'local')">保留本机修改</button></div><div><b>另一台设备</b><p v-if="conflict.kind === 'meta'">{{ conflict.conflict?.book.name }}<br />{{ conflict.conflict?.book.description }}<br />{{ conflict.conflict?.book.invalid ? '已移除' : '正常使用' }}</p><ol v-else><li v-for="{ node, depth } in flattenToc(conflict.conflict?.toc.nodes ?? [])" :key="node.id" :style="{ marginLeft: `${depth * 12}px` }">{{ label(node) }}</li></ol><p v-if="conflict.conflict?.book.invalid">知识库已移除；保留本机目录会恢复知识库。</p><button class="dialog-btn cancel" @click="resolve(conflict.book_id, conflict.kind, 'remote')">接受另一台设备</button></div></div></article><div class="dialog-footer"><button class="dialog-btn cancel" @click="dialog = null">稍后处理</button></div></template>
+            <template v-else><h3 class="dialog-title">解决笔记本冲突</h3><p>请选择要保留的版本。两份内容均已保存为本机快照。</p><article v-for="conflict in conflicts" :key="conflict.id" class="kb-conflict"><h4>{{ libraries.books.find(b => b.id === conflict.book_id)?.name }} · {{ conflict.kind === 'toc' ? '目录' : '笔记本信息与移除状态' }}</h4><div class="kb-conflict-versions"><div><b>本机修改</b><p v-if="conflict.kind === 'meta'">{{ libraries.books.find(b => b.id === conflict.book_id)?.name }}<br />{{ libraries.books.find(b => b.id === conflict.book_id)?.description }}<br />{{ libraries.books.find(b => b.id === conflict.book_id)?.invalid ? '已移除' : '正常使用' }}</p><ol v-else><li v-for="{ node, depth } in flattenToc(libraries.tocs.find(t => t.knowledge_base_id === conflict.book_id)?.nodes ?? [])" :key="node.id" :style="{ marginLeft: `${depth * 12}px` }">{{ label(node) }}</li></ol><button class="dialog-btn ok" @click="resolve(conflict.book_id, conflict.kind, 'local')">保留本机修改</button></div><div><b>另一台设备</b><p v-if="conflict.kind === 'meta'">{{ conflict.conflict?.book.name }}<br />{{ conflict.conflict?.book.description }}<br />{{ conflict.conflict?.book.invalid ? '已移除' : '正常使用' }}</p><ol v-else><li v-for="{ node, depth } in flattenToc(conflict.conflict?.toc.nodes ?? [])" :key="node.id" :style="{ marginLeft: `${depth * 12}px` }">{{ label(node) }}</li></ol><p v-if="conflict.conflict?.book.invalid">笔记本已移除；保留本机目录会恢复笔记本。</p><button class="dialog-btn cancel" @click="resolve(conflict.book_id, conflict.kind, 'remote')">接受另一台设备</button></div></div></article><div class="dialog-footer"><button class="dialog-btn cancel" @click="dialog = null">稍后处理</button></div></template>
             <p v-if="error" class="kb-error" role="alert">{{ error }}</p>
           </div>
         </div>

@@ -12,7 +12,7 @@ button, .views li, .groups li, .kb-tree-row {
 }
 .kb-card { transition: border-color var(--motion-fast) ease, box-shadow var(--motion-fast) ease; }
 .section-toggle .app-icon, .kb-node-link .app-icon, .sort-chevron, .kb-mobile-overview summary .app-icon { transition: transform var(--motion-normal) var(--motion-ease); }
-.library-pin, .kb-node-menu, .group-menu-btn { transition: opacity var(--motion-fast) ease, background-color var(--motion-fast) ease; }
+.kb-node-menu, .group-menu-btn { transition: opacity var(--motion-fast) ease, background-color var(--motion-fast) ease; }
 
 .dialog-enter-active, .dialog-leave-active, .veil-enter-active, .veil-leave-active { transition: opacity var(--motion-normal) ease; }
 .dialog-enter-active > .dialog, .dialog-leave-active > .dialog { transition: transform var(--motion-normal) var(--motion-ease); }

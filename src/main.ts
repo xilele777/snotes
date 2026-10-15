@@ -1,5 +1,6 @@
 import './styles.css'
 import './workspace.css'
+import './pages.css'
 import './motion.css'
 import { createApp, watch } from 'vue'
 import { createPinia } from 'pinia'

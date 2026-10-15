@@ -139,7 +139,7 @@ function homeHiddenOf(note: LocalNote): boolean {
 
 /**
  * 空态分五种：搜索无结果与「这个视图本来就没东西」是两回事，
- * 前者要给「清除搜索」的出口，后者才引导新建。
+ * 搜索无结果提供调整搜索的出口，新建统一使用顶部按钮。
  */
 const empty = computed(() => {
   if (ui.query.trim()) {
@@ -158,13 +158,12 @@ const empty = computed(() => {
     return { title: '没有已隐藏的笔记', hint: '', action: '' }
   }
   if (ui.view === 'group') {
-    return { title: `「${viewTitle.value}」里还没有笔记`, hint: '', action: '新建笔记' }
+    return { title: `「${viewTitle.value}」里还没有笔记`, hint: '', action: '' }
   }
   return {
     title: '还没有笔记',
-    // 全部笔记为空也可能是因为笔记都被设成了不上首页，顺手给出找回它们的入口
-    hint: '记点什么吧',
-    action: '新建笔记',
+    hint: '',
+    action: '',
   }
 })
 
@@ -174,7 +173,7 @@ async function onEmptyAction() {
     const query = ui.query
     await switchListView('all')
     ui.query = query
-  } else notes.create()
+  }
 }
 
 onMounted(() => {

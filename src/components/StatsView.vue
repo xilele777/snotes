@@ -50,6 +50,11 @@ const heatWeeks = computed(() => {
   return cols
 })
 const heatMax = computed(() => Math.max(1, ...(stats.value?.heatmap.map((c) => c.count) ?? [])))
+const heatMonths = computed(() => heatWeeks.value.flatMap((week, index, weeks) => {
+  const month = week.weekStart.slice(5, 7)
+  return index === 0 || month !== weeks[index - 1]?.weekStart.slice(5, 7)
+    ? [{ column: index + 1, label: `${Number(month)}月` }] : []
+}))
 const maxGroupCount = computed(() => Math.max(1, ...(stats.value?.byGroup.map((g) => g.count) ?? [])))
 const maxHour = computed(() => Math.max(1, ...(stats.value?.byHour ?? [])))
 /** 写作时段的高峰小时：柱状图上单独标出来，一眼看到自己的高产时段 */
@@ -107,9 +112,14 @@ function openNote(id: string) { emit('selectNote', id) }
               <h4 class="panel-title">更新热力图<small>近 53 周</small></h4>
               <span class="panel-meta">最长连续 {{ stats.streakLongest }} 天</span>
             </header>
-            <div class="heatmap-grid">
-              <div v-for="col in heatWeeks" :key="col.weekStart" class="heatmap-col">
-                <div v-for="cell in col.days" :key="cell.date" class="heatmap-cell" :data-level="heatLevel(cell.count)" :title="heatTip(cell)"></div>
+            <div class="heatmap-scroll" tabindex="0" aria-label="全年写作热力图，可横向浏览">
+              <div class="heatmap-calendar">
+                <div class="heatmap-months" aria-hidden="true"><span v-for="month in heatMonths" :key="month.column" :style="{ gridColumn: `${month.column} / span ${Math.min(2, 54 - month.column)}` }">{{ month.label }}</span></div>
+                <div class="heatmap-grid">
+                  <div v-for="col in heatWeeks" :key="col.weekStart" class="heatmap-col">
+                    <div v-for="cell in col.days" :key="cell.date" class="heatmap-cell" :data-level="heatLevel(cell.count)" :title="heatTip(cell)"></div>
+                  </div>
+                </div>
               </div>
             </div>
             <footer class="panel-foot heatmap-legend"><span>少</span><span v-for="level in 5" :key="level" class="heatmap-cell" :data-level="level - 1"></span><span>多</span></footer>

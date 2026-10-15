@@ -290,7 +290,8 @@ describe('NoteList', () => {
     await vi.waitFor(() => expect(wrapper.find('.empty-state').exists()).toBe(true))
 
     expect(wrapper.text()).toContain('还没有笔记')
-    expect(wrapper.find('.empty-state .empty-action').text()).toBe('新建笔记')
+    expect(wrapper.find('.empty-state .empty-action').exists()).toBe(false)
+    expect(wrapper.findAll('[aria-label="新建笔记"]')).toHaveLength(1)
   })
 
   it('星标视图空态不引导新建——星标是标出来的，不是建出来的', async () => {

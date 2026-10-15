@@ -4,14 +4,14 @@ import { hasToken } from './api/token'
 import GroupSidebar from './components/GroupSidebar.vue'
 import NoteDetail from './components/NoteDetail.vue'
 import NoteList from './components/NoteList.vue'
-import SettingsDialog from './components/SettingsDialog.vue'
-import StatsDialog from './components/StatsDialog.vue'
+import SettingsPage from './components/SettingsPage.vue'
+import StatsPage from './components/StatsPage.vue'
 import Toast from './components/Toast.vue'
 import TokenGate from './components/TokenGate.vue'
 import TrashView from './components/TrashView.vue'
 import { resolveShortcut, type ShortcutAction } from './components/shortcut'
 import { useMediaQuery } from './components/useMediaQuery'
-import { backToList, initNavigation, isMobile, openOverlay, pushNav } from './navigation'
+import { backToList, initNavigation, isMobile, openWorkspacePage, pushNav, showNotes } from './navigation'
 import { useNotesStore } from './stores/notes'
 import { useUiStore } from './stores/ui'
 import { retrySyncNow } from './sync/engine'
@@ -27,16 +27,16 @@ const compact = useMediaQuery('(max-width: 1020px)')
 let drawerTrigger: HTMLElement | null = null
 
 watch(() => ui.drawerOpen, async (open) => {
-  if (!compact.value || ui.overlay) return
+  if (!compact.value) return
   if (open) {
     drawerTrigger = document.activeElement as HTMLElement
     await nextTick()
-    if (!ui.overlay) document.querySelector<HTMLButtonElement>('.sidebar-close')?.focus()
+    document.querySelector<HTMLButtonElement>('.sidebar-close')?.focus()
   } else {
     await nextTick()
-    const targets = [drawerTrigger, ...document.querySelectorAll<HTMLElement>('.drawer-btn, .back-btn')]
+    const targets = [drawerTrigger, document.querySelector<HTMLElement>('.workspace-page h1'), ...document.querySelectorAll<HTMLElement>('.drawer-btn, .back-btn')]
     const target = targets.find(element => element?.isConnected && element.getClientRects().length && !element.closest('[inert]'))
-    if (!ui.overlay) target?.focus({ preventScroll: true })
+    target?.focus({ preventScroll: true })
   }
 })
 
@@ -49,6 +49,7 @@ watch(() => [notes.currentId, ui.view], () => {
 })
 
 async function focusSearch() {
+  if (ui.workspacePage) await showNotes()
   ui.focusMode = false
   ui.drawerOpen = false
   if (ui.view === 'metrics') {
@@ -80,8 +81,8 @@ watch(
 // 全局快捷键（UI 规格 §6.2）
 function onKeydown(e: KeyboardEvent) {
   // 弹窗和菜单打开时把键盘交给它们：Esc 该关的是浮层，不是抽屉或搜索词
-  if (!hasToken.value || ui.overlay || e.defaultPrevented || e.isComposing || document.querySelector('[aria-modal="true"], [role="menu"]')) return
-  if (e.key === 'Escape' && (ui.drawerOpen || ui.focusMode || ui.readingMode)) {
+  if (!hasToken.value || e.defaultPrevented || e.isComposing || document.querySelector('[aria-modal="true"], [role="menu"]')) return
+  if (e.key === 'Escape' && (ui.drawerOpen || (!ui.workspacePage && (ui.focusMode || ui.readingMode)))) {
     e.preventDefault()
     e.stopPropagation()
     // 由外到内：抽屉 -> 阅读模式 -> 专注模式
@@ -100,6 +101,7 @@ function onKeydown(e: KeyboardEvent) {
   }
   const action = resolveShortcut(e, { hasQuery: ui.query.trim().length > 0 })
   if (!action) return
+  if (ui.workspacePage && action.type !== 'openSettings' && action.type !== 'focusSearch') return
   e.preventDefault()
   e.stopPropagation()
 
@@ -134,7 +136,7 @@ async function runShortcut(action: ShortcutAction) {
     case 'prevNote': stepNote(-1); return
     case 'toggleFocus': if (editable) ui.focusMode = !ui.focusMode; return
     case 'syncNow': await retrySyncNow(); return
-    case 'openSettings': openOverlay('settings'); return
+    case 'openSettings': openWorkspacePage('settings'); return
   }
 }
 
@@ -152,14 +154,14 @@ onUnmounted(() => {
 <template>
   <TokenGate v-if="!hasToken" />
 
-  <div v-else class="layout" :class="{ 'is-focused': ui.focusMode, 'is-sidebar-collapsed': preferences.sidebarCollapsed, 'is-library-list': ui.view === 'knowledge-bases' && !ui.activeKnowledgeBaseId }" :data-mobile-pane="ui.mobilePane" :data-view="ui.view" :inert="ui.overlay !== null">
+  <div v-else class="layout" :class="{ 'is-focused': ui.focusMode, 'is-sidebar-collapsed': preferences.sidebarCollapsed, 'is-library-list': ui.view === 'knowledge-bases' && !ui.activeKnowledgeBaseId, 'is-utility-page': !!ui.workspacePage }" :data-mobile-pane="ui.mobilePane" :data-view="ui.workspacePage ?? ui.view">
     <!-- 窄屏将分组导航收进抽屉，搜索仍留在笔记列表上方。 -->
     <aside class="sidebar-pane" :class="{ 'is-open': ui.drawerOpen }" :inert="compact && !ui.drawerOpen">
       <GroupSidebar />
     </aside>
     <Transition name="veil"><div v-if="ui.drawerOpen" class="drawer-mask" @click="ui.drawerOpen = false"></div></Transition>
 
-    <section class="list-pane" :aria-label="ui.view === 'knowledge-bases' ? '知识库工作区' : '便签目录'" :inert="compact && ui.drawerOpen">
+    <section v-show="!ui.workspacePage" class="list-pane" :aria-label="ui.view === 'knowledge-bases' ? '笔记本工作区' : '便签目录'" :inert="!!ui.workspacePage || (compact && ui.drawerOpen)">
       <MetricsView v-if="ui.view === 'metrics'" />
       <TrashView v-else-if="ui.view === 'trash'" />
       <KnowledgeBaseWorkspace v-else-if="ui.view === 'knowledge-bases'" />
@@ -169,18 +171,19 @@ onUnmounted(() => {
     <!--
       回收站详情与编辑详情用同一个组件，只是 readonly 不同。
       key 区分两者：ProseMirror 的 editable 在建实例时读一次，不重挂就切不干净。
-      监控页没有笔记详情；统计与设置弹窗都不卸载当前工作区。
+      监控页没有笔记详情；统计与设置页面都保留当前编辑器实例。
     -->
-    <KnowledgeBaseHome v-if="ui.view === 'knowledge-bases' && ui.activeKnowledgeBaseId && !notes.currentId" :inert="compact && ui.drawerOpen" />
+    <KnowledgeBaseHome v-if="ui.view === 'knowledge-bases' && ui.activeKnowledgeBaseId && !notes.currentId" v-show="!ui.workspacePage" :inert="!!ui.workspacePage || (compact && ui.drawerOpen)" />
     <NoteDetail
       v-else-if="ui.view !== 'metrics' && !(ui.view === 'knowledge-bases' && !ui.activeKnowledgeBaseId)"
+      v-show="!ui.workspacePage"
       :key="ui.view === 'trash' ? 'trash' : 'main'"
       :readonly="ui.view === 'trash'"
-      :inert="compact && ui.drawerOpen"
+      :inert="!!ui.workspacePage || (compact && ui.drawerOpen)"
       @back="backToList"
     />
+    <StatsPage v-if="ui.workspacePage === 'stats'" :open="true" :inert="compact && ui.drawerOpen" />
+    <SettingsPage v-if="ui.workspacePage === 'settings'" :open="true" :inert="compact && ui.drawerOpen" />
   </div>
-  <StatsDialog v-if="hasToken" :open="ui.overlay === 'stats'" />
-  <SettingsDialog v-if="hasToken" :open="ui.overlay === 'settings'" />
   <Toast />
 </template>

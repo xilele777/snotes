@@ -575,7 +575,6 @@ async function runShare() {
       <div v-if="!notes.current && !readonly" class="editor-welcome">
         <AppIcon name="note" :size="40" class="empty-art" />
         <h1>选择一条笔记</h1>
-        <button class="welcome-create" @click="notes.create()"><AppIcon name="plus" :size="17" />新建笔记</button>
       </div>
       <MilkdownEditor
         v-else-if="notes.current"

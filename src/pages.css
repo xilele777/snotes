@@ -1,0 +1,54 @@
+.layout.is-utility-page { grid-template-columns: var(--sidebar-width) minmax(0, 1fr); }
+.workspace-page { grid-column: 2 / -1; min-width: 0; min-height: 0; height: 100%; display: flex; flex-direction: column; overflow: hidden; background: var(--bg-list); }
+.workspace-page-header { display: flex; align-items: center; flex: none; min-height: var(--header-height); gap: 12px; padding: 0 28px; border-bottom: 1px solid var(--border-light); background: var(--bg-surface); }
+.workspace-page-header h1 { flex: 1; min-width: 0; margin: 0; font-size: 19px; font-weight: 650; }
+.workspace-page-header h1:focus { outline: none; }
+.page-back { display: inline-flex; align-items: center; gap: 6px; min-height: 36px; padding: 0 10px; border: 1px solid var(--border-default); border-radius: 6px; background: var(--bg-surface); color: var(--text-secondary); font-size: 13px; }
+.page-back:hover { background: var(--bg-hover); color: var(--text-primary); }
+.settings-page { background: var(--bg-surface); }
+.settings-page .settings-body { min-width: 0; flex-direction: column; }
+.settings-page .settings-tabs { align-self: center; width: fit-content; max-width: calc(100% - 40px); flex-direction: row; padding: 4px; margin: 20px auto 0; gap: 4px; border: 0; border-radius: 10px; background: var(--bg-app); }
+.settings-page .settings-tab { justify-content: center; min-height: 40px; padding: 0 20px; border-radius: 7px; font-size: 14px; gap: 8px; }
+.settings-page .settings-tab[aria-selected='true'] { background: var(--bg-surface); color: var(--accent); box-shadow: 0 1px 4px rgb(0 0 0 / 8%); font-weight: 600; }
+.settings-page .settings-tab:hover { color: var(--text-primary); }
+.settings-page .settings-pane { padding: 28px 40px 48px; }
+.settings-content { width: 100%; max-width: 800px; margin-inline: auto; }
+.settings-section { margin-bottom: 32px; }
+.settings-section h2 { position: relative; display: flex; align-items: center; gap: 4px; margin: 0 0 8px; font-size: 14px; font-weight: 600; color: var(--text-secondary); }
+.settings-section .settings-row { grid-template-columns: minmax(128px, 1fr) minmax(180px, 280px); gap: 24px; margin: 0; padding: 18px 0; border-bottom: 1px solid var(--border-light); }
+.settings-section .settings-row:last-child { border-bottom: 0; }
+.settings-section .settings-label { color: var(--text-primary); font-size: 14px; }
+.settings-row-hint { margin: 5px 0 0; font-size: 12px; color: var(--text-tertiary); }
+.settings-switch { justify-self: end; width: 42px; height: 24px; border: 0; padding: 3px; border-radius: 20px; background: var(--border-input); }
+.settings-switch span { display: block; width: 18px; height: 18px; border-radius: 50%; background: #fff; box-shadow: 0 1px 3px rgb(0 0 0 / 15%); transition: transform var(--motion-fast) ease; }
+.settings-switch[aria-checked='true'] { background: var(--accent); }
+.settings-switch[aria-checked='true'] span { transform: translateX(18px); }
+[data-line-spacing='compact'] { --editor-line-height: 1.6; }
+[data-line-spacing='relaxed'] { --editor-line-height: 2.15; }
+[data-note-preview='hidden'] .note-summary { display: none; }
+[data-note-density='compact'] .note-item { height: 84px; }
+[data-note-density='compact'] .note-select { padding: 8px 12px; }
+[data-note-density='compact'] .note-title { height: 22px; line-height: 22px; }
+[data-note-density='compact'] .note-summary { height: 18px; line-height: 18px; font-size: 12px; margin-top: 2px; }
+[data-note-density='compact'] .note-meta { height: 16px; line-height: 16px; font-size: 11px; margin-top: 4px; }
+@media (max-width: 1020px) {
+  .layout.is-utility-page { grid-template-columns: minmax(0, 1fr); }
+  .workspace-page { grid-column: 1 / -1; }
+  .workspace-page-header .drawer-btn { display: inline-flex; }
+}
+@media (max-width: 900px) {
+  .settings-page .settings-pane { padding: 24px; }
+  .settings-section .settings-row { grid-template-columns: minmax(110px, 1fr) minmax(150px, 220px); gap: 16px; }
+}
+@media (max-width: 720px) {
+  .workspace-page-header { min-height: 60px; padding: 0 12px; gap: 8px; }
+  .workspace-page-header h1 { font-size: 18px; }
+  .page-back { padding: 0 8px; font-size: 12px; }
+  .settings-page .settings-tabs { max-width: calc(100% - 32px); margin-top: 16px; }
+  .settings-page .settings-tab { flex: 1; min-width: 0; min-height: 38px; padding: 0 14px; font-size: 13px; }
+  .settings-page .settings-pane { padding: 24px 20px 32px; }
+  .settings-section { margin-bottom: 28px; }
+  .settings-section .settings-row { grid-template-columns: minmax(0, 1fr); gap: 12px; padding: 16px 0; }
+  .settings-section .settings-row:has(.settings-switch) { grid-template-columns: minmax(0, 1fr) auto; }
+  .settings-seg button { min-height: 36px; }
+}

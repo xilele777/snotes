@@ -1,30 +1,37 @@
 import { ref, watch } from 'vue'
 
-/** 主题、字号、编辑区宽度、表格密度只影响本设备，存 localStorage，不进同步。 */
+/** 外观、列表与阅读偏好只影响本设备，存 localStorage，不进同步。 */
 export type Theme = 'system' | 'light' | 'dark'
 export type FontSize = 'small' | 'medium' | 'large'
 export type EditorWidth = 'narrow' | 'medium' | 'wide'
 export type TableDensity = 'compact' | 'medium' | 'loose'
+export type NoteDensity = 'comfortable' | 'compact'
+export type LineSpacing = 'compact' | 'standard' | 'relaxed'
 
 export interface Settings {
   theme: Theme
   fontSize: FontSize
   editorWidth: EditorWidth
   tableDensity: TableDensity
+  noteDensity: NoteDensity
+  showNotePreview: boolean
+  lineSpacing: LineSpacing
 }
 
 /** index.html 里的首帧脚本读的是同一个键，改名时两处一起改。 */
 export const SETTINGS_KEY = 'snotes_settings'
 
-export const DEFAULT_SETTINGS: Settings = { theme: 'system', fontSize: 'medium', editorWidth: 'medium', tableDensity: 'medium' }
+export const DEFAULT_SETTINGS: Settings = { theme: 'system', fontSize: 'medium', editorWidth: 'medium', tableDensity: 'medium', noteDensity: 'comfortable', showNotePreview: true, lineSpacing: 'standard' }
 
 /** 地址栏与系统状态栏的底色，随主题切换；与 styles.css 的 --bg-surface 保持一致。 */
-export const THEME_COLORS: Record<'light' | 'dark', string> = { light: '#ffffff', dark: '#232428' }
+export const THEME_COLORS: Record<'light' | 'dark', string> = { light: '#ffffff', dark: '#27282f' }
 
 const THEMES: readonly Theme[] = ['system', 'light', 'dark']
 const FONT_SIZES: readonly FontSize[] = ['small', 'medium', 'large']
 const EDITOR_WIDTHS: readonly EditorWidth[] = ['narrow', 'medium', 'wide']
 const TABLE_DENSITIES: readonly TableDensity[] = ['compact', 'medium', 'loose']
+const NOTE_DENSITIES: readonly NoteDensity[] = ['comfortable', 'compact']
+const LINE_SPACINGS: readonly LineSpacing[] = ['compact', 'standard', 'relaxed']
 
 function pick<T extends string>(value: unknown, allowed: readonly T[], fallback: T): T {
   return typeof value === 'string' && (allowed as readonly string[]).includes(value) ? (value as T) : fallback
@@ -40,6 +47,9 @@ export function parseSettings(raw: string | null | undefined): Settings {
       fontSize: pick(data?.fontSize, FONT_SIZES, DEFAULT_SETTINGS.fontSize),
       editorWidth: pick(data?.editorWidth, EDITOR_WIDTHS, DEFAULT_SETTINGS.editorWidth),
       tableDensity: pick(data?.tableDensity, TABLE_DENSITIES, DEFAULT_SETTINGS.tableDensity),
+      noteDensity: pick(data?.noteDensity, NOTE_DENSITIES, DEFAULT_SETTINGS.noteDensity),
+      showNotePreview: typeof data?.showNotePreview === 'boolean' ? data.showNotePreview : DEFAULT_SETTINGS.showNotePreview,
+      lineSpacing: pick(data?.lineSpacing, LINE_SPACINGS, DEFAULT_SETTINGS.lineSpacing),
     }
   } catch {
     return { ...DEFAULT_SETTINGS }
@@ -61,13 +71,16 @@ function systemDark(): boolean {
   return typeof window !== 'undefined' && typeof window.matchMedia === 'function' && window.matchMedia('(prefers-color-scheme: dark)').matches
 }
 
-/** 把设置落到 <html> 的 data 属性上，CSS 只认这三个属性；主题存的是解析后的浅/深色。 */
+/** 把设置落到 <html> 的 data 属性上，供样式与首帧渲染使用；主题存的是解析后的浅/深色。 */
 export function applySettings(current: Settings = settings.value): void {
   const root = document.documentElement
   root.dataset.theme = resolveTheme(current.theme, systemDark())
   root.dataset.fontSize = current.fontSize
   root.dataset.editorWidth = current.editorWidth
   root.dataset.tableDensity = current.tableDensity
+  root.dataset.noteDensity = current.noteDensity
+  root.dataset.notePreview = current.showNotePreview ? 'visible' : 'hidden'
+  root.dataset.lineSpacing = current.lineSpacing
   const meta = document.querySelector<HTMLMetaElement>('meta[name="theme-color"]')
   if (meta) meta.content = THEME_COLORS[root.dataset.theme as 'light' | 'dark']
 }

@@ -1,7 +1,6 @@
 import { build } from 'esbuild'
 import { build as buildFrontend } from 'vite'
 
-process.env.VITE_DEPLOY_TARGET = 'server'
 await buildFrontend()
 
 await build({
