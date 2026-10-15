@@ -313,3 +313,8 @@
   - 验证：发布前 `npm run test:all` 全部通过（客户端/领域 714、Worker 162、Node/SQLite 31，共 907 项），`npm run build` 与部署构建通过；开发阶段 Node 浏览器全量回归 62 项通过，覆盖桌面与 320px 等窄屏、目录创建位置、排序、表单拖选和键盘焦点。生产 D1 复查无待执行迁移，本版本不新增迁移。
   - 发布结果：发布提交 `255321a`、标签 `v0.20.0` 已推送到 origin；此前仅保留在本地的 v0.19.0 提交和标签也已一并推送。Cloudflare Version ID `15fc753f-9141-4230-9e9e-f8107178281f`，经 `wrangler deployments list` 确认承接 100% 流量；正式站点 https://note.alover.me；GitHub Release https://github.com/xilele777/snotes/releases/tag/v0.20.0，标记为 Latest 稳定版。
   - 上线核验限制：正式域名首页和 `/api/health` 返回 302 至 Cloudflare Access 登录页，workers.dev 的 HTTP 请求连接失败；当前未登录会话未完成线上页面、健康响应及静态资源比对。部署成功、绑定及 100% 流量已通过 Wrangler 核实。
+- 2026-10-15：v0.21.0 统一「笔记本」口径，精简侧栏并调整中性配色；统计、设置改为独立工作区页面，热力图单独占一行，外观新增列表密度、摘要显隐与正文行距。设置分页及内容居中，说明收进信息图标，快捷键两列围绕中轴对称并各自左对齐，关于页通过服务端查询实际部署方式。删除笔记本需联网输入完整名称确认，永久删除引用的笔记、图片和历史，跨设备清理并防止迟到请求恢复内容。
+  - 验证：`npm run test:all` 全部通过（客户端/领域 722、Worker 165、Node/SQLite 34，共 921 项）；Node 浏览器全量回归 62 项、Cloudflare 本地关键浏览器回归 10 项通过。类型检查、`npm run build` 与部署构建通过；1440/390/320px 的快捷键对称布局、信息提示边界与登录区位置另经浏览器复核。
+  - 生产数据：迁移前 D1 SQL 备份保存在部署机 `backups/pre-v0.21.0-20261015.sql`（SHA256 `3BB7C8968A138C3E7FE315DEAC9937FAA81F0BD8B13C64F3483512650EC73245`）；生产迁移 `0007_permanent_notebook_deletion.sql` 已成功应用，复查无待执行迁移。备份未纳入 Git。
+  - 发布结果：功能分拆提交 `1e7cdee`（服务端接口与迁移）、`e1e7e5b`（同步及备份）、`6095421`（界面与交互）；发布提交 `59a1dc6`、标签 `v0.21.0` 已推送。Cloudflare Version ID `fba5d2fd-8131-4c21-b0c5-58238da64560`，经 `wrangler deployments list` 确认承接 100% 流量；正式站点 https://note.alover.me；GitHub Release https://github.com/xilele777/snotes/releases/tag/v0.21.0，已核对为 Latest 稳定版。
+  - 上线核验限制：正式域名首页和 `/api/health` 返回 302 至 Cloudflare Access 登录页；workers.dev 的健康检查请求连接超时。当前未登录会话未完成线上页面、健康响应及静态资源比对；部署成功、绑定、迁移及 100% 流量已通过 Wrangler 核实。
