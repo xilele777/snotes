@@ -123,6 +123,34 @@ it('retains a confirmed purge state after the local note row is removed', async 
   expect((await db.knowledgeBaseTocs.get(book.id))?.nodes[0].note_id).toBe(note.id)
 })
 
+it('removes a stale purged reference when deleting it again and queues the directory change', async () => {
+  const note = await createNote('# 已删除')
+  const book = await createKnowledgeBase(meta)
+  const node = await addKnowledgeBaseNode(book.id, { kind: 'note', note_id: note.id, title: null })
+  await trashNote(note.id)
+  await purgeNote(note.id)
+  await db.knowledgeBaseOutbox.clear()
+  await trashKnowledgeBaseNode(book.id, node, (await db.knowledgeBaseTocs.get(book.id))!.nodes)
+  expect((await db.knowledgeBaseTocs.get(book.id))?.nodes).toEqual([])
+  expect(await db.knowledgeBaseOutbox.get(`${book.id}:toc`)).toMatchObject({ payload: [] })
+})
+
+it('cleans purged references in a deleted chapter while retaining recoverable note placement', async () => {
+  const live = await createNote('# 可恢复')
+  const purged = await createNote('# 已删除')
+  const book = await createKnowledgeBase(meta)
+  const chapter = await addKnowledgeBaseNode(book.id, { kind: 'folder', title: '章节', note_id: null })
+  const liveNode = await addKnowledgeBaseNode(book.id, { kind: 'note', note_id: live.id, title: null }, chapter)
+  await addKnowledgeBaseNode(book.id, { kind: 'note', note_id: purged.id, title: null }, chapter)
+  await trashNote(purged.id)
+  await purgeNote(purged.id)
+  await trashKnowledgeBaseNode(book.id, chapter, (await db.knowledgeBaseTocs.get(book.id))!.nodes)
+  expect((await db.notes.get(live.id))?.invalid).toBe(1)
+  expect((await db.knowledgeBaseTocs.get(book.id))?.nodes.map(n => n.id)).toEqual([chapter, liveNode])
+  await recoverNote(live.id)
+  expect((await db.knowledgeBaseTocs.get(book.id))?.nodes.find(n => n.id === liveNode)?.parent_id).toBe(chapter)
+})
+
 it('permanent remote deletion overrides pending work, clears histories and resists a delayed old pull', async () => {
   const note = await createNote('# 即将删除')
   const book = await createKnowledgeBase(meta)

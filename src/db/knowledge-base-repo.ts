@@ -102,15 +102,21 @@ export async function trashKnowledgeBaseNode(id: string, nodeId: string, expecte
     if (JSON.stringify(toc.nodes) !== JSON.stringify(expectedNodes)) throw new Error('目录已更新，请重新确认删除')
     const removed = descendantsOf(toc.nodes, nodeId)
     const ids = [...new Set(toc.nodes.flatMap(n => removed.has(n.id) && n.note_id ? [n.note_id] : []))]
+    const purged = new Set<string>()
     // Do not claim success if referenced content has not arrived on this device.
     for (const noteId of ids) {
       const note = await db.notes.get(noteId)
-      if (!note && (await db.knowledgeBaseNoteStates.get(noteId))?.state !== 'purged') throw new Error('笔记尚未同步到本机，请同步后重试')
+      if (note?.invalid === 2 || !note && (await db.knowledgeBaseNoteStates.get(noteId))?.state === 'purged') {
+        purged.add(noteId)
+        continue
+      }
+      if (!note) throw new Error('笔记尚未同步到本机，请同步后重试')
       if (note?.invalid === 0) await trashNote(noteId)
     }
-    // Empty chapters have no recoverable content. Other subtrees remain as
-    // placeholders; recovering a note restores its original notebook/chapter.
-    if (!ids.length) await removeKnowledgeBaseNode(id, nodeId)
+    // Only recoverable content needs its original placement. Explicitly deleting
+    // stale purged references must actually remove them and sync the TOC change.
+    if (ids.length === purged.size) await removeKnowledgeBaseNode(id, nodeId)
+    else if (purged.size) await changeToc(id, nodes => nodes.filter(n => !removed.has(n.id) || !n.note_id || !purged.has(n.note_id)))
   })
   emitLocalWrite()
 }

@@ -113,15 +113,24 @@ async function run(action: () => Promise<unknown>) {
   error.value = ''
   try { await action() } catch (e) { error.value = e instanceof Error ? e.message : String(e) } finally { busy.value = false }
 }
-const rows = computed(() => {
-  // Keep soft-deleted TOC nodes for recovery, but remove them from browsing.
-  const trashed = new Set(nodes.value.filter(n => n.note_id && noteMap.value.get(n.note_id)?.invalid === 1).map(n => n.id))
+const visibleNodes = computed(() => {
+  // Keep recovery placement in storage. Confirmed deletions must not turn back
+  // into visible placeholders when purging removes the local note row.
+  const states = new Map(libraries.noteStates.map(n => [n.id, n.state]))
+  const hidden = new Set(nodes.value.filter(n => {
+    if (!n.note_id) return false
+    const note = noteMap.value.get(n.note_id)
+    return note ? note.invalid !== 0 : ['trash', 'purged'].includes(states.get(n.note_id) ?? '')
+  }).map(n => n.id))
   for (const folder of nodes.value.filter(n => n.kind === 'folder')) {
     const subtree = descendantsOf(nodes.value, folder.id)
     const refs = nodes.value.filter(n => subtree.has(n.id) && n.kind === 'note')
-    if (refs.length && refs.every(n => trashed.has(n.id))) for (const id of subtree) trashed.add(id)
+    if (refs.length && refs.every(n => hidden.has(n.id))) for (const id of subtree) hidden.add(id)
   }
-  const flat = flattenToc(nodes.value).filter(({ node }) => !trashed.has(node.id))
+  return nodes.value.filter(n => !hidden.has(n.id))
+})
+const rows = computed(() => {
+  const flat = flattenToc(visibleNodes.value)
   const terms = splitTerms(ui.query)
   if (terms.length) return flat.filter(({ node }) => {
     const note = node.note_id ? noteMap.value.get(node.note_id) : undefined
@@ -329,10 +338,10 @@ watch(() => ui.restorePosition, async position => { if (position?.view === 'know
           <button class="kb-node-link" :aria-current="ui.activeTocNodeId === node.id ? 'true' : undefined" :aria-expanded="node.kind === 'folder' ? !ui.collapsedKnowledgeBaseNodes.includes(node.id) : undefined" :title="label(node)" @click="open(node)"><AppIcon :name="node.kind === 'folder' ? 'chevron' : 'note'" :size="15" :class="{ expanded: node.kind === 'folder' && !ui.collapsedKnowledgeBaseNodes.includes(node.id) }" /><span>{{ label(node) }}<small v-if="ui.query && path.length">{{ path.join(' / ') }}</small></span></button>
           <button class="kb-node-menu icon-button" :aria-label="`目录操作：${label(node)}`" aria-haspopup="menu" :aria-expanded="menu?.node?.id === node.id" @click="openMenu($event, 'node', node)"><AppIcon name="more" :size="16" /></button>
         </div>
-        <div class="kb-root-drop" @dragover.prevent="dropTarget = 'root'" @drop="drop($event, null)">{{ dragging ? '放到这里移至根目录末尾' : nodes.length ? '' : '目录还是空的，加入笔记或新建章节。' }}</div>
+        <div class="kb-root-drop" @dragover.prevent="dropTarget = 'root'" @drop="drop($event, null)">{{ dragging ? '放到这里移至根目录末尾' : visibleNodes.length ? '' : '目录还是空的，加入笔记或新建章节。' }}</div>
         <p v-if="ui.query && !rows.length" class="kb-empty">没有匹配的目录或已下载笔记</p>
       </div>
-      <footer class="kb-directory-footer">{{ nodes.filter(n => n.kind === 'note').length }} 篇笔记</footer>
+      <footer class="kb-directory-footer">{{ count(book.id) }} 篇笔记</footer>
     </template>
     <p v-else class="kb-empty">笔记本不可用。<button @click="showKnowledgeBases()">返回笔记本列表</button></p>
     <KnowledgeBaseForm :error="error" :busy="busy" :open="formOpen" :initial="editing ? metadata(editing) : undefined" @save="saveForm" @close="formOpen = false" />
