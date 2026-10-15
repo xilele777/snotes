@@ -20,5 +20,5 @@ const book = computed(() => libraries.books.find(b => b.id === ui.activeKnowledg
 
 <style scoped>
 .knowledge-base-home { overflow: auto; }
-.kb-home-content { width: 100%; max-width: 760px; margin: 0 auto; padding: clamp(40px, 7vw, 88px) clamp(24px, 4vw, 56px); overflow-wrap: anywhere; }
+.kb-home-content { width: 100%; max-width: 784px; margin: 0 auto; padding: clamp(36px, 6vw, 80px) clamp(24px, 3.5vw, 48px); overflow-wrap: anywhere; }
 </style>
