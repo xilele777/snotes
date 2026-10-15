@@ -160,7 +160,7 @@ describe('导出', () => {
 describe('导入', () => {
   it('完整备份往返保留跨库同一笔记引用，重复导入不翻倍', async () => {
     const note = await createNote('# 同一篇笔记')
-    const meta = { name: '知识库', description: '简介', icon: '📚', ord: 0, invalid: 0 as const }
+    const meta = { name: '笔记本', description: '简介', icon: '📚', ord: 0, invalid: 0 as const }
     const a = await createKnowledgeBase(meta)
     const b = await createKnowledgeBase({ ...meta, name: '第二个库' })
     await addKnowledgeBaseNode(a.id, { kind: 'note', note_id: note.id, title: null })
@@ -182,7 +182,7 @@ describe('导入', () => {
     expect((await db.knowledgeBaseTocs.toArray()).flatMap(t => t.nodes.map(n => n.note_id))).toEqual([note.id, note.id])
   })
 
-  it('同 ID 的知识库不同内容不会被导入覆盖，替代内容保存为快照', async () => {
+  it('同 ID 的笔记本不同内容不会被导入覆盖，替代内容保存为快照', async () => {
     const meta = { name: '原名称', description: '', icon: '', ord: 0, invalid: 0 as const }
     const book = await createKnowledgeBase(meta)
     const bundle = await buildBackup()
@@ -193,7 +193,7 @@ describe('导入', () => {
     expect((await db.knowledgeBaseTocHistory.toArray())[0].meta?.name).toBe('原名称')
   })
 
-  it('格式 2 保留回收站引用与已移除知识库；旧版导出明确不含知识库', async () => {
+  it('格式 2 保留回收站引用与已移除笔记本；旧版导出明确不含笔记本', async () => {
     const note = await createNote('# 回收站笔记')
     const book = await createKnowledgeBase({ name: '资料', description: '', icon: '', ord: 0, invalid: 0 })
     await addKnowledgeBaseNode(book.id, { kind: 'note', note_id: note.id, title: null })

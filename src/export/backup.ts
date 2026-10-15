@@ -207,6 +207,10 @@ export async function buildBackup(report: ProgressReporter = () => {}, format: 1
     notes: await db.notes.toArray(), books: await db.knowledgeBases.toArray(), tocs: await db.knowledgeBaseTocs.toArray(),
     states: await db.knowledgeBaseNoteStates.toArray(), history: await db.knowledgeBaseTocHistory.toArray(),
   }))
+  snapshot.books = snapshot.books.filter(b => !b.deleted)
+  const bookIds = new Set(snapshot.books.map(b => b.id))
+  snapshot.tocs = snapshot.tocs.filter(t => bookIds.has(t.knowledge_base_id))
+  snapshot.history = snapshot.history.filter(h => bookIds.has(h.book_id))
   const referenced = new Set([...snapshot.tocs, ...snapshot.history].flatMap(t => t.nodes.flatMap(n => n.note_id ? [n.note_id] : [])))
   const all = snapshot.notes.filter(n => n.invalid === 0 || format === 2 && n.invalid === 1 && referenced.has(n.id))
   const groups = (await db.groups.toArray()).filter((g) => g.invalid === 0).sort((a, b) => a.ord - b.ord)
@@ -344,17 +348,17 @@ function readIndex(entries: Record<string, Uint8Array>, strFromU8: (d: Uint8Arra
     if (!validId(note.id) || typeof note.file !== 'string' || !entries[note.file] || note.invalid !== undefined && note.invalid !== 0 && note.invalid !== 1) throw new Error('备份笔记索引或正文不完整')
   }
   if (parsed.format === 2) {
-    if (!Array.isArray(parsed.knowledge_bases) || !Array.isArray(parsed.knowledge_base_histories)) throw new Error('知识库备份不完整')
+    if (!Array.isArray(parsed.knowledge_bases) || !Array.isArray(parsed.knowledge_base_histories)) throw new Error('笔记本备份不完整')
     const ids = new Set<string>()
     for (const book of parsed.knowledge_bases) {
-      if (!validId(book.id) || ids.has(book.id) || !Number.isSafeInteger(book.create_time) || book.create_time < 0) throw new Error('知识库备份信息无效')
+      if (!validId(book.id) || ids.has(book.id) || !Number.isSafeInteger(book.create_time) || book.create_time < 0) throw new Error('笔记本备份信息无效')
       ids.add(book.id)
       validateKnowledgeBaseMeta(book)
       validateToc(book.nodes)
       if (!book.note_states || typeof book.note_states !== 'object' || Object.entries(book.note_states).some(([id, state]) => !validId(id) || !['available', 'trash', 'purged'].includes(state))) throw new Error('笔记引用状态无效')
     }
     for (const h of parsed.knowledge_base_histories) {
-      if (!validId(h.id) || !ids.has(h.book_id) || !Number.isSafeInteger(h.time) || !['confirmed', 'conflict', 'discarded'].includes(h.source)) throw new Error('知识库快照无效')
+      if (!validId(h.id) || !ids.has(h.book_id) || !Number.isSafeInteger(h.time) || !['confirmed', 'conflict', 'discarded'].includes(h.source)) throw new Error('笔记本快照无效')
       validateToc(h.nodes)
       if (h.meta) validateKnowledgeBaseMeta(h.meta)
     }
@@ -468,6 +472,7 @@ export async function importBackup(
 
   for (const book of index?.knowledge_bases ?? []) {
     const existing = await db.knowledgeBases.get(book.id)
+    if (existing?.deleted) continue
     const toc = await db.knowledgeBaseTocs.get(book.id)
     if (!existing) {
       await createKnowledgeBase(validateKnowledgeBaseMeta(book), book.id, book.nodes, true)
@@ -487,7 +492,7 @@ export async function importBackup(
     for (const id of missing) if (!await db.notes.get(id)) result.missingReferences++
     await db.knowledgeBaseNoteStates.bulkPut(Object.entries(book.note_states).map(([id, state]) => ({ id, state })))
   }
-  for (const h of index?.knowledge_base_histories ?? []) if (!await db.knowledgeBaseTocHistory.get(h.id)) await db.knowledgeBaseTocHistory.add(h)
+  for (const h of index?.knowledge_base_histories ?? []) if (!(await db.knowledgeBases.get(h.book_id))?.deleted && !await db.knowledgeBaseTocHistory.get(h.id)) await db.knowledgeBaseTocHistory.add(h)
 
   report({ done: total, total, label: '正在刷新列表' })
   await useNotesStore().load()

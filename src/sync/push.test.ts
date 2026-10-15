@@ -18,6 +18,17 @@ beforeEach(async () => {
 })
 
 describe('pushOnce', () => {
+  it('清除永久删除拒绝的迟到创建、本地正文与历史，避免持续重试', async () => {
+    const note = await createNote('迟到的正文')
+    await db.history.add({ note_id: note.id, body: '旧正文', time: 1 })
+    apiFetch.mockRejectedValue(new ApiError(410, 'permanently_deleted'))
+    const result = await pushOnce()
+    expect(result.failedTotal).toBe(0)
+    expect(await db.outbox.count()).toBe(0)
+    expect(await db.notes.get(note.id)).toBeUndefined()
+    expect(await db.history.count()).toBe(0)
+    expect((await db.knowledgeBaseNoteStates.get(note.id))?.state).toBe('purged')
+  })
   it('消费 create 任务并调用创建端点', async () => {
     const note = await createNote('内容')
 

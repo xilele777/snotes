@@ -2,6 +2,7 @@ import { backoffDelay, isRetriableStatus } from '../../shared/backoff'
 import type { OutboxTask } from '../../shared/types'
 import { ApiError, apiFetch } from '../api/client'
 import { db } from '../db/schema'
+import { deleteHistoryIn } from '../db/history'
 
 export interface ConflictInfo {
   note_id: string
@@ -159,7 +160,16 @@ export async function pushOnce(): Promise<PushResult> {
       // 或从未建成）。任务永远没有成功可能，标记 failed 只会让「改动未推送」的
       // 红点永远消不掉；按 worker/db.ts 的既有约定直接丢弃任务，不卡死。
       // 只删这一行，不动本地笔记副本——同一轮 pull 的墓碑路径会负责清本地。
-      if (status === 404) {
+      if (status === 404 || status === 410) {
+        if (status === 410) {
+          await db.transaction('rw', [db.notes, db.outbox, db.history, db.knowledgeBaseNoteStates], async () => {
+            await db.notes.delete(task.note_id)
+            await deleteHistoryIn([task.note_id])
+            await db.outbox.where('note_id').equals(task.note_id).delete()
+            await db.knowledgeBaseNoteStates.put({ id: task.note_id, state: 'purged' })
+          })
+          continue
+        }
         if (task.id !== undefined) {
           const current = await db.outbox.get(task.id)
           if (current && current.seq === task.seq) await db.outbox.delete(task.id)

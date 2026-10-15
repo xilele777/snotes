@@ -57,14 +57,14 @@ async function push(): Promise<void> {
       emitRemoteApplied()
     } catch (error) {
       if (error instanceof ApiError && error.status === 401) throw error
-      const conflict = error instanceof ApiError && error.status === 409 ? (error.data as { current?: KnowledgeBaseRemote })?.current : undefined
+      const conflict = error instanceof ApiError && (error.status === 409 || error.status === 410) ? (error.data as { current?: KnowledgeBaseRemote })?.current : undefined
       if (conflict) { await blockKnowledgeBaseConflict(task, conflict); continue }
       await db.transaction('rw', db.knowledgeBaseOutbox, async () => {
         const current = await db.knowledgeBaseOutbox.get(task.id)
         if (!current || current.sent?.operation_id !== sent.operation_id) return
         const retry = current.retry + 1
         const message = error instanceof ApiError && error.status === 404
-          ? '服务端尚未支持知识库，请升级服务端后重试'
+          ? '服务端尚未支持笔记本，请升级服务端后重试'
           : error instanceof ApiError && error.status === 422 ? '引用的笔记尚未在服务端创建，请先同步笔记' : error instanceof Error ? error.message : String(error)
         await db.knowledgeBaseOutbox.update(task.id, { retry, next_at: Date.now() + Math.min(300_000, 1000 * 2 ** Math.min(retry, 8)), error: message })
       })
@@ -109,7 +109,7 @@ export async function syncKnowledgeBases(): Promise<{ error: string | null; fail
   let error: string | null = null
   try { await pull() } catch (e) {
     if (e instanceof ApiError && e.status === 401) throw e
-    error = e instanceof ApiError && e.status === 404 ? '服务端尚未支持知识库，请升级服务端' : e instanceof Error ? e.message : String(e)
+    error = e instanceof ApiError && e.status === 404 ? '服务端尚未支持笔记本，请升级服务端' : e instanceof Error ? e.message : String(e)
   }
   const tasks = await db.knowledgeBaseOutbox.toArray()
   return { error: error ?? tasks.find(t => t.error)?.error ?? null, failed: tasks.filter(t => t.error || t.blocked).length }

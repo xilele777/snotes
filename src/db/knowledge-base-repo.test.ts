@@ -2,8 +2,8 @@ import Dexie from 'dexie'
 import { beforeEach, expect, it } from 'vitest'
 import { db } from './schema'
 import { createNote, purgeNote, trashNote } from './repo'
-import { addKnowledgeBaseNode, createKnowledgeBase, moveKnowledgeBaseNode, removeKnowledgeBaseNode, updateKnowledgeBase } from './knowledge-base-repo'
-const meta = { name: '知识库', description: '', icon: '', ord: 0, invalid: 0 as const }
+import { addKnowledgeBaseNode, applyKnowledgeBaseRemote, createKnowledgeBase, moveKnowledgeBaseNode, removeKnowledgeBaseNode, updateKnowledgeBase } from './knowledge-base-repo'
+const meta = { name: '笔记本', description: '', icon: '', ord: 0, invalid: 0 as const }
 beforeEach(async () => { await db.delete(); await db.open() })
 
 it('upgrades an existing v2 database without changing legacy notes or groups', async () => {
@@ -62,4 +62,24 @@ it('retains a confirmed purge state after the local note row is removed', async 
   expect(await db.notes.get(note.id)).toBeUndefined()
   expect((await db.knowledgeBaseNoteStates.get(note.id))?.state).toBe('purged')
   expect((await db.knowledgeBaseTocs.get(book.id))?.nodes[0].note_id).toBe(note.id)
+})
+
+it('permanent remote deletion overrides pending work, clears histories and resists a delayed old pull', async () => {
+  const note = await createNote('# 即将删除')
+  const book = await createKnowledgeBase(meta)
+  await addKnowledgeBaseNode(book.id, { kind: 'note', note_id: note.id, title: null })
+  const old = { book, toc: (await db.knowledgeBaseTocs.get(book.id))!, note_states: {} }
+  await db.history.add({ note_id: note.id, body: '旧正文', time: 1 })
+  await db.knowledgeBaseTocHistory.add({ id: 'snapshot', book_id: book.id, time: 1, source: 'confirmed', nodes: old.toc.nodes })
+  const deletion = { book: { ...book, invalid: 1 as const, deleted: 1 as const, meta_version: 2, toc_version: 2 }, toc: { ...old.toc, nodes: [], version: 2 }, note_states: {}, deleted_note_ids: [note.id] }
+  await applyKnowledgeBaseRemote(deletion)
+  expect(await db.notes.get(note.id)).toBeUndefined()
+  expect(await db.outbox.count()).toBe(0)
+  expect(await db.history.count()).toBe(0)
+  expect(await db.knowledgeBaseOutbox.count()).toBe(0)
+  expect(await db.knowledgeBaseTocHistory.count()).toBe(0)
+  await applyKnowledgeBaseRemote(old)
+  expect((await db.knowledgeBases.get(book.id))?.deleted).toBe(1)
+  expect((await db.knowledgeBaseTocs.get(book.id))?.nodes).toEqual([])
+  await expect(updateKnowledgeBase(book.id, { invalid: 0 })).rejects.toThrow('永久删除')
 })

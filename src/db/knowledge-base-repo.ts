@@ -3,6 +3,7 @@ import type { KnowledgeBase, KnowledgeBaseAck, KnowledgeBaseMeta, KnowledgeBaseR
 import { db } from './schema'
 import type { KnowledgeBaseTask } from './knowledge-base-types'
 import { emitLocalWrite, emitRemoteApplied } from '../sync/signal'
+import { ApiError, apiFetch } from '../api/client'
 
 export const knowledgeBaseTables = () => [db.knowledgeBases, db.knowledgeBaseTocs, db.knowledgeBaseOutbox, db.knowledgeBaseTocHistory, db.knowledgeBaseNoteStates]
 export const taskId = (id: string, kind: 'meta' | 'toc') => `${id}:${kind}`
@@ -44,7 +45,7 @@ export async function createKnowledgeBase(meta: KnowledgeBaseMeta, id: string = 
 export async function updateKnowledgeBase(id: string, patch: Partial<KnowledgeBaseMeta>) {
   await db.transaction('rw', knowledgeBaseTables(), async () => {
     const book = await db.knowledgeBases.get(id)
-    if (!book) throw new Error('知识库不存在')
+    if (!book || book.deleted) throw new Error('笔记本不存在或已永久删除')
     Object.assign(book, validateKnowledgeBaseMeta({ ...metadata(book), ...patch }), { update_time: Date.now() })
     await db.knowledgeBases.put(book)
     await enqueueIn(book, 'meta', metadata(book))
@@ -56,7 +57,7 @@ export async function changeToc(id: string, change: (nodes: TocNode[]) => TocNod
   await db.transaction('rw', knowledgeBaseTables(), async () => {
     const book = await db.knowledgeBases.get(id)
     const toc = await db.knowledgeBaseTocs.get(id)
-    if (!book || !toc || book.invalid) throw new Error('知识库不可用')
+    if (!book || !toc || book.invalid) throw new Error('笔记本不可用')
     const nodes = validateToc(change(toc.nodes))
     for (const parent of new Set(nodes.map(n => n.parent_id))) childrenOf(nodes, parent).forEach((n, ord) => { n.ord = ord })
     const time = Date.now()
@@ -91,9 +92,23 @@ export async function snapshotIn(id: string, nodes: TocNode[], source: 'confirme
 }
 
 export async function applyKnowledgeBaseRemote(remote: KnowledgeBaseRemote) {
-  await db.transaction('rw', knowledgeBaseTables(), async () => {
+  await db.transaction('rw', [...knowledgeBaseTables(), db.notes, db.outbox, db.history], async () => {
     const id = remote.book.id
     const local = await db.knowledgeBases.get(id)
+    if (remote.book.deleted) {
+      const ids = remote.deleted_note_ids ?? []
+      await db.notes.bulkDelete(ids)
+      await db.history.where('note_id').anyOf(ids).delete()
+      await db.outbox.where('note_id').anyOf(ids).delete()
+      await db.knowledgeBaseNoteStates.bulkPut(ids.map(id => ({ id, state: 'purged' as const })))
+      await db.knowledgeBaseOutbox.where('book_id').equals(id).delete()
+      await db.knowledgeBaseTocHistory.where('book_id').equals(id).delete()
+      await db.knowledgeBases.put(remote.book)
+      await db.knowledgeBaseTocs.put(remote.toc)
+      return
+    }
+    // A delayed successful response must never bring a permanent tombstone back.
+    if (local?.deleted) return
     const metaTask = await db.knowledgeBaseOutbox.get(taskId(id, 'meta'))
     const tocTask = await db.knowledgeBaseOutbox.get(taskId(id, 'toc'))
     const toc = await db.knowledgeBaseTocs.get(id)
@@ -139,6 +154,7 @@ export async function acknowledgeKnowledgeBaseTask(task: KnowledgeBaseTask, resu
 }
 
 export async function blockKnowledgeBaseConflict(task: KnowledgeBaseTask, current: KnowledgeBaseRemote) {
+  if (current.book.deleted) { await applyKnowledgeBaseRemote(current); emitRemoteApplied(); return }
   await db.transaction('rw', knowledgeBaseTables(), async () => {
     const row = await db.knowledgeBaseOutbox.get(task.id)
     if (!row || row.sent?.operation_id !== task.sent?.operation_id) return
@@ -146,19 +162,44 @@ export async function blockKnowledgeBaseConflict(task: KnowledgeBaseTask, curren
     const book = await db.knowledgeBases.get(task.book_id)
     await snapshotIn(task.book_id, toc?.nodes ?? [], 'conflict', book ? metadata(book) : undefined)
     await snapshotIn(task.book_id, current.toc.nodes, 'conflict', metadata(current.book))
-    await db.knowledgeBaseOutbox.put({ ...row, blocked: true, error: '另一台设备修改了知识库，请选择要保留的内容', conflict: current })
+    await db.knowledgeBaseOutbox.put({ ...row, blocked: true, error: '另一台设备修改了笔记本，请选择要保留的内容', conflict: current })
   })
   emitRemoteApplied()
 }
 
+/** Sync first; never delete from a stale or partially uploaded directory. */
+export async function deleteKnowledgeBase(id: string, name: string) {
+  const book = await db.knowledgeBases.get(id)
+  if (!book || name !== book.name) throw new Error('请输入完整的笔记本名称')
+  if (!book.meta_version || await db.knowledgeBaseOutbox.where('book_id').equals(id).count()) {
+    throw new Error('请先完成笔记本同步并处理冲突，再重试删除')
+  }
+  try {
+    const result = await apiFetch<KnowledgeBaseRemote>(`/api/knowledge-bases/${id}/delete`, {
+      method: 'POST', body: JSON.stringify({ name, base_meta_version: book.meta_version, base_toc_version: book.toc_version }),
+    })
+    await applyKnowledgeBaseRemote(result)
+    emitRemoteApplied()
+  } catch (e) {
+    if (e instanceof ApiError && e.status === 409) throw new Error('笔记本已在其他设备更新，请同步后重新确认删除')
+    if (e instanceof ApiError && e.status === 404) throw new Error('服务端未找到删除接口或笔记本，请同步或升级服务端后重试')
+    if (e instanceof ApiError && e.status >= 500) throw new Error('删除暂未完成，请重试')
+    if (e instanceof TypeError) throw new Error('请连接网络后重试删除')
+    if (e instanceof Error && e.name === 'AbortError') throw new Error('删除请求超时，请联网后重试')
+    throw e
+  }
+}
+
 export async function resolveKnowledgeBaseConflict(id: string, kind: 'meta' | 'toc', choice: 'local' | 'remote') {
+  const conflict = (await db.knowledgeBaseOutbox.get(taskId(id, kind)))?.conflict
+  if (conflict?.book.deleted) { await applyKnowledgeBaseRemote(conflict); emitRemoteApplied(); return }
   await db.transaction('rw', knowledgeBaseTables(), async () => {
     const row = await db.knowledgeBaseOutbox.get(taskId(id, kind))
     if (!row?.conflict) return
     const remote = row.conflict
     const book = await db.knowledgeBases.get(id)
     const toc = await db.knowledgeBaseTocs.get(id)
-    if (!book || !toc) return
+    if (!book || book.deleted || !toc) return
     await snapshotIn(id, toc.nodes, 'discarded', metadata(book))
     const version = kind === 'meta' ? remote.book.meta_version : remote.toc.version
     if (choice === 'remote') {
