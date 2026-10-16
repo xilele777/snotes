@@ -335,3 +335,10 @@
   - 提交与发布：`2104450`（`chore(release): v0.22.2`）及注解标签 `v0.22.2` 已推送；中英文 README 与安装命令均更新到本次稳定版。无关的 `pelican-bike.html` 本地删除、`1.html` 和 `output/` 未纳入提交。
   - 部署结果：`npm run deploy -- --message 'Release v0.22.2'` 成功；Cloudflare Version ID `9f6693d3-3509-4390-a6ba-f3ee2bae82f4`，Deployment ID `85f20a5a-8cee-49f3-bf85-749fd65720de`；`wrangler deployments list` 确认该版本承接 100% 流量。GitHub Release https://github.com/xilele777/snotes/releases/tag/v0.22.2，已核对为 Latest 正式稳定版。
   - 线上核验范围：正式站点 https://note.alover.me 的 `/api/health` 通过 curl 检查返回 302 至 Cloudflare Access 登录页；当前环境无法完成登录后的线上页面与健康响应检查。生产部署与流量已通过 Cloudflare 核实，本地完整 Worker 浏览器回归通过。
+
+- 2026-10-16：v0.22.3 调整笔记本总览卡片的图标、标题、操作区与悬停反馈，精简笔记本首页，移除最近更新笔记和目录速览区块，统一从左侧目录进入笔记与章节。
+  - 验证：`npm run test:all` 共 974 项通过（客户端/领域 759、Worker 172、Node/SQLite 43）；Cloudflare 本地浏览器针对 `workspace.spec.ts` 与 `ux-review.spec.ts` 的 12 项用例全部通过，覆盖 1440/720/390/320px、目录打开与移出笔记本、编辑保留、删除撤销及基本信息首页。`npm run build` 和部署构建通过；无新增迁移，生产 D1 已确认没有待执行迁移。
+  - 提交与发布：`ad0e6ad`（`chore(release): v0.22.3`）及注解标签 `v0.22.3` 已推送；中英文 README 和服务器安装命令已更新到本次稳定版。GitHub Release https://github.com/xilele777/snotes/releases/tag/v0.22.3，已核对为 Latest 正式稳定版。
+  - 部署结果：`npm run deploy -- --message 'Release v0.22.3'` 成功；Cloudflare Version ID `50f7706d-155b-403b-bfd9-029a919c995c`，Deployment ID `b4d1a2b0-a6b2-4e8e-b9ce-69e42cdc5a04`，经 Wrangler 确认承接 100% 生产流量。
+  - 清理：提交删除无关演示页 `pelican-bike.html`，将旧截图、预览、临时脚本、日志和测试报告共 415 个文件（约 13.04 MiB）移入回收站。保留环境配置、数据库、备份、依赖、构建目录和本地状态目录；本次发布验证日志保留在 `tmp/`。本地前端和 Worker 已启动，页面及代理健康检查均返回 200。
+  - 线上核验范围：正式站点 https://note.alover.me 的 `/api/health` 返回 302 至 Cloudflare Access 登录页，未完成登录后的线上页面和健康响应检查；生产部署及 100% 流量已通过 Cloudflare 核实。
