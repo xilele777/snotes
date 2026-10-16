@@ -46,7 +46,7 @@ for (const width of [1440, 390, 320]) {
   })
 }
 
-test('notebook recent entry opens a note and detach preserves it as an independent note', async ({ page }) => {
+test('notebook note opens from the directory and detach preserves it as an independent note', async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 900 })
   const noteId = crypto.randomUUID()
   const bookId = crypto.randomUUID()
@@ -58,7 +58,7 @@ test('notebook recent entry opens a note and detach preserves it as an independe
   await page.reload()
   await page.getByRole('button', { name: '笔记本', exact: true }).click()
   await page.locator('.kb-card-link').filter({ hasText: '审阅验收本' }).click()
-  await page.getByRole('region', { name: '最近更新的笔记' }).getByRole('button').click()
+  await page.locator('.kb-node-link').filter({ hasText: '独立笔记验收' }).click()
   await expect(page.locator('.ProseMirror')).toContainText('正文保留')
   await page.locator('.kb-node-menu').click()
   await page.getByRole('menuitem', { name: '移出笔记本，转为独立笔记', exact: true }).click()

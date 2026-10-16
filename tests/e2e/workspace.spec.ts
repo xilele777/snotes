@@ -250,6 +250,7 @@ test('浏览章节不改变顶部创建位置，章节菜单创建子项，首�
   await expect(info.locator('dd').nth(1)).toHaveText('1 个')
   await expect(info).toContainText('创建时间')
   await expect(info).toContainText('最近更新')
+  await expect(info).not.toContainText('目录速览')
   await page.emulateMedia({ reducedMotion: 'reduce' })
   await page.getByRole('button', { name: '收起侧栏', exact: true }).click()
   expect(await page.locator('.layout').evaluate(el => getComputedStyle(el).transitionDuration)).toBe('0s')
