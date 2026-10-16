@@ -342,3 +342,10 @@
   - 部署结果：`npm run deploy -- --message 'Release v0.22.3'` 成功；Cloudflare Version ID `50f7706d-155b-403b-bfd9-029a919c995c`，Deployment ID `b4d1a2b0-a6b2-4e8e-b9ce-69e42cdc5a04`，经 Wrangler 确认承接 100% 生产流量。
   - 清理：提交删除无关演示页 `pelican-bike.html`，将旧截图、预览、临时脚本、日志和测试报告共 415 个文件（约 13.04 MiB）移入回收站。保留环境配置、数据库、备份、依赖、构建目录和本地状态目录；本次发布验证日志保留在 `tmp/`。本地前端和 Worker 已启动，页面及代理健康检查均返回 200。
   - 线上核验范围：正式站点 https://note.alover.me 的 `/api/health` 返回 302 至 Cloudflare Access 登录页，未完成登录后的线上页面和健康响应检查；生产部署及 100% 流量已通过 Cloudflare 核实。
+
+- 2026-10-17：v0.23.0 新增 Agent 接入。设置中可创建按笔记本授权的独立凭证，配置读取、新建、修改权限与有效期，查看最近成功写入并撤销凭证；远程 MCP 与 HTTP API 支持查询目录、搜索、读取、新建章节和笔记、替换及追加 Markdown。写入具备操作去重、版本冲突检查、原子归档、历史与多端同步，返回可打开的笔记链接。接入说明见 [agent-access.md](agent-access.md)。
+  - 验证：发布前 `npm run test:all` 共 1002 项通过（客户端/领域 763、Worker 184、Node/SQLite 55）；`npm run build` 与部署再次构建通过。开发阶段 Web/Node 构建与 Worker 部署预检通过，浏览器回归共 14 项通过（Node Agent 2、工作区 8，Cloudflare 本地 Agent 2、设置 2），覆盖桌面与 320px、实际 MCP 客户端写入、审计、撤销及登录后打开笔记链接。
+  - 生产数据：迁移前 SQL 备份保存在部署机 `backups/pre-v0.23.0-20261017.sql`（SHA256 `58A34112DE5F23BA311972C4D65F4FA87830D77E68831BA3AF5D7DC411167377`），未纳入 Git。生产迁移 `0009_agent_access.sql` 已成功应用；复查无待执行迁移，只读查询确认 `agent_token`、`agent_operation` 表和 `agent_operation_time` 索引已就绪。
+  - 提交与发布：`883924d`（`chore(release): v0.23.0`）及注解标签 `v0.23.0` 已推送。中英文安装指南已固定到本次稳定版；GitHub Release https://github.com/xilele777/snotes/releases/tag/v0.23.0，已核对为 Latest 正式稳定版。
+  - 部署结果：`npm run deploy -- --message 'Release v0.23.0'` 成功；Cloudflare Version ID `6297b71f-3751-476d-94b3-b8bb6daa3fc9`，Deployment ID `80b71ffd-8783-40d7-8a87-ac94dd1bde87`，经 Wrangler 确认承接 100% 生产流量。
+  - 线上核验范围：正式站点 https://note.alover.me 的首页和 `/api/health` 均返回 302 至 Cloudflare Access，未完成登录后的线上界面与健康响应核验；部署、绑定、迁移及流量状态已通过 Cloudflare 确认。外部 Agent 仍须通过 Access 网关认证；使用 Access 服务令牌时需额外配置两个 `CF-Access-Client-*` 请求头，详见接入说明。
