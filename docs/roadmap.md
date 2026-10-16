@@ -332,3 +332,6 @@
 
 - 2026-10-16：v0.22.2 根据前端审阅精简编辑器与目录工具栏，保持隐藏/分组操作中的编辑上下文，列表增加快捷整理和软删除撤销，笔记本支持移出为独立笔记、最近更新入口与精确拖拽提示；修复快速返回时最后输入未落盘的问题。同步更新中英文 README、使用与部署指南，合入目录快照入口清理并保留冲突及旧备份兼容。
   - 验证：`npm run test:all` 共 974 项通过（客户端/领域 759、Worker 172、Node/SQLite 43）；Cloudflare 本地浏览器 67 个用例分批全部通过（核心流程 41、其余流程 25、折叠分组入口 1），覆盖 1440/720/390/320px、双设备冲突、离线与删除恢复。`npm run build` 与部署前类型检查通过；7 份更新文档的 62 个本地文件链接有效。无新增迁移，已确认生产没有待执行迁移。
+  - 提交与发布：`2104450`（`chore(release): v0.22.2`）及注解标签 `v0.22.2` 已推送；中英文 README 与安装命令均更新到本次稳定版。无关的 `pelican-bike.html` 本地删除、`1.html` 和 `output/` 未纳入提交。
+  - 部署结果：`npm run deploy -- --message 'Release v0.22.2'` 成功；Cloudflare Version ID `9f6693d3-3509-4390-a6ba-f3ee2bae82f4`，Deployment ID `85f20a5a-8cee-49f3-bf85-749fd65720de`；`wrangler deployments list` 确认该版本承接 100% 流量。GitHub Release https://github.com/xilele777/snotes/releases/tag/v0.22.2，已核对为 Latest 正式稳定版。
+  - 线上核验范围：正式站点 https://note.alover.me 的 `/api/health` 通过 curl 检查返回 302 至 Cloudflare Access 登录页；当前环境无法完成登录后的线上页面与健康响应检查。生产部署与流量已通过 Cloudflare 核实，本地完整 Worker 浏览器回归通过。
