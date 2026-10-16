@@ -16,6 +16,17 @@ export function knowledgeBaseContract(api: KnowledgeBaseTestApi, environment: ()
   const get = async (id: string): Promise<KnowledgeBaseRemote> => (await api(`/api/knowledge-bases/${id}/toc`, 'GET')).json()
   const toc = (id: string, base: number, nodes: TocNode[], op = crypto.randomUUID()) => api(`/api/knowledge-bases/${id}/toc`, 'PUT', { nodes, base_toc_version: base, operation_id: op })
 
+  it('updates directories without generating history and preserves legacy history rows', async () => {
+    const { id } = await create()
+    const db = environment().DB
+    await db.prepare('INSERT INTO knowledge_base_toc_history (knowledge_base_id, version, nodes_json, update_time) VALUES (?, 0, ?, 1)').bind(id, '[]').run()
+    expect((await toc(id, 0, [folder('first')])).status).toBe(200)
+    expect((await toc(id, 1, [folder('second')])).status).toBe(200)
+    expect((await get(id)).toc).toMatchObject({ version: 2, nodes: [folder('second')] })
+    const history = await db.prepare('SELECT version, nodes_json FROM knowledge_base_toc_history WHERE knowledge_base_id = ?').bind(id).all()
+    expect(history.results).toEqual([{ version: 0, nodes_json: '[]' }])
+  })
+
   it('requires the exact name and current versions before permanently deleting notebook content', async () => {
     const { id, request } = await create()
     const noteId = crypto.randomUUID()

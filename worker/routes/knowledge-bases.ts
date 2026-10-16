@@ -205,17 +205,12 @@ knowledgeBasesRoutes.put('/api/knowledge-bases/:id/toc', async c => {
   const ownershipValues = ownershipGuard ? [JSON.stringify(newRefs), id] : []
   const now = Date.now()
   await db.batch([
-    db.prepare(`INSERT OR IGNORE INTO knowledge_base_toc_history (knowledge_base_id, version, nodes_json, update_time)
-      SELECT knowledge_base_id, version, nodes_json, update_time FROM knowledge_base_toc WHERE knowledge_base_id = ? AND version = ?
-      AND EXISTS (SELECT 1 FROM knowledge_base WHERE id = ? AND deleted = 0 AND (invalid = 0 OR meta_version = ?)) AND ${absent}`).bind(id, base, id, archivedVersion, id, op),
     db.prepare(`UPDATE knowledge_base_toc SET version = version + 1, nodes_json = ?, update_time = ?, last_operation_id = ?
       WHERE knowledge_base_id = ? AND version = ? AND EXISTS (SELECT 1 FROM knowledge_base WHERE id = ? AND deleted = 0 AND (invalid = 0 OR meta_version = ?)) AND ${absent} ${ownershipGuard}`)
       .bind(JSON.stringify(nodes), now, op, id, base, id, archivedVersion, id, op, ...ownershipValues),
     db.prepare(`UPDATE knowledge_base SET toc_version = toc_version + 1, update_time = ? WHERE id = ? AND ${tocGuard} AND ${absent}`)
       .bind(now, id, id, op, id, op),
     ...finish(db, id, op, hash, tocGuard),
-    db.prepare(`DELETE FROM knowledge_base_toc_history WHERE knowledge_base_id = ? AND version NOT IN
-      (SELECT version FROM knowledge_base_toc_history WHERE knowledge_base_id = ? ORDER BY version DESC LIMIT 50)`).bind(id, id),
   ])
   const result = await operation(db, id, op)
   if (result) return result.request_json === hash ? c.json(ack(result)) : c.json({ error: 'operation_reused' }, 400)

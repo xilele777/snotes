@@ -246,7 +246,7 @@ describe('NoteList', () => {
     expect(wrapper.find('.note-item .delete').exists()).toBe(true)
   })
 
-  it('点击展开的删除按钮先确认再移入回收站', async () => {
+  it('点击展开的删除按钮直接移入回收站', async () => {
     const store = useNotesStore()
     const note = await store.create()
 
@@ -258,9 +258,7 @@ describe('NoteList', () => {
     pointer(item.element, 'pointerup', 50)
     await wrapper.find('.note-item .delete').trigger('click')
 
-    // 未确认前数据不动
-    expect(wrapper.find('.confirm-dialog').exists()).toBe(true)
-    await wrapper.find('[data-op="confirm"]').trigger('click')
+    expect(wrapper.find('.confirm-dialog').exists()).toBe(false)
 
     await vi.waitFor(() => {
       expect((store.notes.find((n) => n.id === note.id)) == null).toBe(true)
@@ -268,7 +266,7 @@ describe('NoteList', () => {
     expect((await db.notes.get(note.id))!.invalid).toBe(1)
   })
 
-  it('删除确认弹窗可取消且不删笔记', async () => {
+  it('删除提示提供撤销，执行后恢复原笔记', async () => {
     const store = useNotesStore()
     const note = await store.create()
 
@@ -279,7 +277,9 @@ describe('NoteList', () => {
     pointer(item.element, 'pointerdown', 100)
     pointer(item.element, 'pointerup', 50)
     await wrapper.find('.note-item .delete').trigger('click')
-    await wrapper.find('[data-op="cancel"]').trigger('click')
+    await vi.waitFor(() => expect(notify).toHaveBeenCalledWith('笔记已移入回收站', expect.objectContaining({ label: '撤销' })))
+    const action = vi.mocked(notify).mock.calls.at(-1)![1]!
+    await action.run()
 
     expect(wrapper.find('.confirm-dialog').exists()).toBe(false)
     expect(store.notes.find((n) => n.id === note.id)).toBeDefined()

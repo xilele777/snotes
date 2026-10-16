@@ -24,11 +24,11 @@ import { importBackup } from '../export/backup'
 import { notify } from '../notify'
 import { trashDaysLeft, useUiStore } from '../stores/ui'
 import { useKnowledgeBasesStore } from '../stores/knowledge-bases'
-import { addKnowledgeBaseNode, createKnowledgeBase } from '../db/knowledge-base-repo'
+import { addKnowledgeBaseNode, createKnowledgeBase, changeToc } from '../db/knowledge-base-repo'
 import KnowledgeBaseForm from './KnowledgeBaseForm.vue'
 import { useMediaQuery } from './useMediaQuery'
 import { useWorkspaceScroll } from './useWorkspaceScroll'
-import { pushNav, isMobile, showKnowledgeBases, switchListView } from '../navigation'
+import { pushNav, isMobile, showKnowledgeBases } from '../navigation'
 
 const MilkdownEditor = defineAsyncComponent({
   loader: () => import('../editor/MilkdownEditor.vue'),
@@ -59,11 +59,11 @@ const addableBooks = computed(() => memberBooks.value.length ? [] : libraries.bo
 const notebookBusy = ref(false)
 const notebookForm = ref(false)
 
-/** 删除统一走已有确认与回收站流程，不摘掉恢复所需的归属。 */
+/** 加入调整归属；删除进入回收站并保留恢复所需的位置。 */
 async function toggleNotebook(bookId: string, join: boolean) {
   const id = notes.current?.id
   if (!id || notebookBusy.value) return
-  if (!join) { if (canEdit.value) { openPop.value = null; confirmAction.value = 'trash' }; return }
+  if (!join) { if (canEdit.value) { openPop.value = null; await trashCurrent() }; return }
   notebookBusy.value = true
   try {
     editorRef.value?.flush?.()
@@ -111,7 +111,7 @@ const homeOverridden = computed(() => notes.current?.home_hidden === 0 || notes.
 /** 所属分组是否默认不上首页；有默认值时才谈得上「恢复跟随分组」 */
 const groupHidesHome = computed(() => groups.groups.find(g => g.group_id === notes.current?.group_id)?.hide_from_home === 1)
 
-/** ≤720px 的顶栏放不下删除按钮，删除挪进「更多」菜单；字数、文档信息、历史版本同样只在桌面直接放顶栏 */
+/** 窄屏将字数、阅读与笔记本入口收进更多菜单。 */
 const compact = useMediaQuery('(max-width: 720px)')
 
 /**
@@ -138,21 +138,6 @@ async function toggleReading() {
 watch(() => ui.readingRequest, () => { void toggleReading() })
 
 /**
- * 「全部笔记」与「已隐藏」是按可见性筛选的：改完可见性后当前视图可能已经装不下
- * 这条笔记了，跟着切到装得下它的那个视图，免得刚操作的笔记从眼前消失。
- * target 必须在写库前算好——写库会触发 load()，而 load() 会把指不到笔记的
- * currentId 清掉，之后再读 notes.current 就是另一条笔记了。
- */
-async function alignViewWithVisibility(id: string, target: 'all' | 'hidden') {
-  if (ui.view !== 'all' && ui.view !== 'hidden') return
-  if (ui.view === target) return
-  await switchListView(target)
-  // 切视图本身不算一次「打开」，直接把选中项落回这条笔记
-  notes.currentId = id
-  if (isMobile()) ui.mobilePane = 'editor'
-}
-
-/**
  * 切换当前笔记的首页信息流可见性。分组设置只是默认值，这里是单条笔记的覆盖：
  * 隐藏后它在「全部笔记」里消失，但仍在「已隐藏」、分组和星标视图里。
  */
@@ -162,7 +147,6 @@ async function toggleHomeFeed() {
   const hide = !homeHidden.value
   await notes.setProps(note.id, { home_hidden: hide ? 1 : 0 })
   notify(hide ? '已设为不上首页，可在「已隐藏」里找到' : '这条笔记已显示在首页信息流')
-  await alignViewWithVisibility(note.id, hide ? 'hidden' : 'all')
 }
 
 /** 清掉笔记级的覆盖值，重新跟随所属分组的默认设置 */
@@ -170,10 +154,8 @@ async function resetHomeFeed() {
   const note = notes.current
   if (!note) return
   // 清掉覆盖值之后这条笔记的可见性就等于所在分组的默认值了
-  const willHide = groupHidesHome.value
   await notes.setProps(note.id, { home_hidden: null })
   notify('已恢复跟随分组设置')
-  await alignViewWithVisibility(note.id, willHide ? 'hidden' : 'all')
 }
 
 /** 颜色、分组和笔记本浮层一次只展开一个。 */
@@ -202,7 +184,8 @@ function onPopoverKeydown(event: KeyboardEvent) {
   event.preventDefault()
   event.stopPropagation()
   openPop.value = null
-  document.querySelector<HTMLButtonElement>(`[data-op="${trigger}"]`)?.focus()
+  const focusTarget = document.querySelector<HTMLButtonElement>(`[data-op="${trigger}"]`) ?? moreButton.value
+  focusTarget?.focus()
 }
 
 /** 顶栏的笔记本浮层要现取「哪几本收录了这条笔记」，所以这里也要订阅笔记本数据。 */
@@ -218,7 +201,7 @@ onUnmounted(() => {
   librarySubscription?.unsubscribe()
 })
 
-/** 顶栏「⋯」菜单（回收站里没有）：收拢复制、下载、导入、分享、打印，手机上还有文档信息、历史、字数与删除 */
+/** 顶栏更多菜单统一收纳低频文档管理与导入导出。 */
 const moreButton = ref<HTMLButtonElement | null>(null)
 const menuOpen = ref(false)
 
@@ -235,6 +218,7 @@ async function onMenuAction(action: NoteMenuAction) {
   // 先把焦点交还给 ⋯，随后打开的弹窗会记住它，关闭后焦点仍回到顶栏
   moreButton.value?.focus({ preventScroll: true })
   switch (action) {
+    case 'color': openPop.value = 'color'; return
     case 'info': showInfo.value = true; return
     case 'notebooks': if (!props.readonly) openPop.value = 'notebook'; return
     case 'history': showHistory.value = true; return
@@ -247,7 +231,7 @@ async function onMenuAction(action: NoteMenuAction) {
     case 'import': if (canEdit.value && !importing.value) markdownInput.value?.click(); return
     case 'share': await runShare(); return
     case 'print': window.print(); return
-    case 'trash': if (canEdit.value) confirmAction.value = 'trash'; return
+    case 'trash': if (canEdit.value) await trashCurrent(); return
   }
 }
 
@@ -275,6 +259,9 @@ watch(() => notes.currentId, () => {
 useWorkspaceScroll(editorBody, 'editor', () => editorReady.value)
 
 function onFormat(action: ToolbarAction) {
+  if (action === 'undo') { editorRef.value?.undo?.(); return }
+  if (action === 'redo') { editorRef.value?.redo?.(); return }
+  if (action === 'image') { imageInput.value?.click(); return }
   if (action === 'table') {
     tableDialog.value = true
     return
@@ -371,18 +358,37 @@ async function onMarkdownPicked(event: Event) {
   }
 }
 
-/** 删除动作统一定点到这个弹窗；null = 未打开 */
-const confirmAction = ref<'trash' | 'purge' | null>(null)
+async function trashCurrent() {
+  const id = notes.current?.id
+  if (!id) return
+  editorRef.value?.flush?.()
+  await notes.trashWithUndo(id)
+}
+
+async function detachNotebook() {
+  const id = notes.current?.id
+  if (!id || notebookBusy.value) return
+  notebookBusy.value = true
+  try {
+    editorRef.value?.flush?.()
+    for (const book of memberBooks.value) await changeToc(book.id, nodes => nodes.filter(node => node.note_id !== id))
+    openPop.value = null
+    await notes.load()
+    notify('已移出笔记本，可在普通笔记列表中找到')
+  } catch (error) { notify(error instanceof Error ? error.message : String(error)) }
+  finally { notebookBusy.value = false }
+}
+
+/** 永久删除仍需确认。 */
+const confirmAction = ref<'purge' | null>(null)
 
 /** 快捷键 Mod Shift D 走 store 里的计数，不依赖顶栏有没有渲染删除按钮 */
 watch(() => ui.trashRequest, () => {
-  if (canEdit.value && notes.current) confirmAction.value = 'trash'
+  if (canEdit.value && notes.current) void trashCurrent()
 })
 
 function runDelete() {
-  if (confirmAction.value === 'trash' && notes.current) {
-    notes.trash(notes.current.id)
-  } else if (confirmAction.value === 'purge' && notes.current) {
+  if (confirmAction.value === 'purge' && notes.current) {
     notes.purge(notes.current.id)
   }
   confirmAction.value = null
@@ -497,7 +503,7 @@ async function runShare() {
         </div>
       </div>
 
-      <!-- 笔记本是引用关系，可能同时属于多本，所以入口和文案都与相邻的单一分组不同 -->
+      <!-- 所属笔记本路径与管理入口。 -->
       <!-- 320px 顶栏排不下，窄屏走「⋯」菜单，和文档信息、删除同一个道理 -->
       <div v-if="!readonly && !compact" class="op-wrap">
         <button
@@ -511,7 +517,7 @@ async function runShare() {
           @click="toggle('notebook')"
         >
           <AppIcon name="book" :size="16" />
-          <span>{{ memberBooks.length ? `${memberBooks.length} 本笔记本` : '加入笔记本' }}</span>
+          <span>{{ memberBooks.length ? memberBooks[0]?.name : '加入笔记本' }}</span>
           <AppIcon name="chevron" :size="12" class="group-chevron" />
         </button>
       </div>
@@ -523,7 +529,7 @@ async function runShare() {
       <div v-if="!readonly" class="op-wrap notebook-wrap">
         <div v-if="openPop === 'notebook'" class="op-popover groups-pop notebook-pop" role="group" aria-label="加入笔记本">
           <span class="popover-heading">加入笔记本</span>
-          <p class="notebook-pop-hint">每条笔记只属于一本笔记本。删除会移入回收站，恢复后回到原位置。</p>
+          <p class="notebook-pop-hint">移出后成为独立笔记；删除会移入回收站，恢复后回到原位置。</p>
           <div v-if="memberBooks.length" class="notebook-pop-members">
             <button
               v-for="b in memberBooks"
@@ -536,10 +542,11 @@ async function runShare() {
               title="从笔记本删除这条笔记"
               @click="toggleNotebook(b.id, false)"
             >
-              <AppIcon name="check" :size="14" /><span>{{ b.name }}</span><small>删除</small>
+              <AppIcon name="check" :size="14" /><span>{{ b.name }}</span><small>移入回收站</small>
             </button>
           </div>
-          <p v-else class="notebook-pop-empty">还没加入任何笔记本</p>
+          <button v-if="memberBooks.length" class="book-opt" :disabled="notebookBusy" @click="detachNotebook"><AppIcon name="back" :size="14" /><span>移出笔记本，转为独立笔记</span></button>
+          <p v-if="!memberBooks.length" class="notebook-pop-empty">还没加入任何笔记本</p>
           <div v-if="!memberBooks.length" class="notebook-pop-addable">
             <span v-if="addableBooks.length" class="popover-heading notebook-pop-heading">加入其它笔记本</span>
             <button
@@ -572,23 +579,6 @@ async function runShare() {
 
       <!-- 常用操作直接可见，分组入口同时显示当前位置；低频操作收进最右的「⋯」。 -->
       <div v-else-if="notes.current" class="op-bar">
-        <template v-if="!ui.readingMode">
-          <button class="op-btn" data-op="undo" title="撤销 (Ctrl+Z)" aria-label="撤销" @click="editorRef?.undo?.()">
-            <AppIcon name="undo" />
-          </button>
-
-          <button class="op-btn" data-op="redo" title="重做 (Ctrl+Y)" aria-label="重做" @click="editorRef?.redo?.()">
-            <AppIcon name="redo" />
-          </button>
-
-          <button class="op-btn" data-op="image" title="插入图片" aria-label="插入图片" @click="imageInput?.click()">
-            <AppIcon name="image" />
-          </button>
-          <input ref="imageInput" class="image-input" type="file" accept="image/*" multiple tabindex="-1" aria-hidden="true" @change="onImagePicked" />
-
-          <span class="op-separator" aria-hidden="true"></span>
-        </template>
-
         <button
           class="op-btn"
           data-op="top"
@@ -614,23 +604,6 @@ async function runShare() {
         </button>
 
         <div class="op-wrap">
-          <button
-            class="op-btn"
-            data-op="color"
-            :class="{ open: openPop === 'color' }"
-            title="标记颜色"
-            aria-label="标记颜色"
-            aria-haspopup="true"
-            :aria-expanded="openPop === 'color'"
-            @click="toggle('color')"
-          >
-            <span
-              class="op-dot"
-              :class="{ 'is-none': !notes.current.skin_color }"
-              :style="notes.current.skin_color ? { backgroundColor: notes.current.skin_color } : undefined"
-            />
-          </button>
-
           <div v-if="openPop === 'color'" class="op-popover colors" role="group" aria-label="选择标记颜色">
             <button
               v-for="color in SKIN_COLORS"
@@ -649,8 +622,6 @@ async function runShare() {
         <template v-if="!compact">
           <span class="op-separator" aria-hidden="true"></span>
           <button class="op-btn op-words" data-op="wordcount" title="字数统计" aria-label="字数统计" @click="showWordCount = true">{{ wordCount.words }} 字</button>
-          <button class="op-btn" data-op="info" title="文档信息" aria-label="文档信息" @click="showInfo = true"><AppIcon name="info" /></button>
-          <button class="op-btn" data-op="history" title="历史版本" aria-label="历史版本" @click="showHistory = true"><AppIcon name="clock" /></button>
         </template>
 
         <span class="op-separator" aria-hidden="true"></span>
@@ -673,18 +644,6 @@ async function runShare() {
           <AppIcon :name="ui.readingMode ? 'edit' : 'book'" />
         </button>
 
-        <!-- 320px 顶栏没有余量：手机上删除让位给 ⋯，从菜单或列表左滑删除 -->
-        <button
-          v-if="!compact && !ui.readingMode"
-          class="op-btn danger"
-          data-op="trash"
-          title="删除"
-          aria-label="删除"
-          @click="confirmAction = 'trash'"
-        >
-          <AppIcon name="trash" />
-        </button>
-
         <button ref="moreButton" class="op-btn" data-op="more" :class="{ open: menuOpen }" title="更多操作" aria-label="更多操作" aria-haspopup="menu" :aria-expanded="menuOpen" @click="toggleMenu">
           <AppIcon name="more" />
         </button>
@@ -693,6 +652,7 @@ async function runShare() {
 
     <!-- 编辑工具栏独立一行：顶栏在 320px 已经排满，塞不下十几个格式按钮 -->
     <FormatToolbar v-if="canEdit && notes.current" :state="formatState" @action="onFormat" />
+    <input v-if="canEdit" ref="imageInput" class="image-input" type="file" accept="image/*" multiple tabindex="-1" aria-hidden="true" @change="onImagePicked" />
 
     <!-- 阅读模式提示条：占位不高但足够显眼，点一下或按 Esc 就退出 -->
     <div v-if="!readonly && ui.readingMode && notes.current" class="reading-banner" role="status">
@@ -727,8 +687,8 @@ async function runShare() {
       :open="menuOpen"
       :anchor="moreButton"
       :can-share="canShare"
-      :show-delete="compact"
-      :show-doc-items="compact"
+      :show-delete="canEdit"
+      :show-doc-items="true"
       :show-notebooks="compact"
       :notebook-count="memberBooks.length"
       :importing="importing"
@@ -742,12 +702,12 @@ async function runShare() {
 
     <input v-if="canEdit" ref="markdownInput" class="image-input" data-input="markdown" type="file" accept=".md,.markdown,text/markdown" tabindex="-1" aria-hidden="true" @change="onMarkdownPicked" />
 
-    <!-- 删除统一先确认：移入回收站可恢复，彻底删除不可恢复 -->
+    <!-- 永久删除不可恢复，保留确认弹窗。 -->
     <ConfirmDialog
       :open="confirmAction !== null"
-      :title="confirmAction === 'purge' ? '彻底删除这条笔记？' : '删除这条笔记？'"
-      :message="confirmAction === 'purge' ? '彻底删除后无法恢复，请谨慎操作。' : '笔记会移入回收站，可随时恢复。'"
-      :confirm-text="confirmAction === 'purge' ? '彻底删除' : '删除'"
+      title="彻底删除这条笔记？"
+      message="彻底删除后无法恢复，请谨慎操作。"
+      confirm-text="彻底删除"
       @confirm="runDelete"
       @cancel="confirmAction = null"
     />

@@ -205,7 +205,12 @@ kbd { font-family: inherit; font-size: 10px; line-height: 20px; white-space: now
 .note-item .delete { position: absolute; display: flex; align-items: center; justify-content: center; bottom: 7px; right: 8px; width: 26px; height: 26px; padding: 0; border: 0; border-radius: 4px; color: var(--text-secondary); background: var(--bg-surface); opacity: 0; pointer-events: none; }
 .note-item .delete-label { display: none; }
 .note-item:hover .delete, .note-item:focus-within .delete { opacity: 1; pointer-events: auto; }
-.note-item:hover .note-group-label, .note-item:focus-within .note-group-label { padding-right: 22px; }
+@media (min-width: 721px) { .note-item .delete { display: none; } }
+.note-more { position: absolute; right: 8px; top: 7px; display: grid; place-items: center; width: 28px; height: 28px; padding: 0; border: 0; border-radius: 5px; color: var(--text-secondary); background: var(--bg-surface); opacity: 0; }
+.note-item:hover .note-more, .note-item:focus-within .note-more, .note-more[aria-expanded="true"] { opacity: 1; }
+.note-more:hover { color: var(--accent); background: var(--accent-soft); }
+.note-title { padding-right: 24px; }
+@media (pointer: coarse) { .note-more { opacity: 1; } }
 .note-item .delete:hover { color: var(--danger); background: var(--danger-bg); }
 
 /* Editor */
@@ -270,7 +275,7 @@ kbd { font-family: inherit; font-size: 10px; line-height: 20px; white-space: now
 .editor-body .ProseMirror { flex: 1; min-height: calc(100vh - var(--header-height) - var(--format-bar-height) - 36px - 92px); min-height: calc(100dvh - var(--header-height) - var(--format-bar-height) - 36px - 92px); outline: none; padding: 0; white-space: pre-wrap; }
 .editor-body .ProseMirror:focus { outline: none; }
 .editor-body .ProseMirror[contenteditable='false'] { cursor: default; }
-.editor-body .ProseMirror[contenteditable='true'] > p:only-child:has(> br.ProseMirror-trailingBreak:only-child)::before { content: "开始记录…"; float: left; height: 0; color: var(--text-disabled); pointer-events: none; }
+.editor-body .ProseMirror[contenteditable='true'] > p:only-child:has(> br.ProseMirror-trailingBreak:only-child)::before { content: "首行写标题，接着记录正文…"; float: left; height: 0; color: var(--text-disabled); pointer-events: none; }
 .editor-body .milkdown :is(h1, h2, h3, h4) { color: var(--text-primary); font-weight: 600; line-height: 1.5; letter-spacing: -.3px; }
 .editor-body .milkdown h1 { font-size: 1.733em; margin: 0 0 18px; }
 .editor-body .milkdown h2 { font-size: 1.267em; margin: 28px 0 10px; }
@@ -474,11 +479,10 @@ textarea.dialog-input { height: auto; min-height: 112px; padding: 10px 12px; lin
 
 /* 设置中心的分页列与独立滚动内容区 */
 .settings-body { display: flex; flex: 1; min-height: 0; }
-.settings-tabs { display: flex; flex-direction: column; gap: 2px; width: 160px; flex: none; padding: 12px 10px; border-right: 1px solid var(--border-light); }
+.settings-tabs { display: flex; flex: none; }
 .settings-tab { position: relative; display: flex; align-items: center; gap: 9px; min-height: 36px; padding: 0 10px; border: 0; border-radius: 6px; background: transparent; color: var(--text-secondary); font-size: 13px; text-align: left; white-space: nowrap; }
 .settings-tab .app-icon { flex: none; }
 .settings-tab:hover { background: var(--bg-hover); color: var(--text-primary); }
-.settings-tab[aria-selected='true'] { background: var(--selected-bg); color: var(--selected-text); font-weight: 500; }
 .settings-tab.has-update::after { content: ""; width: 6px; height: 6px; margin-left: auto; border-radius: 50%; background: var(--accent); }
 .settings-pane { flex: 1; min-width: 0; overflow-y: auto; overscroll-behavior: contain; padding: 24px; }
 .settings-section-title { margin: 0 0 12px; font-size: 13px; font-weight: 600; color: var(--text-primary); }
@@ -504,7 +508,8 @@ textarea.dialog-input { height: auto; min-height: 112px; padding: 10px 12px; lin
 
 /* 顶部 Toast：手机浏览器工具栏和键盘都压在屏幕底边，提示放顶部才不会被挡 */
 .toast-host { position: fixed; top: calc(12px + env(safe-area-inset-top)); left: 0; right: 0; z-index: 500; display: flex; justify-content: center; pointer-events: none; }
-.toast { max-width: min(360px, calc(100vw - 32px)); padding: 9px 14px; border-radius: 8px; background: var(--text-primary); color: var(--bg-surface); font-size: 13px; line-height: 1.5; box-shadow: 0 6px 24px rgb(0 0 0 / 18%); overflow-wrap: anywhere; }
+.toast button { flex: none; padding: 4px 6px; border: 0; background: transparent; color: inherit; text-decoration: underline; font: inherit; font-weight: 600; }
+.toast { pointer-events: auto; display: flex; align-items: center; gap: 16px; max-width: min(360px, calc(100vw - 32px)); padding: 9px 14px; border-radius: 8px; background: var(--text-primary); color: var(--bg-surface); font-size: 13px; line-height: 1.5; box-shadow: 0 6px 24px rgb(0 0 0 / 18%); overflow-wrap: anywhere; }
 
 @media (max-width: 1240px) and (min-width: 1021px) {
   .layout { --sidebar-width: 224px; --list-width: 296px; }
@@ -578,8 +583,6 @@ textarea.dialog-input { height: auto; min-height: 112px; padding: 10px 12px; lin
   .dialog { padding: 24px; }
   /* 分页改为头部下方的横向标签条，四个标签在 320px 内放得下 */
   .settings-body { flex-direction: column; }
-  .settings-tabs { flex-direction: row; width: auto; padding: 8px 10px; border-right: 0; border-bottom: 1px solid var(--border-light); }
-  .settings-tab { flex: 1; min-width: 0; justify-content: center; min-height: 40px; padding: 0 2px; gap: 4px; font-size: 12px; }
   .settings-pane { padding: 18px 16px 24px; }
   .dialog-input { font-size: 16px; }
   .empty-state { padding-bottom: 100px; }

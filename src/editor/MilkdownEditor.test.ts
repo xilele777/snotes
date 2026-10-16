@@ -310,6 +310,13 @@ describe('MilkdownEditor 上传的文档生命周期', () => {
   const file = () => new File(['image'], 'photo.png', { type: 'image/png' })
   function markdown() { return editor.action(ctx => ctx.get(serializerCtx)(ctx.get(editorViewCtx).state.doc)) }
 
+  it('flushes ordinary typing before the Markdown listener runs when switching notes', async () => {
+    editor.action(replaceAll('last keystrokes without an upload'))
+    await wrapper!.setProps({ noteId: 'B', modelValue: 'B text' })
+    expect(wrapper!.emitted('flush')![0]).toEqual(['A', expect.stringContaining('last keystrokes without an upload'), 'original'])
+    expect(wrapper!.emitted('update:modelValue')).toBeUndefined()
+  })
+
   it('two-file upload cannot insert its second placeholder into B, even after switching back to A', async () => {
     const upload = deferred<Awaited<ReturnType<typeof uploadImage>>>()
     vi.mocked(uploadImage).mockReturnValue(upload.promise)

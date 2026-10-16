@@ -289,12 +289,10 @@ test('删除后进回收站，能看详情，可恢复', async ({ page }) => {
 
   await expect(page.locator('.note-item').first()).toContainText('待删除')
 
-  // 删除按钮在桌面端默认是滑出视口的；hover 笔记条目后露出，再点。
   await page.locator('.note-item').first().hover()
-  await page.locator('.note-item').first().getByRole('button', { name: '删除', exact: true }).click()
-  // 删除统一定点到一个确认弹窗（Bug 4），确认后才真正删除
-  await expect(page.locator('.confirm-dialog')).toBeVisible()
-  await page.locator('[data-op="confirm"]').click()
+  await page.locator('.note-item').first().locator('.note-more').click()
+  await page.getByRole('menuitem', { name: '移入回收站', exact: true }).click()
+  await expect(page.locator('.toast')).toContainText('撤销')
 
   // 删掉唯一一条笔记后列表换成空态，<ul class="note-list"> 整个不渲染了，
   // 所以这里断言空态而不是「note-list 里没有它」——后者会因元素不存在而报错。
@@ -1005,8 +1003,8 @@ test('清单可勾选、撤销并保存，回收站中保持只读', async ({ pa
 
   await page.reload()
   await expect(checkbox).toBeChecked()
-  await page.locator('[data-op="trash"]').click()
-  await page.locator('[data-op="confirm"]').click()
+  await page.locator('[data-op="more"]').click()
+  await page.locator('[data-action="trash"]').click()
   await page.locator('.group-sidebar [data-view="trash"]').click()
   await expect(checkbox).toBeChecked()
   await expect(checkbox).toBeDisabled()
@@ -1225,9 +1223,8 @@ test.describe('手机操作', () => {
     await expect(row).toHaveClass(/swiped/)
     await expect(page.locator('.list-pane')).toBeVisible()
     await row.getByRole('button', { name: '删除', exact: true }).click()
-    await expect(page.locator('.confirm-dialog')).toBeVisible()
-    await page.keyboard.press('Escape')
     await expect(page.locator('.confirm-dialog')).toHaveCount(0)
+    await page.locator('.toast').getByRole('button', { name: '撤销', exact: true }).click()
     await expect(row).toBeVisible()
   })
 })

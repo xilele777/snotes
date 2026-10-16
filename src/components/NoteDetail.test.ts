@@ -7,7 +7,7 @@ import MilkdownEditor from '../editor/MilkdownEditor.vue'
 import { useGroupsStore } from '../stores/groups'
 import { useNotesStore } from '../stores/notes'
 import { useUiStore } from '../stores/ui'
-import { dismissNotice, notice } from '../notify'
+import { dismissNotice, notice, runNoticeAction } from '../notify'
 import NoteDetail from './NoteDetail.vue'
 
 // Milkdown 起真实 ProseMirror，单测里换成空壳
@@ -31,6 +31,11 @@ const op = (wrapper: ReturnType<typeof mount>, name: string) => wrapper.find(`[d
 /** 「⋯」菜单 Teleport 到 body，条目按 data-action 取 */
 const menu = () => document.querySelector<HTMLElement>('[role="menu"][aria-label="更多操作"]')
 const menuAction = (name: string) => document.querySelector<HTMLButtonElement>(`[role="menu"][aria-label="更多操作"] [data-action="${name}"]`)
+async function chooseMore(wrapper: ReturnType<typeof mount>, action: string) {
+  await openMore(wrapper)
+  menuAction(action)!.click()
+  await wrapper.vm.$nextTick()
+}
 async function openMore(wrapper: ReturnType<typeof mount>) {
   await op(wrapper, 'more').trigger('click')
   await wrapper.vm.$nextTick()
@@ -66,7 +71,7 @@ describe('NoteDetail 顶栏操作条', () => {
     wrapper.unmount()
   })
 
-  it('五个动作全部摊在顶栏上，不用先点开菜单', async () => {
+  it('顶栏保留高频动作，管理操作收进菜单', async () => {
     const notes = useNotesStore()
     const note = await notes.create()
     notes.currentId = note.id
@@ -74,7 +79,7 @@ describe('NoteDetail 顶栏操作条', () => {
     const wrapper = mount(NoteDetail, { attachTo: document.body })
     await wrapper.vm.$nextTick()
 
-    for (const name of ['top', 'star', 'color', 'group', 'trash', 'more']) {
+    for (const name of ['top', 'star', 'group', 'more']) {
       expect(op(wrapper, name).exists()).toBe(true)
     }
     wrapper.unmount()
@@ -124,7 +129,7 @@ describe('NoteDetail 顶栏操作条', () => {
     await wrapper.vm.$nextTick()
 
     expect(wrapper.find('.op-popover.colors').exists()).toBe(false)
-    await op(wrapper, 'color').trigger('click')
+    await chooseMore(wrapper, 'color')
     expect(wrapper.find('.op-popover.colors').exists()).toBe(true)
 
     // 第一个是「清除颜色」，第二个是暖黄色。
@@ -181,20 +186,16 @@ describe('NoteDetail 顶栏操作条', () => {
     wrapper.unmount()
   })
 
-  it('删除按钮先弹确认，确认后才把笔记移入回收站', async () => {
+  it('菜单删除直接移入回收站并提供撤销', async () => {
     const notes = useNotesStore()
     const note = await notes.create()
     notes.currentId = note.id
 
     const wrapper = mount(NoteDetail, { attachTo: document.body })
     await wrapper.vm.$nextTick()
-    await op(wrapper, 'trash').trigger('click')
+    await chooseMore(wrapper, 'trash')
 
-    // 未确认前不动任何数据
-    expect(wrapper.find('.confirm-dialog').exists()).toBe(true)
-    expect(notes.notes.find((n) => n.id === note.id)).toBeDefined()
-
-    await wrapper.find('[data-op="confirm"]').trigger('click')
+    expect(wrapper.find('.confirm-dialog').exists()).toBe(false)
 
     await vi.waitFor(() => {
       expect(notes.notes.find((n) => n.id === note.id) == null).toBe(true)
@@ -203,22 +204,23 @@ describe('NoteDetail 顶栏操作条', () => {
     wrapper.unmount()
   })
 
-  it('删除弹窗点取消不删任何东西', async () => {
+  it('删除后撤销恢复原笔记', async () => {
     const notes = useNotesStore()
     const note = await notes.create()
     notes.currentId = note.id
 
     const wrapper = mount(NoteDetail, { attachTo: document.body })
     await wrapper.vm.$nextTick()
-    await op(wrapper, 'trash').trigger('click')
-    await wrapper.find('[data-op="cancel"]').trigger('click')
+    await chooseMore(wrapper, 'trash')
+    await vi.waitFor(async () => expect((await db.notes.get(note.id))!.invalid).toBe(1))
+    await runNoticeAction()
 
     expect(wrapper.find('.confirm-dialog').exists()).toBe(false)
     expect(notes.notes.find((n) => n.id === note.id)).toBeDefined()
     wrapper.unmount()
   })
 
-  it('撤销/重做按钮渲染在编辑态顶栏，点击只是空转不报错', async () => {
+  it('撤销/重做按钮渲染在格式工具栏，点击只是空转不报错', async () => {
     const notes = useNotesStore()
     const note = await notes.create()
     notes.currentId = note.id
@@ -235,7 +237,7 @@ describe('NoteDetail 顶栏操作条', () => {
     wrapper.unmount()
   })
 
-  it('编辑态顶栏有插入图片按钮，点击打开图片文件选择器', async () => {
+  it('格式工具栏有插入图片按钮，点击打开图片文件选择器', async () => {
     const notes = useNotesStore()
     const note = await notes.create()
     notes.currentId = note.id
@@ -286,7 +288,7 @@ describe('NoteDetail 顶栏操作条', () => {
 
     const wrapper = mount(NoteDetail, { attachTo: document.body })
     await wrapper.vm.$nextTick()
-    await op(wrapper, 'color').trigger('click')
+    await chooseMore(wrapper, 'color')
     expect(wrapper.find('.op-popover.colors').exists()).toBe(true)
 
     document.body.dispatchEvent(new MouseEvent('click', { bubbles: true }))
@@ -296,7 +298,7 @@ describe('NoteDetail 顶栏操作条', () => {
     wrapper.unmount()
   })
 
-  it('没有底栏；桌面顶栏直接显示字数、文档信息、历史版本按钮', async () => {
+  it('桌面顶栏显示字数，文档信息和历史收进菜单', async () => {
     const notes = useNotesStore()
     const note = await notes.create()
     await notes.saveBody(note.id, '今天天气不错 hello')
@@ -307,8 +309,8 @@ describe('NoteDetail 顶栏操作条', () => {
 
     expect(wrapper.find('.editor-footer').exists()).toBe(false)
     expect(op(wrapper, 'wordcount').text()).toContain('7 字')
-    expect(op(wrapper, 'info').exists()).toBe(true)
-    expect(op(wrapper, 'history').exists()).toBe(true)
+    expect(op(wrapper, 'info').exists()).toBe(false)
+    expect(op(wrapper, 'history').exists()).toBe(false)
     for (const name of ['share', 'help']) expect(op(wrapper, name).exists()).toBe(false)
 
     await op(wrapper, 'wordcount').trigger('click')
@@ -317,7 +319,7 @@ describe('NoteDetail 顶栏操作条', () => {
     wrapper.unmount()
   })
 
-  it('桌面「⋯」菜单列首页信息流开关、复制、下载、导入、打印；文档信息、历史、字数与删除都不在菜单里，首项获得焦点', async () => {
+  it('桌面「⋯」菜单列首页信息流开关、复制、下载、导入、打印；文档信息、历史、字数与删除统一进入菜单，首项获得焦点', async () => {
     const notes = useNotesStore()
     const note = await notes.create()
     notes.currentId = note.id
@@ -331,10 +333,10 @@ describe('NoteDetail 顶栏操作条', () => {
     expect(op(wrapper, 'more').attributes('aria-expanded')).toBe('true')
     for (const name of ['home-feed', 'copy', 'download', 'import', 'print']) expect(menuAction(name)).not.toBeNull()
     expect(menuAction('import')!.previousElementSibling).toBe(menuAction('download'))
-    for (const name of ['info', 'history', 'wordcount', 'trash']) expect(menuAction(name)).toBeNull()
+    for (const name of ['color', 'info', 'history', 'wordcount', 'trash']) expect(menuAction(name)).not.toBeNull()
     // jsdom 没有 navigator.share，不给分享入口
     expect(menuAction('share')).toBeNull()
-    expect(document.activeElement).toBe(menuAction('home-feed'))
+    expect(document.activeElement).toBe(menuAction('color'))
 
     // Esc 关闭并把焦点还给 ⋯
     window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }))
@@ -344,7 +346,7 @@ describe('NoteDetail 顶栏操作条', () => {
     wrapper.unmount()
   })
 
-  it('≤720px：顶栏没有删除、字数、信息、历史按钮，都进「⋯」菜单；删除先弹确认', async () => {
+  it('≤720px：顶栏没有删除、字数、信息、历史按钮，都进「⋯」菜单；删除直接进入回收站', async () => {
     const restore = mockCompact()
     try {
       const notes = useNotesStore()
@@ -361,9 +363,7 @@ describe('NoteDetail 顶栏操作条', () => {
       await wrapper.vm.$nextTick()
 
       expect(menu()).toBeNull()
-      expect(wrapper.find('.confirm-dialog').exists()).toBe(true)
-      expect(notes.notes.find((n) => n.id === note.id)).toBeDefined()
-      await wrapper.find('[data-op="confirm"]').trigger('click')
+      expect(wrapper.find('.confirm-dialog').exists()).toBe(false)
       await vi.waitFor(() => expect(notes.notes.find((n) => n.id === note.id) == null).toBe(true))
       wrapper.unmount()
     } finally {
@@ -378,7 +378,7 @@ describe('NoteDetail 顶栏操作条', () => {
 
     const wrapper = mount(NoteDetail, { attachTo: document.body })
     await wrapper.vm.$nextTick()
-    await op(wrapper, 'info').trigger('click')
+    await chooseMore(wrapper, 'info')
     await wrapper.vm.$nextTick()
 
     const dialog = document.querySelector('.info-dialog')
@@ -486,7 +486,7 @@ describe('NoteDetail 顶栏操作条', () => {
     wrapper.unmount()
   })
 
-  it('快捷键请求（ui.trashRequest 自增）打开删除确认，只读态不响应', async () => {
+  it('快捷键请求（ui.trashRequest 自增）直接软删除，只读态不响应', async () => {
     const notes = useNotesStore()
     const ui = useUiStore()
     const note = await notes.create()
@@ -496,8 +496,9 @@ describe('NoteDetail 顶栏操作条', () => {
     await wrapper.vm.$nextTick()
     ui.trashRequest += 1
     await wrapper.vm.$nextTick()
-    expect(wrapper.find('.confirm-dialog').exists()).toBe(true)
-    expect(wrapper.find('.dialog-title').text()).toBe('删除这条笔记？')
+    await vi.waitFor(async () => expect((await db.notes.get(note.id))!.invalid).toBe(1))
+    expect(wrapper.find('.confirm-dialog').exists()).toBe(false)
+    await runNoticeAction()
     wrapper.unmount()
 
     const readonly = mount(NoteDetail, { props: { readonly: true }, attachTo: document.body })
@@ -793,7 +794,7 @@ describe('NoteDetail 回收站只读态', () => {
     wrapper.unmount()
   })
 
-  it('彻底删除先弹确认，确认后物理删除笔记并清空当前选中', async () => {
+  it('彻底删除直接进入回收站，确认后物理删除笔记并清空当前选中', async () => {
     const { notes, note, wrapper } = await mountTrashed()
 
     await op(wrapper, 'purge').trigger('click')
@@ -926,7 +927,7 @@ describe('NoteDetail 阅读模式', () => {
 })
 
 describe('NoteDetail 首页信息流开关', () => {
-  it('菜单项把笔记设为不上首页，并跟着切到「已隐藏」视图', async () => {
+  it('设为不上首页时保留原视图、选中笔记和正文', async () => {
     const notes = useNotesStore()
     const ui = useUiStore()
     const note = await notes.create()
@@ -939,17 +940,18 @@ describe('NoteDetail 首页信息流开关', () => {
 
     expect(menuAction('home-feed')!.textContent).toContain('不在首页信息流显示')
     menuAction('home-feed')!.click()
-    // switchListView 里还有一次 load()，等整条链走完
+    // 等属性写入与列表刷新完成。
     await vi.waitFor(async () => {
       expect((await db.notes.get(note.id))!.home_hidden).toBe(1)
-      expect(ui.view).toBe('hidden')
+      expect(ui.view).toBe('all')
+      expect(notes.current?.body).toBe('归档内容')
     })
-    // 首页视图按可见性筛选，改完必须停在能看到它的那个视图里
+    // 列表筛选照常生效，当前编辑内容继续保留。
     expect(notes.currentId).toBe(note.id)
     wrapper.unmount()
   })
 
-  it('再点一次放回首页，视图切回全部笔记', async () => {
+  it('恢复首页显示时仍停留在原隐藏视图', async () => {
     const notes = useNotesStore()
     const ui = useUiStore()
     const note = await notes.create()
@@ -966,7 +968,7 @@ describe('NoteDetail 首页信息流开关', () => {
     menuAction('home-feed')!.click()
     await vi.waitFor(async () => {
       expect((await db.notes.get(note.id))!.home_hidden).toBe(0)
-      expect(ui.view).toBe('all')
+      expect(ui.view).toBe('hidden')
     })
     wrapper.unmount()
   })
@@ -1005,7 +1007,7 @@ describe('顶栏的历史版本', () => {
 
     const wrapper = mount(NoteDetail, { attachTo: document.body })
     await wrapper.vm.$nextTick()
-    await op(wrapper, 'history').trigger('click')
+    await chooseMore(wrapper, 'history')
     await flushPromises()
 
     expect(document.querySelector('[role="dialog"][aria-label="历史版本"]')).not.toBeNull()
@@ -1054,7 +1056,7 @@ describe('顶栏的加入笔记本', () => {
     wrapper.unmount()
   })
 
-  it('点可加入项后写入目录，入口改显示数量且该项变成已加入', async () => {
+  it('点可加入项后写入目录，入口显示笔记本名称且该项变成已加入', async () => {
     const notes = useNotesStore()
     const note = await notes.create()
     notes.currentId = note.id
@@ -1067,7 +1069,7 @@ describe('顶栏的加入笔记本', () => {
     ;(document.querySelector('.notebook-pop-addable .book-opt.addable') as HTMLButtonElement).click()
 
     await vi.waitFor(async () => expect(await memberCount(note.id)).toBe(1))
-    await vi.waitFor(() => expect(op(wrapper, 'notebook').text()).toContain('1 本笔记本'))
+    await vi.waitFor(() => expect(op(wrapper, 'notebook').text()).toContain('产品研究'))
     await vi.waitFor(async () => {
       const toc = await db.knowledgeBaseTocs.get(book.id)
       expect(toc!.nodes.filter(n => n.note_id === note.id)).toHaveLength(1)
@@ -1083,7 +1085,7 @@ describe('顶栏的加入笔记本', () => {
     wrapper.unmount()
   })
 
-  it('所属笔记本不再提供重复加入，删除需确认且保留恢复位置', async () => {
+  it('所属笔记本不再提供重复加入，删除进回收站且保留恢复位置', async () => {
     const notes = useNotesStore()
     const note = await notes.create()
     notes.currentId = note.id
@@ -1091,7 +1093,7 @@ describe('顶栏的加入笔记本', () => {
     await addKnowledgeBaseNode(book.id, { kind: 'note', note_id: note.id, title: null })
 
     const wrapper = mount(NoteDetail, { attachTo: document.body })
-    await vi.waitFor(() => expect(op(wrapper, 'notebook').text()).toContain('1 本笔记本'))
+    await vi.waitFor(() => expect(op(wrapper, 'notebook').text()).toContain('产品研究'))
 
     await op(wrapper, 'notebook').trigger('click')
     await flushPromises()
@@ -1101,9 +1103,7 @@ describe('顶栏的加入笔记本', () => {
 
     await flushPromises()
     expect(document.querySelector('.notebook-pop-addable')).toBeNull()
-    expect((await db.notes.get(note.id))!.invalid).toBe(0)
-    expect(document.querySelector('[role="alertdialog"]')).not.toBeNull()
-    ;(document.querySelector('[role="alertdialog"] [data-op="confirm"]') as HTMLButtonElement).click()
+    expect(document.querySelector('[role="alertdialog"]')).toBeNull()
     await vi.waitFor(async () => expect((await db.notes.get(note.id))!.invalid).toBe(1))
     expect((await db.knowledgeBaseTocs.get(book.id))!.nodes).toHaveLength(1)
     expect(await db.outbox.where('kind').equals('trash').count()).toBe(1)

@@ -3,7 +3,6 @@ import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import { childrenOf, descendantsOf, flattenToc } from '../../shared/knowledge-base'
 import type { KnowledgeBase, TocNode } from '../../shared/knowledge-base'
 import type { LocalNote } from '../../shared/types'
-import type { KnowledgeBaseHistory } from '../db/knowledge-base-types'
 import { addKnowledgeBaseNode, changeToc, createKnowledgeBase, deleteKnowledgeBase, metadata, moveKnowledgeBaseNode, trashKnowledgeBaseNode, resolveKnowledgeBaseConflict, updateKnowledgeBase } from '../db/knowledge-base-repo'
 import { db } from '../db/schema'
 import { notebookOwnedNoteIds } from '../db/repo'
@@ -41,9 +40,7 @@ const tree = ref<HTMLElement | null>(null)
 const formOpen = ref(false)
 const editing = ref<KnowledgeBase | undefined>()
 const chapterTitle = ref('')
-const dialog = ref<'chapter' | 'add' | 'move' | 'conflict' | 'history' | null>(null)
-const historyBookId = ref<string | null>(null)
-const historyRows = computed(() => libraries.histories.filter(h => h.book_id === historyBookId.value).sort((a, b) => b.time - a.time))
+const dialog = ref<'chapter' | 'add' | 'move' | 'conflict' | null>(null)
 const panel = ref<HTMLElement | null>(null)
 const moving = ref<TocNode | null>(null)
 const moveParent = ref('')
@@ -57,13 +54,14 @@ const deletionError = ref('')
 const deletionBusy = ref(false)
 const dragging = ref<string | null>(null)
 const dropTarget = ref<string | null>(null)
+const dropZone = ref<'before' | 'after' | 'inside'>('inside')
 const menu = ref<{ kind: 'book' | 'node' | 'create' | 'tree'; anchor: HTMLElement; book?: KnowledgeBase; node?: TocNode } | null>(null)
 function openMenu(event: MouseEvent, kind: 'book' | 'node' | 'create' | 'tree', item?: KnowledgeBase | TocNode) {
   const anchor = event.currentTarget as HTMLElement
   if (menu.value?.anchor === anchor) { menu.value = null; return }
   menu.value = { kind, anchor, book: kind === 'book' ? item as KnowledgeBase : undefined, node: kind === 'node' ? item as TocNode : undefined }
 }
-async function menuAction(action: 'edit' | 'remove-book' | 'pin' | 'history' | 'new-note' | 'add' | 'chapter' | 'expand' | 'collapse' | 'rename' | 'up' | 'down' | 'move' | 'remove-node') {
+async function menuAction(action: 'edit' | 'remove-book' | 'pin' | 'new-note' | 'add' | 'chapter' | 'expand' | 'collapse' | 'rename' | 'up' | 'down' | 'move' | 'detach' | 'remove-node') {
   const current = menu.value
   menu.value = null
   await nextTick()
@@ -80,13 +78,20 @@ async function menuAction(action: 'edit' | 'remove-book' | 'pin' | 'history' | '
     if (action === 'edit') { editing.value = current.book; formOpen.value = true }
     if (action === 'remove-book') removeBook(current.book)
     if (action === 'pin') togglePinnedKnowledgeBase(current.book.id)
-    if (action === 'history') history(current.book.id)
   }
   if (current?.node) {
     if (action === 'rename') chapter(current.node)
     if (action === 'up') return reorder(current.node, -1)
     if (action === 'down') return reorder(current.node, 1)
     if (action === 'move') move(current.node)
+    if (action === 'detach' && current.node.note_id) {
+      const noteId = current.node.note_id
+      return run(async () => {
+        for (const toc of libraries.tocs.filter(t => t.nodes.some(n => n.note_id === noteId))) await changeToc(toc.knowledge_base_id, nodes => nodes.filter(n => n.note_id !== noteId))
+        await notes.load()
+        notify('已移出笔记本，可在普通笔记列表中找到')
+      })
+    }
     if (action === 'remove-node') removeNode(current.node)
   }
 }
@@ -212,6 +217,7 @@ async function saveNotes() {
  */
 function removeNode(node: TocNode) {
   if (!book.value) return
+  if (node.kind === 'note' && node.note_id) { void notes.trashWithUndo(node.note_id); return }
   const id = book.value.id
   const expectedNodes: TocNode[] = JSON.parse(JSON.stringify(nodes.value))
   const removed = descendantsOf(expectedNodes, node.id)
@@ -273,26 +279,32 @@ async function reorder(node: TocNode, delta: number) {
   await run(() => moveKnowledgeBaseNode(book.value!.id, node.id, node.parent_id, index))
 }
 function dragStart(event: DragEvent, node: TocNode) { dragging.value = node.id; event.dataTransfer?.setData('text/plain', node.id); if (event.dataTransfer) event.dataTransfer.effectAllowed = 'move' }
+function dragOver(event: DragEvent, node: TocNode) {
+  event.preventDefault()
+  const rect = (event.currentTarget as HTMLElement).getBoundingClientRect()
+  const ratio = (event.clientY - rect.top) / rect.height
+  dropTarget.value = node.id
+  dropZone.value = ratio < .25 ? 'before' : ratio > .75 ? 'after' : node.kind === 'folder' ? 'inside' : ratio < .5 ? 'before' : 'after'
+  if (event.dataTransfer) event.dataTransfer.dropEffect = 'move'
+}
+function dragLeave(event: DragEvent) {
+  if (!(event.currentTarget as HTMLElement).contains(event.relatedTarget as Node | null)) dropTarget.value = null
+}
 async function drop(event: DragEvent, target: TocNode | null) {
   event.preventDefault()
   const id = dragging.value
+  const zone = dropZone.value
   dragging.value = dropTarget.value = null
-  if (!id || !book.value) return
-  const parent = target?.kind === 'folder' ? target.id : target?.parent_id ?? null
-  const position = target?.kind === 'note' ? childrenOf(nodes.value, parent).filter(n => n.id !== id).findIndex(n => n.id === target.id) : childrenOf(nodes.value, parent).length
+  if (!id || !book.value || id === target?.id) return
+  const inside = target?.kind === 'folder' && zone === 'inside'
+  const parent = inside ? target.id : target?.parent_id ?? null
+  if (parent && descendantsOf(nodes.value, id).has(parent)) return
+  const siblings = childrenOf(nodes.value, parent).filter(n => n.id !== id)
+  const position = !target || inside ? siblings.length : siblings.findIndex(n => n.id === target.id) + (zone === 'after' ? 1 : 0)
   await run(() => moveKnowledgeBaseNode(book.value!.id, id, parent, position))
 }
 async function resolve(id: string, kind: 'meta' | 'toc', choice: 'local' | 'remote') {
   await run(async () => { await resolveKnowledgeBaseConflict(id, kind, choice); await notes.load(); dialog.value = null; void syncNow() })
-}
-function history(id: string) { historyBookId.value = id; dialog.value = 'history' }
-function restoreSnapshot(h: KnowledgeBaseHistory) {
-  dialog.value = null
-  confirm.value = { title: '重新应用这份快照？', message: '目录及快照中的名称、简介、图标将重新应用并同步。笔记正文和回收站状态不会改变；已有缺失引用保留为占位。', run: async () => {
-    await changeToc(h.book_id, () => h.nodes, true)
-    if (h.meta) await updateKnowledgeBase(h.book_id, { name: h.meta.name, description: h.meta.description, icon: h.meta.icon })
-    await notes.load()
-  } }
 }
 let subscription: ReturnType<typeof libraries.subscribe> | undefined
 onMounted(() => { subscription = libraries.subscribe(); void notes.load() })
@@ -307,7 +319,7 @@ watch(() => ui.restorePosition, async position => { if (position?.view === 'know
     <header class="kb-header">
       <button class="icon-button drawer-btn" aria-label="打开侧栏" @click="openDrawer"><AppIcon name="menu" /></button>
       <button v-if="book" class="icon-button" aria-label="返回笔记本列表" @click="showKnowledgeBases()"><AppIcon name="back" /></button>
-      <h2 tabindex="-1" :title="book?.name">{{ book ? book.name : '笔记本' }}</h2>
+      <h2 tabindex="-1" :title="book?.name"><button v-if="book" class="kb-title-home" title="笔记本首页" @click="home">{{ book.name }}</button><template v-else>笔记本</template></h2>
       <button v-if="book && !book.invalid" class="icon-button" aria-label="笔记本操作" title="笔记本操作" aria-haspopup="menu" :aria-expanded="menu?.kind === 'book'" @click="openMenu($event, 'book', book)"><AppIcon name="more" :size="19" /></button>
       <button v-else-if="!book" class="dialog-btn ok kb-create" aria-label="新建笔记本" @click="create"><AppIcon name="plus" :size="15" />新建</button>
     </header>
@@ -329,12 +341,11 @@ watch(() => ui.restorePosition, async position => { if (position?.view === 'know
     </template>
     <template v-else-if="!book.invalid">
       <details class="kb-mobile-overview"><summary>笔记本信息<AppIcon name="chevron" :size="13" /></summary><KnowledgeBaseInfo :book="book" compact /></details>
-      <div class="kb-toolbar"><button :class="{ active: !notes.currentId && !ui.activeTocNodeId }" @click="home"><AppIcon name="book" :size="15" />笔记本首页</button><button aria-label="目录选项" title="展开或收起目录" aria-haspopup="menu" :aria-expanded="menu?.kind === 'tree'" @click="openMenu($event, 'tree')"><AppIcon name="sort" :size="15" /></button></div>
+      <div class="kb-toolbar"><button class="kb-primary-create" :disabled="busy" @click="run(() => notes.create())"><AppIcon name="plus" :size="14" />新建笔记</button><button title="更多新建方式" aria-label="更多新建方式" aria-haspopup="menu" :aria-expanded="menu?.kind === 'create'" @click="openMenu($event, 'create')"><AppIcon name="chevron" :size="12" class="expanded" /></button><button aria-label="目录选项" title="展开或收起目录" aria-haspopup="menu" :aria-expanded="menu?.kind === 'tree'" @click="openMenu($event, 'tree')"><AppIcon name="sort" :size="15" /></button></div>
       <label class="kb-search"><AppIcon name="search" :size="16" /><input v-model="ui.query" placeholder="搜索本笔记本中的笔记" aria-label="搜索本笔记本中的笔记" /><button v-if="ui.query" class="icon-button" aria-label="清除笔记本搜索" @click="ui.query = ''"><AppIcon name="close" :size="14" /></button></label>
       <p v-if="ui.query" class="kb-search-hint">搜索标题与已下载正文 · {{ rows.length }} 个结果</p>
-      <div class="kb-create-actions"><button class="kb-primary-create" :disabled="busy" @click="run(() => notes.create())"><AppIcon name="plus" :size="14" />新建笔记</button><button aria-haspopup="menu" :aria-expanded="menu?.kind === 'create'" @click="openMenu($event, 'create')">添加内容<AppIcon name="chevron" :size="12" class="expanded" /></button></div>
       <div ref="tree" class="knowledge-base-tree" aria-label="笔记本目录" @keydown="onTreeKeydown">
-        <div v-for="{ node, depth, path } in rows" :key="node.id" class="kb-tree-row" :class="{ selected: ui.activeTocNodeId === node.id, 'drop-target': dropTarget === node.id }" :style="{ paddingLeft: `${Math.min(depth, 5) * 14 + 8}px` }" :data-node-id="node.id" draggable="true" @dragstart="dragStart($event, node)" @dragend="dragging = dropTarget = null" @dragover.prevent="dropTarget = node.id" @dragleave="dropTarget = null" @drop.stop="drop($event, node)">
+        <div v-for="{ node, depth, path } in rows" :key="node.id" class="kb-tree-row" :class="{ selected: ui.activeTocNodeId === node.id, 'drop-inside': dropTarget === node.id && dropZone === 'inside', 'drop-before': dropTarget === node.id && dropZone === 'before', 'drop-after': dropTarget === node.id && dropZone === 'after' }" :style="{ paddingLeft: `${Math.min(depth, 5) * 14 + 8}px` }" :data-node-id="node.id" draggable="true" @dragstart="dragStart($event, node)" @dragend="dragging = dropTarget = null" @dragover="dragOver($event, node)" @dragleave="dragLeave" @drop.stop="drop($event, node)">
           <button class="kb-node-link" :aria-current="ui.activeTocNodeId === node.id ? 'true' : undefined" :aria-expanded="node.kind === 'folder' ? !ui.collapsedKnowledgeBaseNodes.includes(node.id) : undefined" :title="label(node)" @click="open(node)"><AppIcon :name="node.kind === 'folder' ? 'chevron' : 'note'" :size="15" :class="{ expanded: node.kind === 'folder' && !ui.collapsedKnowledgeBaseNodes.includes(node.id) }" /><span>{{ label(node) }}<small v-if="ui.query && path.length">{{ path.join(' / ') }}</small></span></button>
           <button class="kb-node-menu icon-button" :aria-label="`目录操作：${label(node)}`" aria-haspopup="menu" :aria-expanded="menu?.node?.id === node.id" @click="openMenu($event, 'node', node)"><AppIcon name="more" :size="16" /></button>
         </div>
@@ -349,7 +360,6 @@ watch(() => ui.restorePosition, async position => { if (position?.view === 'know
       <template v-if="menu?.kind === 'book'">
         <button class="menu-item" role="menuitem" @click="menuAction('edit')"><AppIcon name="edit" :size="15" />编辑笔记本</button>
         <button class="menu-item" role="menuitemcheckbox" :aria-checked="preferences.pinnedKnowledgeBaseIds.includes(menu.book!.id)" @click="menuAction('pin')"><AppIcon name="pin" :size="15" />{{ preferences.pinnedKnowledgeBaseIds.includes(menu.book!.id) ? '取消固定' : '固定到前面' }}</button>
-        <button class="menu-item" role="menuitem" @click="menuAction('history')"><AppIcon name="clock" :size="15" />目录快照</button>
         <span class="menu-separator" aria-hidden="true"></span>
         <button class="menu-item danger" role="menuitem" @click="menuAction('remove-book')"><AppIcon name="trash" :size="15" />删除笔记本</button>
       </template>
@@ -372,13 +382,14 @@ watch(() => ui.restorePosition, async position => { if (position?.view === 'know
         <button class="menu-item" role="menuitem" :disabled="menuNodeIndex <= 0" @click="menuAction('up')">上移</button>
         <button class="menu-item" role="menuitem" :disabled="menuNodeIndex < 0 || menuNodeIndex >= menuSiblings.length - 1" @click="menuAction('down')">下移</button>
         <button class="menu-item" role="menuitem" @click="menuAction('move')">移动到…</button>
+        <button v-if="menu.node.kind === 'note'" class="menu-item" role="menuitem" @click="menuAction('detach')">移出笔记本，转为独立笔记</button>
         <span class="menu-separator" aria-hidden="true"></span>
         <button class="menu-item danger" role="menuitem" @click="menuAction('remove-node')">删除</button>
       </template>
     </ActionMenu>
     <DeleteNotebookDialog :open="!!deleting" :name="deleting?.name ?? ''" :count="deleting?.nodes.filter(n => n.kind === 'note').length ?? 0" :busy="deletionBusy" :error="deletionError" @confirm="confirmDelete" @cancel="deleting = null" />
     <Teleport to="body">
-      <ConfirmDialog :open="!!confirm" :title="confirm?.title ?? ''" :message="confirm?.message" :confirm-text="confirm?.title.includes('快照') ? '重新应用' : '删除'" @confirm="confirmAction" @cancel="confirm = null" />
+      <ConfirmDialog :open="!!confirm" :title="confirm?.title ?? ''" :message="confirm?.message" confirm-text="删除" @confirm="confirmAction" @cancel="confirm = null" />
       <Transition name="dialog">
         <div v-if="dialog" class="dialog-mask" @click.self="dialog = null">
           <div ref="panel" class="dialog kb-workspace-dialog" role="dialog" aria-modal="true" :aria-label="dialog === 'chapter' ? '章节名称' : dialog === 'add' ? '加入已有笔记' : dialog === 'move' ? '移动目录' : '解决笔记本冲突'">
@@ -396,7 +407,6 @@ watch(() => ui.restorePosition, async position => { if (position?.view === 'know
               <div class="dialog-footer"><button class="dialog-btn cancel" @click="dialog = null">取消</button><button class="dialog-btn ok" :disabled="!chosen.length || busy" @click="saveNotes">加入 {{ chosen.length }} 篇</button></div>
             </template>
             <template v-else-if="dialog === 'move'"><h3 class="dialog-title">移动「{{ moving ? label(moving) : '' }}」</h3><label>目标章节<select v-model="moveParent" class="dialog-input" aria-label="目标章节"><option value="">根目录</option><option v-for="{ node, path } in folders" :key="node.id" :value="node.id">{{ [...path, node.title].join(' / ') }}</option></select></label><p>移动后放在目标章节的末尾。</p><div class="dialog-footer"><button class="dialog-btn cancel" @click="dialog = null">取消</button><button class="dialog-btn ok" @click="saveMove">移动</button></div></template>
-            <template v-else-if="dialog === 'history'"><h3 class="dialog-title">本机保留的目录快照</h3><p>这些快照保存在本机，完整备份会包含它们。恢复快照不会恢复或删除笔记正文。</p><p v-if="!historyRows.length">暂无快照</p><details v-for="h in historyRows" :key="h.id" class="kb-conflict"><summary>{{ new Date(h.time).toLocaleString() }} · {{ h.source === 'conflict' ? '冲突 / 导入保留' : h.source === 'discarded' ? '选择前保留' : '已确认目录' }} · {{ h.nodes.length }} 个节点</summary><p v-if="h.meta">{{ h.meta.name }} · {{ h.meta.description }}</p><ol><li v-for="{ node, depth } in flattenToc(h.nodes)" :key="node.id" :style="{ marginLeft: `${depth * 12}px` }">{{ label(node) }}</li></ol><button class="dialog-btn ok" :disabled="libraries.books.find(b => b.id === h.book_id)?.invalid === 1 || libraries.tasks.some(t => t.book_id === h.book_id && t.blocked)" @click="restoreSnapshot(h)">重新应用快照</button></details><div class="dialog-footer"><button class="dialog-btn cancel" @click="dialog = null">关闭</button></div></template>
             <template v-else><h3 class="dialog-title">解决笔记本冲突</h3><p>请选择要保留的版本。两份内容均已保存为本机快照。</p><article v-for="conflict in conflicts" :key="conflict.id" class="kb-conflict"><h4>{{ libraries.books.find(b => b.id === conflict.book_id)?.name }} · {{ conflict.kind === 'toc' ? '目录' : '笔记本信息与移除状态' }}</h4><div class="kb-conflict-versions"><div><b>本机修改</b><p v-if="conflict.kind === 'meta'">{{ libraries.books.find(b => b.id === conflict.book_id)?.name }}<br />{{ libraries.books.find(b => b.id === conflict.book_id)?.description }}<br />{{ libraries.books.find(b => b.id === conflict.book_id)?.invalid ? '已移除' : '正常使用' }}</p><ol v-else><li v-for="{ node, depth } in flattenToc(libraries.tocs.find(t => t.knowledge_base_id === conflict.book_id)?.nodes ?? [])" :key="node.id" :style="{ marginLeft: `${depth * 12}px` }">{{ label(node) }}</li></ol><button class="dialog-btn ok" @click="resolve(conflict.book_id, conflict.kind, 'local')">保留本机修改</button></div><div><b>另一台设备</b><p v-if="conflict.kind === 'meta'">{{ conflict.conflict?.book.name }}<br />{{ conflict.conflict?.book.description }}<br />{{ conflict.conflict?.book.invalid ? '已移除' : '正常使用' }}</p><ol v-else><li v-for="{ node, depth } in flattenToc(conflict.conflict?.toc.nodes ?? [])" :key="node.id" :style="{ marginLeft: `${depth * 12}px` }">{{ label(node) }}</li></ol><p v-if="conflict.conflict?.book.invalid">笔记本已移除；保留本机目录会恢复笔记本。</p><button class="dialog-btn cancel" @click="resolve(conflict.book_id, conflict.kind, 'remote')">接受另一台设备</button></div></div></article><div class="dialog-footer"><button class="dialog-btn cancel" @click="dialog = null">稍后处理</button></div></template>
             <p v-if="error" class="kb-error" role="alert">{{ error }}</p>
           </div>

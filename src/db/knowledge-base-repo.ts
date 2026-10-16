@@ -125,14 +125,9 @@ export async function moveKnowledgeBaseNode(id: string, nodeId: string, parent: 
   await changeToc(id, nodes => moveTocNode(nodes, nodeId, parent, position))
 }
 
-/** Called inside a transaction; unresolved conflict snapshots are never pruned. */
-export async function snapshotIn(id: string, nodes: TocNode[], source: 'confirmed' | 'conflict' | 'discarded', meta?: KnowledgeBaseMeta) {
+/** Internal recovery copies for conflicts/imports; ordinary edits keep no history. */
+export async function snapshotIn(id: string, nodes: TocNode[], source: 'conflict' | 'discarded', meta?: KnowledgeBaseMeta) {
   await db.knowledgeBaseTocHistory.add({ id: crypto.randomUUID(), book_id: id, time: Date.now(), nodes, source, ...(meta ? { meta } : {}) })
-  if (source === 'confirmed') {
-    const rows = (await db.knowledgeBaseTocHistory.where('book_id').equals(id).toArray())
-      .filter(r => r.source === 'confirmed').sort((a, b) => b.time - a.time || b.id.localeCompare(a.id))
-    await db.knowledgeBaseTocHistory.bulkDelete(rows.slice(50).map(r => r.id))
-  }
 }
 
 export async function applyKnowledgeBaseRemote(remote: KnowledgeBaseRemote) {
@@ -165,7 +160,6 @@ export async function applyKnowledgeBaseRemote(remote: KnowledgeBaseRemote) {
       })
     }
     if (!tocTask && (!toc || remote.toc.version >= toc.version)) {
-      if (toc && remote.toc.version > toc.version) await snapshotIn(id, toc.nodes, 'confirmed')
       await db.knowledgeBaseTocs.put(remote.toc)
       await db.knowledgeBases.update(id, { toc_version: remote.toc.version })
     }
@@ -185,7 +179,6 @@ export async function acknowledgeKnowledgeBaseTask(task: KnowledgeBaseTask, resu
     await db.knowledgeBases.update(book.id, { [versionField]: version })
     if (task.kind === 'toc') {
       await db.knowledgeBaseTocs.update(book.id, { version })
-      await snapshotIn(book.id, sent.payload as TocNode[], 'confirmed')
     }
     if (current.seq === sent.seq) {
       await db.knowledgeBaseOutbox.delete(task.id)

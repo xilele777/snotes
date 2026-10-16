@@ -10,11 +10,15 @@ import { matchesAll, splitTerms } from '../components/SearchBar'
 import { db } from '../db/schema'
 import { addKnowledgeBaseNode } from '../db/knowledge-base-repo'
 import { workspacePreferences } from '../workspace-preferences'
+import { notify } from '../notify'
 
 export const useNotesStore = defineStore('notes', () => {
   const ui = useUiStore()
   const notes = ref<LocalNote[]>([])
   const currentId = ref<string | null>(null)
+  // 属性变更使当前笔记离开筛选结果时，继续编辑到用户主动离开该视图。
+  const retained = ref<LocalNote | null>(null)
+  let retainedKey: string | null = null
   const loadedKey = ref<string | null>(null)
   let loadSeq = 0
 
@@ -25,7 +29,7 @@ export const useNotesStore = defineStore('notes', () => {
   /** 当前内存中的列表是否确实属于正在看的视图。 */
   const stale = computed(() => loadedKey.value !== viewKey())
 
-  const current = computed(() => notes.value.find((n) => n.id === currentId.value))
+  const current = computed(() => notes.value.find((n) => n.id === currentId.value) ?? (retained.value?.id === currentId.value && retainedKey === viewKey() ? retained.value : undefined))
 
   /**
    * 打开笔记（currentId 切到非 null）记一次本地统计：递增 open_count、刷新
@@ -113,17 +117,20 @@ ${note.body}`, terms)
         if (e instanceof Error && e.name === 'DatabaseClosedError') return
         throw e
       }
+      const selected = retained.value?.id === currentId.value && retainedKey === key
+        ? await repo.getNote(retained.value.id) : undefined
       // 视图快速切换时，较早查询的结果不能覆盖较新的查询。
       if (seq !== loadSeq) return
       if (key !== viewKey()) continue
+      retained.value = selected?.invalid === 0 && selected.id === currentId.value ? selected : null
       notes.value = rows
       loadedKey.value = key
       break
     }
 
-    // 当前选中项必须始终在当前列表里。切视图、恢复、彻底删除、清空回收站都会让它落空，
+    // 当前选中项须在列表或当前视图保留的编辑内容中。切视图、删除等操作使其失效时，
     // 留着一个指不到任何笔记的 currentId，详情页就是一块永远空白的板子。
-    if (currentId.value !== null && !notes.value.some((n) => n.id === currentId.value)) {
+    if (currentId.value !== null && !notes.value.some((n) => n.id === currentId.value) && !retained.value) {
       currentId.value = null
     }
 
@@ -181,6 +188,10 @@ ${note.body}`, terms)
   }
 
   async function setProps(id: string, props: NoteProps) {
+    if (id === currentId.value && current.value && ('group_id' in props || 'home_hidden' in props || 'star' in props)) {
+      retained.value = current.value
+      retainedKey = viewKey()
+    }
     await repo.updateProps(id, props)
     await load()
   }
@@ -205,6 +216,13 @@ ${note.body}`, terms)
     }
   }
 
+  async function trashWithUndo(id: string) {
+    try {
+      await trash(id)
+      notify('笔记已移入回收站', { label: '撤销', run: async () => { await recover(id); notify('已恢复笔记') } })
+    } catch (error) { notify(error instanceof Error ? error.message : String(error)) }
+  }
+
   async function recover(id: string) {
     await repo.recoverNote(id)
     await load()
@@ -226,5 +244,5 @@ ${note.body}`, terms)
     await load()
   }
 
-  return { notes, currentId, current, visible, stale, load, create, open, saveBody, setProps, restoreHistory, trash, recover, purge, purgeAll }
+  return { notes, currentId, current, visible, stale, load, create, open, saveBody, setProps, restoreHistory, trash, trashWithUndo, recover, purge, purgeAll }
 })

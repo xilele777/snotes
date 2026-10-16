@@ -386,3 +386,37 @@ describe('notes store 新建时的导航栈', () => {
     push.mockRestore()
   })
 })
+
+describe('整理笔记时保留编辑上下文', () => {
+  it('隐藏后列表移除当前笔记，但正文可继续保存，切换视图后清理保留状态', async () => {
+    const store = useNotesStore()
+    const ui = useUiStore()
+    const note = await store.create()
+    await store.saveBody(note.id, '# 原文')
+    await store.setProps(note.id, { home_hidden: 1 })
+    expect(ui.view).toBe('all')
+    expect(store.visible).toHaveLength(0)
+    expect(store.current?.body).toBe('# 原文')
+    await store.saveBody(note.id, '# 继续编辑', '# 原文')
+    expect(store.current?.body).toBe('# 继续编辑')
+    expect((await db.notes.get(note.id))?.body).toBe('# 继续编辑')
+    ui.view = 'star'
+    await store.load()
+    expect(store.current).toBeUndefined()
+    expect(store.currentId).toBeNull()
+  })
+  it('移出当前分组后保持正文，删除后清除保留内容', async () => {
+    const store = useNotesStore()
+    const ui = useUiStore()
+    ui.view = 'group'
+    ui.activeGroupId = 'group-a'
+    const note = await store.create()
+    await store.setProps(note.id, { group_id: null })
+    expect(ui.view).toBe('group')
+    expect(ui.activeGroupId).toBe('group-a')
+    expect(store.visible).toHaveLength(0)
+    expect(store.current?.id).toBe(note.id)
+    await store.trash(note.id)
+    expect(store.current).toBeUndefined()
+  })
+})

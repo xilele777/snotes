@@ -2,20 +2,15 @@
 import ActionMenu from './ActionMenu.vue'
 import AppIcon from './AppIcon.vue'
 
-/**
- * 笔记顶栏「⋯」打开的菜单：收拢低频的笔记级操作。
- * 回收站详情不渲染这个菜单；文档信息、历史版本、字数统计、阅读模式与删除只在
- * ≤720px 出现，桌面顶栏放得下，它们直接摆在顶栏；手机顶栏没有余量，⋯ 顶替的
- * 正是删除按钮的位置。
- */
-export type NoteMenuAction = 'info' | 'notebooks' | 'history' | 'wordcount' | 'reading' | 'home-feed' | 'home-follow' | 'copy' | 'download' | 'import' | 'share' | 'print' | 'trash'
+/** 桌面和移动端统一收纳低频管理操作。 */
+export type NoteMenuAction = 'color' | 'info' | 'notebooks' | 'history' | 'wordcount' | 'reading' | 'home-feed' | 'home-follow' | 'copy' | 'download' | 'import' | 'share' | 'print' | 'trash'
 
 defineProps<{
   open: boolean
   anchor: HTMLElement | null
   canShare: boolean
   showDelete: boolean
-  /** 文档信息 / 历史版本 / 字数统计是否进菜单（桌面在顶栏直接可见） */
+  /** 文档信息 / 历史版本 / 字数统计是否进菜单 */
   showDocItems: boolean
   /** 「加入笔记本」是否进菜单（桌面顶栏有独立入口，窄屏顶栏排不下） */
   showNotebooks?: boolean
@@ -40,6 +35,7 @@ const emit = defineEmits<{ action: [NoteMenuAction]; close: [] }>()
     <button v-if="showNotebooks" type="button" role="menuitem" class="menu-item" data-action="notebooks" @click="emit('action', 'notebooks')">
       <AppIcon name="book" :size="15" /><span>加入笔记本{{ notebookCount ? `（已加入 ${notebookCount} 本）` : '' }}</span>
     </button>
+    <button type="button" role="menuitem" class="menu-item" data-action="color" @click="emit('action', 'color')"><AppIcon name="highlight" :size="15" /><span>标记颜色</span></button>
     <template v-if="showDocItems">
       <button type="button" role="menuitem" class="menu-item" data-action="info" @click="emit('action', 'info')">
         <AppIcon name="info" :size="15" /><span>文档信息</span>

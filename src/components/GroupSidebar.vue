@@ -169,6 +169,7 @@ watch(() => ui.drawerOpen, (open) => { if (!open) menuGroup.value = null })
         <button class="sidebar-close icon-button" aria-label="关闭侧栏" title="关闭侧栏" @click="ui.drawerOpen = false"><AppIcon name="close" /></button>
       </div>
 
+      <div class="nav-section-label">随手记</div>
       <ul class="views">
         <li data-view="all" :class="{ active: !ui.workspacePage && ui.view === 'all' }" @click="switchListView('all')">
           <button type="button" aria-label="全部笔记" title="全部笔记" :aria-current="!ui.workspacePage && ui.view === 'all' ? 'page' : undefined"><AppIcon name="notes" /><span>全部笔记</span><span v-if="ui.view === 'all' && !notes.stale" class="nav-count">{{ notes.notes.length }}</span></button>
@@ -179,6 +180,9 @@ watch(() => ui.drawerOpen, (open) => { if (!open) menuGroup.value = null })
         <li data-view="hidden" :class="{ active: !ui.workspacePage && ui.view === 'hidden' }" @click="switchListView('hidden')">
           <button type="button" aria-label="已隐藏笔记" title="已隐藏笔记" :aria-current="!ui.workspacePage && ui.view === 'hidden' ? 'page' : undefined"><AppIcon name="eyeOff" /><span>已隐藏笔记</span></button>
         </li>
+      </ul>
+      <div class="nav-section-label">知识库</div>
+      <ul class="views notebook-views">
         <li data-view="knowledge-bases" :class="{ active: !ui.workspacePage && ui.view === 'knowledge-bases' }" @click="showKnowledgeBases()">
           <button type="button" aria-label="笔记本" title="笔记本" :aria-current="!ui.workspacePage && ui.view === 'knowledge-bases' ? 'page' : undefined"><AppIcon name="book" /><span>笔记本</span><span v-if="books.length" class="nav-count">{{ books.length }}</span></button>
         </li>
@@ -191,7 +195,7 @@ watch(() => ui.drawerOpen, (open) => { if (!open) menuGroup.value = null })
         </button>
       </div>
 
-      <ul v-show="!preferences.groupsCollapsed" id="sidebar-groups" class="groups">
+      <ul v-show="!preferences.groupsCollapsed || preferences.sidebarCollapsed" id="sidebar-groups" class="groups">
         <li
           v-for="group in groups.groups"
           :key="group.group_id"
@@ -199,7 +203,7 @@ watch(() => ui.drawerOpen, (open) => { if (!open) menuGroup.value = null })
           :class="{ active: !ui.workspacePage && ui.view === 'group' && ui.activeGroupId === group.group_id, 'menu-open': menuGroup?.group_id === group.group_id }"
           @click="switchListView('group', group.group_id)"
         >
-          <button class="group-link" type="button" :title="group.name" :aria-current="!ui.workspacePage && ui.view === 'group' && ui.activeGroupId === group.group_id ? 'page' : undefined">
+          <button class="group-link" type="button" :title="group.name" :aria-label="group.name" :aria-current="!ui.workspacePage && ui.view === 'group' && ui.activeGroupId === group.group_id ? 'page' : undefined">
             <AppIcon name="folder" :size="16" class="group-icon" :style="group.color ? { color: group.color } : undefined" />
             <span class="group-name">{{ group.name }}</span>
           </button>

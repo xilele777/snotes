@@ -4,7 +4,7 @@ import { isMobile, openDrawer, pushNav, switchListView } from '../navigation'
 import EmptyState from './EmptyState.vue'
 import ListSkeleton from './ListSkeleton.vue'
 import NoteListItem from './NoteListItem.vue'
-import ConfirmDialog from './ConfirmDialog.vue'
+import ActionMenu from './ActionMenu.vue'
 import AppIcon from './AppIcon.vue'
 import NoteSearch from './NoteSearch.vue'
 import SortMenu from './SortMenu.vue'
@@ -79,14 +79,23 @@ function onPointerUp(e: PointerEvent, noteId: string) {
   swipeStartX.value = null
 }
 
-/** 左滑删除也要过确认弹窗（Bug 4） */
-const confirmTrashId = ref<string | null>(null)
-function runTrash() {
-  if (confirmTrashId.value !== null) {
-    notes.trash(confirmTrashId.value)
-    swipedId.value = null
-  }
-  confirmTrashId.value = null
+const menuNote = ref<LocalNote | null>(null)
+const menuAnchor = ref<HTMLElement | null>(null)
+function openNoteMenu(note: LocalNote, event: MouseEvent) {
+  menuNote.value = note
+  menuAnchor.value = (event.currentTarget as HTMLElement).closest('.note-item')?.querySelector<HTMLElement>('.note-more') ?? event.currentTarget as HTMLElement
+}
+async function menuProps(props: Parameters<typeof notes.setProps>[1]) {
+  const note = menuNote.value
+  menuNote.value = null
+  if (!note) return
+  try { await notes.setProps(note.id, props) }
+  catch (error) { notify(error instanceof Error ? error.message : String(error)) }
+}
+async function runTrash(id: string) {
+  menuNote.value = null
+  swipedId.value = null
+  await notes.trashWithUndo(id)
 }
 
 /** 移动端进详情算一层界面切换，先入栈再换 currentId；桌面端两个面板同屏，不需入栈 */
@@ -243,13 +252,14 @@ watch(
         :home-hidden="homeHiddenOf(note)"
         :group-name="note.group_id ? groupNames.get(note.group_id) : undefined"
         @click="selectNote(note.id)"
+        @contextmenu.prevent="openNoteMenu(note, $event)"
         @pointerdown="onPointerDown"
         @pointerup="(e: PointerEvent) => onPointerUp(e, note.id)"
         @pointercancel="swipeStartX = null"
       >
         <template #actions>
-          <!-- 触屏左滑展开删除；桌面端在悬停或键盘聚焦时显示。 -->
-          <button class="delete" title="删除" aria-label="删除" @click.stop="confirmTrashId = note.id">
+          <button class="note-more" :aria-label="`笔记操作：${note.title || '无标题'}`" title="笔记操作" aria-haspopup="menu" :aria-expanded="menuNote?.id === note.id" @click.stop="openNoteMenu(note, $event)"><AppIcon name="more" :size="16" /></button>
+          <button class="delete" title="删除" aria-label="删除" @click.stop="runTrash(note.id)">
             <AppIcon name="trash" :size="16" class="delete-icon" />
             <span class="delete-label">删除</span>
           </button>
@@ -257,13 +267,17 @@ watch(
       </NoteListItem>
     </ul>
 
-    <ConfirmDialog
-      :open="confirmTrashId !== null"
-      title="删除这条笔记？"
-      message="笔记会移入回收站，可随时恢复。"
-      confirm-text="删除"
-      @confirm="runTrash"
-      @cancel="confirmTrashId = null"
-    />
+    <ActionMenu :open="!!menuNote" :anchor="menuAnchor" label="笔记操作" @close="menuNote = null">
+      <template v-if="menuNote">
+        <button class="menu-item" role="menuitemcheckbox" :aria-checked="menuNote.top === 1" @click="menuProps({ top: menuNote.top ? 0 : 1 })"><AppIcon name="pin" :size="15" />{{ menuNote.top ? '取消置顶' : '置顶' }}</button>
+        <button class="menu-item" role="menuitemcheckbox" :aria-checked="menuNote.star === 1" @click="menuProps({ star: menuNote.star ? 0 : 1 })"><AppIcon name="star" :size="15" />{{ menuNote.star ? '取消星标' : '星标' }}</button>
+        <span class="menu-separator" aria-hidden="true"></span>
+        <span class="popover-heading">移至分组</span>
+        <button class="menu-item" role="menuitemradio" :aria-checked="!menuNote.group_id" @click="menuProps({ group_id: null })">未分组</button>
+        <button v-for="group in groups.groups" :key="group.group_id" class="menu-item" role="menuitemradio" :aria-checked="menuNote.group_id === group.group_id" @click="menuProps({ group_id: group.group_id })">{{ group.name }}</button>
+        <span class="menu-separator" aria-hidden="true"></span>
+        <button class="menu-item danger" role="menuitem" @click="runTrash(menuNote.id)"><AppIcon name="trash" :size="15" />移入回收站</button>
+      </template>
+    </ActionMenu>
   </div>
 </template>

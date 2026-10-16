@@ -49,15 +49,15 @@ const date = (time: number) => new Date(time).toLocaleDateString('zh-CN', { year
 h1 { margin: 0; font-size: clamp(26px, 2.6vw, 34px); font-weight: 650; line-height: 1.4; letter-spacing: -.035em; overflow-wrap: anywhere; text-wrap: pretty; }
 .kb-info-description { margin: 16px 0 0; font-size: 14px; line-height: 1.9; white-space: pre-wrap; overflow-wrap: anywhere; color: var(--text-secondary); }
 .kb-info-stats { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); margin: 0; border-top: 1px solid var(--border-light); background: var(--bg-surface); }
-.kb-info-stats > div { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-width: 0; padding: 22px var(--cover-padding); }
+.kb-info-stats > div { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-width: 0; padding: 16px var(--cover-padding); }
 .kb-info-stats > div:nth-child(even) { border-left: 1px solid var(--border-light); }
 .kb-info-stats > div:nth-child(n + 3) { border-top: 1px solid var(--border-light); }
 dt { display: flex; align-items: center; flex: none; gap: 8px; color: var(--text-secondary); font-size: 14px; line-height: 1.5; }
 dt .app-icon { color: var(--text-tertiary); }
 dd { display: flex; align-items: center; justify-content: flex-end; min-width: 0; min-height: 41px; margin: 0; text-align: right; font-variant-numeric: tabular-nums; }
-.kb-info-stat dd { align-items: baseline; gap: 6px; color: var(--text-primary); font-size: 34px; line-height: 1.2; font-weight: 700; letter-spacing: -.03em; overflow-wrap: anywhere; }
+.kb-info-stat dd { align-items: baseline; gap: 6px; color: var(--text-primary); font-size: 26px; line-height: 1.2; font-weight: 700; letter-spacing: -.03em; overflow-wrap: anywhere; }
 .kb-info-stat dd span { color: var(--text-secondary); font-size: 14px; font-weight: 500; letter-spacing: 0; white-space: nowrap; }
-time { display: block; color: var(--text-primary); font-size: 17px; line-height: 1.6; font-weight: 650; }
+time { display: block; color: var(--text-primary); font-size: 14px; line-height: 1.6; font-weight: 650; }
 .compact { padding: 8px 0 18px; }
 .compact .kb-info-cover { border: 0; border-radius: 0; background: none; }
 .compact .kb-info-description { margin: 0 0 16px; font-size: 13px; }

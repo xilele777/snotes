@@ -8,7 +8,7 @@ import type { FormatAction, FormatState } from '../editor/format'
  * - `table` 走 Milkdown 的表格预设命令（依赖表格 schema 与编辑器上下文）
  * - `link` 需要先收地址，由 NoteDetail 弹一个输入框
  */
-export type ToolbarAction = FormatAction | 'table' | 'link'
+export type ToolbarAction = FormatAction | 'table' | 'link' | 'undo' | 'redo' | 'image'
 
 const props = defineProps<{ state: FormatState }>()
 const emit = defineEmits<{ action: [ToolbarAction] }>()
@@ -68,6 +68,8 @@ function pressed(action: ToolbarAction): boolean {
     选区没了、手机键盘也收了，格式自然应用不到选中的文字上。
   -->
   <div class="format-bar" role="toolbar" aria-label="格式工具栏" @mousedown.prevent>
+    <button v-for="tool in ([{ action: 'undo', icon: 'undo', label: '撤销 (Ctrl+Z)' }, { action: 'redo', icon: 'redo', label: '重做 (Ctrl+Y)' }, { action: 'image', icon: 'image', label: '插入图片' }] as const)" :key="tool.action" class="format-btn" :data-op="tool.action" :aria-label="tool.label" :title="tool.label" @click="emit('action', tool.action)"><AppIcon :name="tool.icon" :size="16" /></button>
+    <span class="format-separator" aria-hidden="true"></span>
     <button
       v-for="h in HEADINGS"
       :key="h.action"

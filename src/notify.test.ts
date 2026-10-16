@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { NOTICE_MS, dismissNotice, notice, notify } from './notify'
+import { NOTICE_MS, dismissNotice, notice, notify, noticeAction, runNoticeAction } from './notify'
 
 // 本模块不碰 Dexie，可以放心用 fake timers
 beforeEach(() => {
@@ -35,4 +35,21 @@ describe('notify', () => {
     dismissNotice()
     expect(notice.value).toBe('')
   })
+})
+
+it('撤销入口停留五秒，动作只执行一次且新提示清除旧动作', async () => {
+  const run = vi.fn()
+  notify('已删除', { label: '撤销', run })
+  vi.advanceTimersByTime(4999)
+  expect(noticeAction.value?.label).toBe('撤销')
+  await runNoticeAction()
+  await runNoticeAction()
+  expect(run).toHaveBeenCalledTimes(1)
+  expect(notice.value).toBe('')
+  notify('已删除', { label: '撤销', run })
+  notify('已复制')
+  expect(noticeAction.value).toBeNull()
+  notify('已删除', { label: '撤销', run })
+  vi.advanceTimersByTime(5000)
+  expect(noticeAction.value).toBeNull()
 })

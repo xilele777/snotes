@@ -29,10 +29,10 @@ Notes are saved in the browser first, then synced with your own backend. Run the
 ## Features
 
 - **Offline-first** — Read and edit notes already synced to the device, then sync automatically when reconnected.
-- **Markdown writing** — Headings, lists, tasks, tables, code blocks, images, and highlights, with a formatting toolbar, reading mode, and focus mode.
-- **Two ways to organize** — Groups, stars, pins, and search for everyday notes; independent notebooks with chapter trees, kept out of the regular feed.
+- **Markdown writing** — Headings, lists, tasks, tables, code blocks, images, and highlights, with undo, redo, and image insertion in the formatting toolbar, a quieter management menu, reading mode, and focus mode.
+- **Two ways to organize** — Groups, stars, pins, and search for everyday notes, with list menus for quick organization. Notebooks provide recent-note links and chapter trees. Move a note out of its notebook to keep it as an independent note.
 - **Device sync** — Bodies and properties sync separately. Concurrent edits retain conflict copies for manual merging.
-- **History and recovery** — Automatic body history, trash previews, and recovery to the original notebook location after deleting a directory note.
+- **History and recovery** — Automatic body history, five-second undo for soft deletion, trash previews, and recovery to the original notebook location after deleting a directory note.
 - **Portable data** — Import Markdown or backups; export Markdown ZIPs with images and properties. Download, share, or print individual notes.
 - **Desktop and mobile** — Responsive layouts, light and dark themes, PWA installation, image lightboxes, and system sharing where supported by the browser.
 - **Writing statistics** — Word counts, streaks, an activity heatmap, group distribution, and opens across devices.
@@ -44,7 +44,7 @@ Notes are saved in the browser first, then synced with your own backend. Run the
 Requires **Node.js 24 LTS**. No Cloudflare account is needed: notes use SQLite and images are stored on disk.
 
 ```bash
-git clone --branch v0.22.1 https://github.com/xilele777/snotes.git
+git clone --branch v0.22.2 https://github.com/xilele777/snotes.git
 cd snotes
 npm ci
 npm run build:server

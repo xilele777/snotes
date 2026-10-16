@@ -83,6 +83,7 @@ function handOff(markdown: string): string {
  */
 const EMPTY_LINE = '\u200B'
 let serializationLastNode: ProseNode | null | undefined
+let serializedDoc: ProseNode | undefined
 
 /**
  * 覆盖 commonmark 的段落 schema：toMarkdown 里空段落写零宽空格而非 `<br />`。
@@ -151,12 +152,12 @@ function take(): { id: string; markdown: string } | null {
  */
 function flush() {
   // Milkdown's markdownUpdated has its own 200ms debounce. Capture the live
-  // upload document before switching/unmounting, not only the last callback.
+  // document before switching/unmounting, including the last keystrokes.
   const editor = inner.value?.getEditor?.()
-  if (placeholderCleanups.size > 0 && editor && editor.status === 'Created') {
+  if (editor && editor.status === 'Created') {
     editor.action((ctx) => {
       const doc = ctx.get(editorViewCtx).state.doc
-      onMarkdownChange(ctx.get(serializerCtx)(doc), ctx)
+      if (doc !== serializedDoc) onMarkdownChange(ctx.get(serializerCtx)(doc), ctx)
     })
   }
   const pending = take()
@@ -193,6 +194,7 @@ function withoutPlaceholderImages(ctx: Ctx, markdown: string): string {
 
 function onMarkdownChange(markdown: string, ctx?: Ctx) {
   if (syncingExternally || disposed) return
+  if (ctx) serializedDoc = ctx.get(editorViewCtx).state.doc
   if (markdown === latest) return
 
   let persistable = markdown
@@ -238,7 +240,7 @@ function onMarkdownChange(markdown: string, ctx?: Ctx) {
 function insertImages(files: File[]) {
   const rejected = files.filter((file) => !isAllowedImage(file))
   if (rejected.length > 0) {
-    alert(`有 ${rejected.length} 个文件未插入：仅支持 10MB 以内的 JPG、PNG、GIF、WebP 图片`)
+    emit('notice', `有 ${rejected.length} 个文件未插入：仅支持 10MB 以内的 JPG、PNG、GIF、WebP 图片`)
   }
   void handleImageFiles(files.filter(isAllowedImage))
 }
@@ -444,7 +446,7 @@ async function handleImageFiles(files: File[]) {
     } catch (error) {
       if (!isCurrent()) break
       removeImageAt(editor, placeholder)
-      alert(`图片上传失败：${error instanceof Error ? error.message : String(error)}`)
+      emit('notice', `图片上传失败：${error instanceof Error ? error.message : String(error)}`)
     } finally {
       placeholderCleanups.delete(cleanup)
       cleanup()
@@ -512,6 +514,7 @@ const MilkdownInner = defineComponent({
           ctx.get(listenerCtx).updated(pushFormatState)
           ctx.get(listenerCtx).selectionUpdated(pushFormatState)
           ctx.get(listenerCtx).mounted((editorCtx) => {
+            serializedDoc = editorCtx.get(editorViewCtx).state.doc
             if (!props.modelValue.trim() && props.editable !== false) editorCtx.get(editorViewCtx).focus()
             pushFormatState(editorCtx)
             emit('ready')

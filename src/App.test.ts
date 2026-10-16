@@ -277,7 +277,7 @@ describe('App 扩展快捷键', () => {
     wrapper.unmount()
   })
 
-  it('Ctrl+Shift+D 经 ui.trashRequest 打开删除确认弹窗而不是直接删', async () => {
+  it('Ctrl+Shift+D 经 ui.trashRequest 软删除并显示撤销', async () => {
     const notes = useNotesStore()
     const ui = useUiStore()
     await notes.create()
@@ -286,8 +286,9 @@ describe('App 扩展快捷键', () => {
 
     window.dispatchEvent(new KeyboardEvent('keydown', { key: 'D', ctrlKey: true, shiftKey: true, cancelable: true }))
     expect(ui.trashRequest).toBe(1)
-    await vi.waitFor(() => expect(document.body.textContent).toContain('删除这条笔记？'))
-    expect(notes.notes).toHaveLength(1)
+    await vi.waitFor(() => expect(document.body.textContent).toContain('笔记已移入回收站'))
+    expect(document.body.textContent).toContain('撤销')
+    expect(notes.notes).toHaveLength(0)
     wrapper.unmount()
   })
 

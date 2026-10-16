@@ -2,9 +2,24 @@ import Dexie from 'dexie'
 import { beforeEach, expect, it } from 'vitest'
 import { db } from './schema'
 import { createNote, listNotes, purgeNote, recoverNote, trashNote } from './repo'
-import { addKnowledgeBaseNode, applyKnowledgeBaseRemote, createKnowledgeBase, moveKnowledgeBaseNode, removeKnowledgeBaseNode, trashKnowledgeBaseNode, updateKnowledgeBase } from './knowledge-base-repo'
+import { acknowledgeKnowledgeBaseTask, addKnowledgeBaseNode, applyKnowledgeBaseRemote, createKnowledgeBase, moveKnowledgeBaseNode, removeKnowledgeBaseNode, taskId, trashKnowledgeBaseNode, updateKnowledgeBase } from './knowledge-base-repo'
 const meta = { name: '笔记本', description: '', icon: '', ord: 0, invalid: 0 as const }
 beforeEach(async () => { await db.delete(); await db.open() })
+
+it('acknowledges and pulls directory changes without recording ordinary snapshots', async () => {
+  const book = await createKnowledgeBase(meta)
+  await addKnowledgeBaseNode(book.id, { kind: 'folder', title: '原章节', note_id: null })
+  const task = (await db.knowledgeBaseOutbox.get(taskId(book.id, 'toc')))!
+  task.sent = { seq: task.seq, base_version: task.base_version, operation_id: task.operation_id, payload: task.payload }
+  await db.knowledgeBaseOutbox.put(task)
+  await acknowledgeKnowledgeBaseTask(task, { meta_version: 1, toc_version: 1, update_time: Date.now() })
+  expect(await db.knowledgeBaseTocHistory.count()).toBe(0)
+  await db.knowledgeBaseOutbox.clear()
+  const nodes = [{ id: 'new-folder', kind: 'folder' as const, title: '远端章节', parent_id: null, note_id: null, ord: 0 }]
+  await applyKnowledgeBaseRemote({ book: { ...book, meta_version: 1, toc_version: 2 }, toc: { knowledge_base_id: book.id, version: 2, nodes, update_time: Date.now() }, note_states: {} })
+  expect((await db.knowledgeBaseTocs.get(book.id))?.nodes).toEqual(nodes)
+  expect(await db.knowledgeBaseTocHistory.count()).toBe(0)
+})
 
 it('upgrades an existing v2 database without changing legacy notes or groups', async () => {
   const note = await createNote('# 原笔记', { group_id: 'group' })
