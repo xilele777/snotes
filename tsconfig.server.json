@@ -14,6 +14,6 @@
     "lib": ["ES2022", "DOM", "DOM.Iterable"],
     "types": ["node"]
   },
-  "include": ["server/**/*.ts", "tests/server/**/*.ts", "worker/**/*.ts", "shared/**/*.ts", "tests/knowledge-base-contract.ts"],
+  "include": ["server/**/*.ts", "tests/server/**/*.ts", "worker/**/*.ts", "shared/**/*.ts", "tests/knowledge-base-contract.ts", "tests/agent-contract.ts"],
   "exclude": ["worker/index.ts", "shared/**/*.test.ts"]
 }

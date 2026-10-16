@@ -24,7 +24,7 @@ snotes 面向想自己掌握数据的个人用户：随手记录日常笔记，�
 
 笔记先保存在浏览器本地，联网后与自己的服务端同步。前端与 API 既可以运行在 Cloudflare Workers 上，也可以由一个 Node.js 服务提供；不需要依赖第三方笔记平台。
 
-> **项目定位：单用户、自托管。** 使用一枚访问令牌保护整个实例，不提供多用户账户、协作编辑或分级权限。
+> **项目定位：单用户、自托管。** 使用实例访问令牌登录，不提供多用户账户或协作编辑。Agent 可使用按笔记本授权的独立凭证。
 
 ## 功能特性
 
@@ -44,7 +44,7 @@ snotes 面向想自己掌握数据的个人用户：随手记录日常笔记，�
 需要 **Node.js 24 LTS**。不需要 Cloudflare 账号，笔记存入 SQLite，图片保存在本地磁盘。
 
 ```bash
-git clone --branch v0.22.3 https://github.com/xilele777/snotes.git
+git clone --branch v0.23.0 https://github.com/xilele777/snotes.git
 cd snotes
 npm ci
 npm run build:server
@@ -130,6 +130,7 @@ npm run build
 | --- | --- |
 | 了解界面、快捷键和数据导入导出 | [使用指南](docs/usage.md) |
 | 使用笔记本和章节目录 | [笔记本说明](docs/knowledge-bases.md) |
+| 让 Agent 写入笔记本，配置 MCP 或 API | [Agent 接入](docs/agent-access.md) |
 | 部署到 Cloudflare | [Cloudflare 部署](docs/cloudflare-deployment.md) |
 | 使用 Node.js、Docker、systemd 或 HTTPS | [服务器部署](docs/server-deployment.md) |
 | 升级、备份或排查同步问题 | [运维手册](docs/operations.md) |

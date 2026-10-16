@@ -38,21 +38,26 @@ function readCookie(header: string | undefined, name: string): string | null {
   return null
 }
 
-export const auth: MiddlewareHandler<{ Bindings: Env }> = async (c, next) => {
-  const expected = c.env.ACCESS_TOKEN
-  if (!expected) return c.json({ error: 'unauthorized' }, 401)
+export function ownerAuthorized(request: Request, env: Env): boolean {
+  const expected = env.ACCESS_TOKEN
+  if (!expected) return false
 
-  const header = c.req.header('Authorization') ?? ''
+  const header = request.headers.get('Authorization') ?? ''
   if (header.startsWith(BEARER) && timingSafeEqual(header.slice(BEARER.length), expected)) {
-    return next()
+    return true
   }
 
   // 唯一例外：浏览器的 <img src> 带不上自定义请求头，GET 图片额外接受同源 Cookie。
   // 严格限定 GET + /api/images/ 前缀，上传与其余端点一律只认 Bearer。
-  if (c.req.method === 'GET' && new URL(c.req.url).pathname.startsWith(IMAGE_PREFIX)) {
-    const cookie = readCookie(c.req.header('Cookie'), IMAGE_COOKIE)
-    if (cookie && timingSafeEqual(cookie, expected)) return next()
+  if (request.method === 'GET' && new URL(request.url).pathname.startsWith(IMAGE_PREFIX)) {
+    const cookie = readCookie(request.headers.get('Cookie') ?? undefined, IMAGE_COOKIE)
+    if (cookie && timingSafeEqual(cookie, expected)) return true
   }
 
+  return false
+}
+
+export const auth: MiddlewareHandler<{ Bindings: Env }> = async (c, next) => {
+  if (ownerAuthorized(c.req.raw, c.env)) return next()
   return c.json({ error: 'unauthorized' }, 401)
 }

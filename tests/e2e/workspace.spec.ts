@@ -78,7 +78,7 @@ for (const width of [1440, 720, 390, 320]) {
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
     await page.screenshot({ path: testInfo.outputPath(`workspace-${width}.png`), fullPage: true })
     await dataSettings(page)
-    await expect(page.getByRole('tab')).toHaveCount(4)
+    await expect(page.getByRole('tab')).toHaveCount(5)
     await expect(page.getByRole('checkbox')).toHaveCount(0)
     expect(await page.locator('.settings-page').evaluate(el => el.scrollWidth <= el.clientWidth)).toBe(true)
     expect(await page.locator('.settings-tab span').evaluateAll(labels => labels.every(label => {

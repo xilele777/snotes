@@ -201,6 +201,9 @@ describe('PATCH /api/notes/:id', () => {
   it('重放已经成功的同一正文 PATCH 时幂等，不递增版本也不标记冲突', async () => {
     const req = noteReq()
     await json('/api/notes', 'POST', req)
+    // Force the database watermark ahead of the application clock so this check
+    // deterministically exercises the trigger-assigned timestamp.
+    await env.DB.prepare('UPDATE note_sync_clock SET watermark = watermark + 10_000 WHERE id = 1').run()
 
     const payload = {
       content: '新正文',
@@ -210,6 +213,7 @@ describe('PATCH /api/notes/:id', () => {
     }
     const first = await json(`/api/notes/${req.id}`, 'PATCH', payload)
     const firstBody = await first.json<{ version: number; update_time: number }>()
+    expect(await env.DB.prepare('SELECT update_time FROM note WHERE id = ?').bind(req.id).first()).toEqual({ update_time: firstBody.update_time })
 
     const replay = await json(`/api/notes/${req.id}`, 'PATCH', payload)
     expect(await replay.json()).toMatchObject({

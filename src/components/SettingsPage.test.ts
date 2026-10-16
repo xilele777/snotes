@@ -48,7 +48,7 @@ const radio = (setting: string, value: string) =>
   document.querySelector<HTMLButtonElement>(`[data-setting="${setting}"] [data-value="${value}"]`)
 
 /** 页面切换走 ui.workspacePage；这里直接摆 store 状态，不经过 navigation 的历史栈 */
-async function mountOpen(tabId: 'appearance' | 'data' | 'shortcuts' | 'about' = 'appearance') {
+async function mountOpen(tabId: 'appearance' | 'data' | 'shortcuts' | 'agents' | 'about' = 'appearance') {
   const ui = useUiStore()
   ui.workspacePage = 'settings'
   ui.settingsTab = tabId
@@ -58,13 +58,13 @@ async function mountOpen(tabId: 'appearance' | 'data' | 'shortcuts' | 'about' = 
 }
 
 describe('SettingsPage 分页壳', () => {
-  it('四个分页，默认停在外观，当前值处于选中态', async () => {
+  it('五个分页，默认停在外观，当前值处于选中态', async () => {
     const { wrapper } = await mountOpen()
 
     expect(dialog()).not.toBeNull()
     expect(dialog()!.getAttribute('role')).toBe('region')
     expect(dialog()!.hasAttribute('aria-modal')).toBe(false)
-    expect(Array.from(document.querySelectorAll('.settings-tab')).map(el => el.textContent)).toEqual(['外观', '数据', '快捷键', '关于'])
+    expect(Array.from(document.querySelectorAll('.settings-tab')).map(el => el.textContent)).toEqual(['外观', '数据', '快捷键', 'Agent 接入', '关于'])
     expect(tab('appearance')!.getAttribute('aria-selected')).toBe('true')
     expect(document.activeElement).toBe(dialog()!.querySelector('h1'))
     expect(radio('theme', 'system')!.getAttribute('aria-checked')).toBe('true')
@@ -107,6 +107,8 @@ describe('SettingsPage 分页壳', () => {
     expect(document.activeElement).toBe(tab('shortcuts'))
 
     tab('shortcuts')!.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true }))
+    await nextTick()
+    tab('agents')!.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true }))
     await nextTick()
     tab('about')!.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true }))
     await nextTick()

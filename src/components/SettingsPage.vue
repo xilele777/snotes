@@ -9,6 +9,7 @@ import AppearancePane from './settings/AppearancePane.vue'
 import DataPane from './settings/DataPane.vue'
 import ShortcutsPane from './settings/ShortcutsPane.vue'
 import AboutPane from './settings/AboutPane.vue'
+import AgentsPane from './settings/AgentsPane.vue'
 
 defineProps<{ open: boolean }>()
 const ui = useUiStore()
@@ -19,9 +20,10 @@ const tabs: { id: SettingsTab; label: string; icon: IconName }[] = [
   { id: 'appearance', label: '外观', icon: 'sliders' },
   { id: 'data', label: '数据', icon: 'download' },
   { id: 'shortcuts', label: '快捷键', icon: 'keyboard' },
+  { id: 'agents', label: 'Agent 接入', icon: 'share' },
   { id: 'about', label: '关于', icon: 'info' },
 ]
-const panes = { appearance: AppearancePane, data: DataPane, shortcuts: ShortcutsPane, about: AboutPane }
+const panes = { appearance: AppearancePane, data: DataPane, shortcuts: ShortcutsPane, agents: AgentsPane, about: AboutPane }
 const hasUpdate = computed(() => updateInfo.value?.hasUpdate === true)
 
 async function selectTab(tab: SettingsTab, focus = false) {

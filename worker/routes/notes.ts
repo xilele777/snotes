@@ -242,6 +242,11 @@ notesRoutes.patch('/api/notes/:id', async (c) => {
     const [noteResult] = await c.env.DB.batch(statements)
     if (noteResult.meta.changes === 0) continue
 
+    // Sync triggers assign the commit timestamp. Returning the earlier application
+    // time makes an identical retry disagree with the stored acknowledgement.
+    const committed = await c.env.DB.prepare('SELECT update_time FROM note WHERE id = ?')
+      .bind(id).first<{ update_time: number }>()
+
     // 云端正文历史：被这次写入覆盖的旧正文按共用规则留一条，与本机历史同一套阈值。
     // 放在条件更新成功之后，落空重试时不会留下多余快照。
     if (changesBody) {
@@ -251,7 +256,7 @@ notesRoutes.patch('/api/notes/:id', async (c) => {
     const response: PatchNoteResponse = {
       version,
       prop_version: propVersion,
-      update_time: now,
+      update_time: committed?.update_time ?? now,
       conflicted: bodyConflicted || propConflicted,
     }
     // 后写者胜（规格 §8.5），但被覆盖的正文不能就此消失：随响应带回去，

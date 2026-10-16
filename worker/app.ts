@@ -8,6 +8,8 @@ import { notesRoutes } from './routes/notes'
 import { opensRoutes } from './routes/opens'
 import { syncRoutes } from './routes/sync'
 import { trashRoutes } from './routes/trash'
+import { agentRoutes } from './routes/agent'
+import { agentTokenRoutes } from './routes/agent-tokens'
 import type { Env } from './types'
 
 export function createApp() {
@@ -16,6 +18,7 @@ export function createApp() {
   // 注册在 auth 之前，因此保持免鉴权：它不返回任何数据，只供部署后冒烟
   app.get('/api/health', (c) => c.json({ ok: true }))
 
+  app.route('/', agentRoutes)
   app.use('/api/*', auth)
 
   app.get('/api/runtime', c => {
@@ -24,6 +27,7 @@ export function createApp() {
   })
 
   app.route('/', notesRoutes)
+  app.route('/', agentTokenRoutes)
   app.route('/', opensRoutes)
   app.route('/', groupsRoutes)
   app.route('/', knowledgeBasesRoutes)

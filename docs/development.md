@@ -64,6 +64,7 @@ flowchart LR
 ```
 
 - 数据 API 使用 `Authorization: Bearer <token>` 鉴权；图片请求支持同源 Cookie（`Path=/api/images/`），健康检查 `/api/health` 无需令牌。
+- `/api/agent/v1` 与 `/api/mcp` 使用独立 Agent 凭证并按笔记本和操作权限授权；HTTP 与 MCP 共用领域服务。详见 [Agent 接入](agent-access.md)。
 - 同步引擎在 `src/sync/`：`pull` 拉版本清单与缺失正文，`push` 消费 outbox 队列，`conflict` 处理并发冲突副本
 - 数据库 schema 在 `migrations/`，前后端共用类型在 `shared/types.ts`
 

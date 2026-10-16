@@ -11,6 +11,13 @@ describe('parseLaunchIntent', () => {
     expect(parseLaunchIntent('?new')).toEqual({ kind: 'new', body: '' })
   })
 
+  it('parses notebook links and rejects malformed IDs', () => {
+    expect(parseLaunchIntent('?notebook=book-1&note=note_2')).toEqual({ kind: 'open', notebookId: 'book-1', noteId: 'note_2' })
+    expect(parseLaunchIntent('?notebook=book-1')).toEqual({ kind: 'open', notebookId: 'book-1', noteId: null })
+    expect(parseLaunchIntent('?notebook=../outside&note=note')).toBeNull()
+    expect(parseLaunchIntent('?notebook=book&note=')).toBeNull()
+  })
+
   it('share_target 参数拼成标题、正文、链接三段', () => {
     expect(parseLaunchIntent('?share&title=T&text=hello&url=https%3A%2F%2Fa.b')).toEqual({
       kind: 'new',

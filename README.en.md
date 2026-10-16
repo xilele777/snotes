@@ -24,7 +24,7 @@ snotes is for people who want to own their notes: capture everyday thoughts, org
 
 Notes are saved in the browser first, then synced with your own backend. Run the same frontend and API on Cloudflare Workers or in a single Node.js service, without depending on a third-party note-taking platform.
 
-> **Single-user and self-hosted.** One access token protects the entire instance. There are no multiple-user accounts, collaborative editing, or per-user permissions.
+> **Single-user and self-hosted.** An instance access token signs in the owner. Agents can use separate credentials scoped to selected notebooks. There are no multiple-user accounts or collaborative editing.
 
 ## Features
 
@@ -44,7 +44,7 @@ Notes are saved in the browser first, then synced with your own backend. Run the
 Requires **Node.js 24 LTS**. No Cloudflare account is needed: notes use SQLite and images are stored on disk.
 
 ```bash
-git clone --branch v0.22.3 https://github.com/xilele777/snotes.git
+git clone --branch v0.23.0 https://github.com/xilele777/snotes.git
 cd snotes
 npm ci
 npm run build:server
@@ -130,6 +130,7 @@ Local setup, environment configuration, browser tests, and architecture are docu
 | --- | --- |
 | Interface, shortcuts, and import/export | [Usage (Chinese)](docs/usage.md) |
 | Notebooks and chapter trees | [Notebooks (Chinese)](docs/knowledge-bases.md) |
+| Connect Agents through MCP or HTTP API | [Agent access (Chinese)](docs/agent-access.md) |
 | Cloudflare deployment and upgrades | [Cloudflare deployment](docs/cloudflare-deployment.en.md) |
 | Node.js, Docker, systemd, and HTTPS | [Server deployment (Chinese)](docs/server-deployment.md) |
 | Backups and sync troubleshooting | [Operations (Chinese)](docs/operations.md) |

@@ -12,7 +12,7 @@ export type MobilePane = 'list' | 'editor'
 export type WorkspacePage = 'stats' | 'settings'
 
 /** 设置页面的分页 */
-export type SettingsTab = 'appearance' | 'data' | 'shortcuts' | 'about'
+export type SettingsTab = 'appearance' | 'data' | 'shortcuts' | 'agents' | 'about'
 
 export interface WorkspacePosition {
   view: UiView

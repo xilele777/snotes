@@ -2,8 +2,11 @@
  * 启动意图：PWA 的 share_target（GET）与 manifest shortcuts 都是靠 URL 参数把
  * 「要做什么」带进应用的。这里只解析参数，不碰任何状态，便于纯函数测试。
  */
+import { validId } from '../shared/knowledge-base'
+
 export type LaunchIntent =
   | { kind: 'new'; body: string }
+  | { kind: 'open'; notebookId: string; noteId: string | null }
   | null
 
 /** 把系统分享面板给的标题、正文、链接拼成一条笔记的 Markdown。 */
@@ -28,6 +31,9 @@ export function parseLaunchIntent(search: string): LaunchIntent {
     }
   }
   if (params.has('new')) return { kind: 'new', body: '' }
+  const notebookId = params.get('notebook')
+  const noteId = params.get('note')
+  if (validId(notebookId) && (noteId === null || validId(noteId))) return { kind: 'open', notebookId, noteId }
   return null
 }
 

@@ -7,7 +7,7 @@
 .page-back:hover { background: var(--bg-hover); color: var(--text-primary); }
 .settings-page { background: var(--bg-surface); }
 .settings-page .settings-body { min-width: 0; flex-direction: column; }
-.settings-page .settings-tabs { align-self: center; width: fit-content; max-width: calc(100% - 40px); flex-direction: row; padding: 4px; margin: 20px auto 0; gap: 4px; border: 0; border-radius: 10px; background: var(--bg-app); }
+.settings-page .settings-tabs { align-self: center; width: fit-content; max-width: calc(100% - 40px); flex-direction: row; overflow-x: auto; padding: 4px; margin: 20px auto 0; gap: 4px; border: 0; border-radius: 10px; background: var(--bg-app); }
 .settings-page .settings-tab { justify-content: center; min-height: 40px; padding: 0 20px; border-radius: 7px; font-size: 14px; gap: 8px; }
 .settings-page .settings-tab[aria-selected='true'] { background: var(--bg-surface); color: var(--accent); box-shadow: 0 1px 4px rgb(0 0 0 / 8%); font-weight: 600; }
 .settings-page .settings-tab:hover { color: var(--text-primary); }
@@ -45,7 +45,7 @@
   .workspace-page-header h1 { font-size: 18px; }
   .page-back { padding: 0 8px; font-size: 12px; }
   .settings-page .settings-tabs { max-width: calc(100% - 32px); margin-top: 16px; }
-  .settings-page .settings-tab { flex: 1; min-width: 0; min-height: 38px; padding: 0 14px; font-size: 13px; }
+  .settings-page .settings-tab { flex: 1 0 auto; min-width: 0; min-height: 38px; padding: 0 14px; font-size: 13px; }
   .settings-page .settings-pane { padding: 24px 20px 32px; }
   .settings-section { margin-bottom: 28px; }
   .settings-section .settings-row { grid-template-columns: minmax(0, 1fr); gap: 12px; padding: 16px 0; }

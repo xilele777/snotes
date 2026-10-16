@@ -1,7 +1,7 @@
 {
   "name": "snotes",
   "private": true,
-  "version": "0.22.3",
+  "version": "0.23.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -23,12 +23,14 @@
     "@hono/node-server": "^2.1.1",
     "@milkdown/kit": "^7.22.1",
     "@milkdown/vue": "^7.22.1",
+    "@modelcontextprotocol/sdk": "^1.32.1",
     "dexie": "^4.4.5",
     "fflate": "^0.8.3",
     "hono": "^4.13.3",
     "mdast-util-find-and-replace": "^3.0.2",
     "pinia": "^4.0.3",
-    "vue": "^3.5.41"
+    "vue": "^3.5.41",
+    "zod": "^4.6.7"
   },
   "devDependencies": {
     "@cloudflare/vitest-plugin": "^1.0.0",

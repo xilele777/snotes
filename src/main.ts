@@ -6,12 +6,14 @@ import { createApp, watch } from 'vue'
 import { createPinia } from 'pinia'
 import App from './App.vue'
 import { hasToken } from './api/token'
-import { startSyncEngine } from './sync/engine'
+import { startSyncEngine, syncNow } from './sync/engine'
 import { onRemoteApplied } from './sync/signal'
 import { useNotesStore } from './stores/notes'
 import { useGroupsStore } from './stores/groups'
 import { initSettings } from './settings'
 import { clearLaunchParams, parseLaunchIntent } from './launch'
+import { openNotebookLink } from './navigation'
+import { notify } from './notify'
 
 // 主题、字号、宽度在挂载前就落到 <html> 上，首帧不闪白
 initSettings()
@@ -25,7 +27,7 @@ const notes = useNotesStore()
 // 未登录时不建（建了也只会躺在本地），参数照样擦掉。
 const intent = parseLaunchIntent(location.search)
 clearLaunchParams()
-if (intent && hasToken.value) {
+if (intent?.kind === 'new' && hasToken.value) {
   void notes.create().then((note) => (intent.body ? notes.saveBody(note.id, intent.body) : undefined))
 } else {
   void notes.load()
@@ -38,12 +40,17 @@ void navigator.storage?.persist?.()
 const groups = useGroupsStore()
 
 let stopEngine: (() => void) | undefined
+let linkConsumed = false
 
 watch(
   hasToken,
   (has) => {
     if (has && !stopEngine) {
       stopEngine = startSyncEngine()
+      if (intent?.kind === 'open' && !linkConsumed) {
+        linkConsumed = true
+        void syncNow().then(() => openNotebookLink(intent.notebookId, intent.noteId)).catch(() => notify('暂时无法打开笔记链接，请稍后重试。'))
+      }
     } else if (!has && stopEngine) {
       stopEngine()
       stopEngine = undefined

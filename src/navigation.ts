@@ -4,6 +4,8 @@ import type { WorkspacePage, SettingsTab, UiView, WorkspacePosition } from './st
 import type { ListView } from './db/repo'
 import { getNote, isNoteHiddenFromHome } from './db/repo'
 import { nextTick } from 'vue'
+import { db } from './db/schema'
+import { notify } from './notify'
 
 /**
  * Bug 2 手机端返回：用 History API 撑起一层轻量 in-app 导航栈，不引 vue-router。
@@ -115,6 +117,23 @@ export async function showKnowledgeBases(id: string | null = null) {
   useNotesStore().currentId = null
   ui.mobilePane = 'list'
   await useNotesStore().load()
+}
+
+/** Open an Agent result after the caller has completed the initial sync. */
+export async function openNotebookLink(bookId: string, noteId: string | null) {
+  const book = await db.knowledgeBases.get(bookId)
+  if (!book || book.invalid || book.deleted) { notify('笔记本不存在或尚未同步，请联网后重试。'); return }
+  const toc = await db.knowledgeBaseTocs.get(bookId)
+  const node = noteId ? toc?.nodes.find(node => node.note_id === noteId) : null
+  const note = noteId ? await db.notes.get(noteId) : null
+  await showKnowledgeBases(bookId)
+  if (!noteId) return
+  if (!node || !note || note.invalid) { notify('笔记已移出、删除或尚未同步。'); return }
+  const ui = useUiStore()
+  ui.collapsedKnowledgeBaseNodes = []
+  ui.activeTocNodeId = node.id
+  useNotesStore().open(noteId)
+  ui.mobilePane = 'editor'
 }
 
 /** A management link replaces the settings layer so Back returns to its original workspace. */

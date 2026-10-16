@@ -3,12 +3,12 @@ import { Hono } from 'hono'
 import { bodyLimit } from 'hono/body-limit'
 import { extname, join, resolve } from 'node:path'
 import { createApp } from '../worker/app'
-import { auth } from '../worker/auth'
-import type { Env } from '../worker/types'
+import { ownerAuthorized } from '../worker/auth'
+import type { AgentBindings } from '../worker/agent/auth'
 import { LoginLimiter, clientAddress } from './rate-limit'
 
 export function createServerApp(assetDirectory: string, limiter = new LoginLimiter()) {
-  const app = new Hono<{ Bindings: Env }>()
+  const app = new Hono<AgentBindings>()
   const root = resolve(assetDirectory)
   // 登录限流：同一来源连续 401 达到阈值后返回 429，封锁期逐次翻倍。health 不计入。
   // 来源地址由 server/index.ts 从 socket 取出放进 REMOTE_ADDRESS；X-Forwarded-For 只信任本机或内网代理。
@@ -23,10 +23,11 @@ export function createServerApp(assetDirectory: string, limiter = new LoginLimit
     }
     await next()
     if (c.res.status === 401) limiter.fail(key)
+    else if (c.get('agent')) limiter.succeed(key)
     else {
       // bodyLimit 等中间件可在鉴权前返回 413；非 401 并不证明凭据有效。
       // 复用真正的鉴权规则（包括图片 Cookie），只有 auth 放行才清除失败记录。
-      await auth(c, async () => { limiter.succeed(key) })
+      if (ownerAuthorized(c.req.raw, c.env)) limiter.succeed(key)
     }
   })
   app.use('/api/*', bodyLimit({ maxSize: 12 * 1024 * 1024, onError: (c) => c.json({ error: 'payload_too_large' }, 413) }))
