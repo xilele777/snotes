@@ -40,7 +40,9 @@ export function parseLaunchIntent(search: string): LaunchIntent {
 /** 意图消费完后把参数从地址栏擦掉，刷新时不会再建一条。 */
 export function clearLaunchParams() {
   const url = new URL(location.href)
-  if (![...url.searchParams.keys()].length) return
-  url.search = ''
+  const intent = parseLaunchIntent(url.search)
+  if (!intent) return
+  const keys = intent.kind === 'open' ? ['notebook', 'note'] : ['new', 'share', 'title', 'text', 'url']
+  for (const key of keys) url.searchParams.delete(key)
   history.replaceState(history.state, '', url.toString())
 }

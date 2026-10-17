@@ -16,6 +16,18 @@ export const useNotesStore = defineStore('notes', () => {
   const ui = useUiStore()
   const notes = ref<LocalNote[]>([])
   const currentId = ref<string | null>(null)
+  let restoringId: string | null = null
+
+  /** A copied URL may point to a note that the first sync has not downloaded yet. */
+  function beginSelectionRestore() {
+    restoringId = currentId.value
+  }
+
+  async function finishSelectionRestore() {
+    if (restoringId === null) return
+    restoringId = null
+    await load()
+  }
   // 属性变更使当前笔记离开筛选结果时，继续编辑到用户主动离开该视图。
   const retained = ref<LocalNote | null>(null)
   let retainedKey: string | null = null
@@ -130,7 +142,7 @@ ${note.body}`, terms)
 
     // 当前选中项须在列表或当前视图保留的编辑内容中。切视图、删除等操作使其失效时，
     // 留着一个指不到任何笔记的 currentId，详情页就是一块永远空白的板子。
-    if (currentId.value !== null && !notes.value.some((n) => n.id === currentId.value) && !retained.value) {
+    if (currentId.value !== null && currentId.value !== restoringId && !notes.value.some((n) => n.id === currentId.value) && !retained.value) {
       currentId.value = null
     }
 
@@ -244,5 +256,5 @@ ${note.body}`, terms)
     await load()
   }
 
-  return { notes, currentId, current, visible, stale, load, create, open, saveBody, setProps, restoreHistory, trash, trashWithUndo, recover, purge, purgeAll }
+  return { notes, currentId, current, visible, stale, load, create, open, beginSelectionRestore, finishSelectionRestore, saveBody, setProps, restoreHistory, trash, trashWithUndo, recover, purge, purgeAll }
 })

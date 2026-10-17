@@ -12,7 +12,7 @@ import { useNotesStore } from './stores/notes'
 import { useGroupsStore } from './stores/groups'
 import { initSettings } from './settings'
 import { clearLaunchParams, parseLaunchIntent } from './launch'
-import { openNotebookLink } from './navigation'
+import { initNavigation, openNotebookLink } from './navigation'
 import { notify } from './notify'
 
 // 主题、字号、宽度在挂载前就落到 <html> 上，首帧不闪白
@@ -27,6 +27,10 @@ const notes = useNotesStore()
 // 未登录时不建（建了也只会躺在本地），参数照样擦掉。
 const intent = parseLaunchIntent(location.search)
 clearLaunchParams()
+// Explicit share/shortcut intents start a new destination instead of resuming an old page.
+if (intent) history.replaceState(null, '', '/')
+// Restore the destination before loading its data or mounting child components.
+initNavigation()
 if (intent?.kind === 'new' && hasToken.value) {
   void notes.create().then((note) => (intent.body ? notes.saveBody(note.id, intent.body) : undefined))
 } else {
@@ -47,6 +51,7 @@ watch(
   (has) => {
     if (has && !stopEngine) {
       stopEngine = startSyncEngine()
+      void syncNow().then(() => notes.finishSelectionRestore())
       if (intent?.kind === 'open' && !linkConsumed) {
         linkConsumed = true
         void syncNow().then(() => openNotebookLink(intent.notebookId, intent.noteId)).catch(() => notify('暂时无法打开笔记链接，请稍后重试。'))

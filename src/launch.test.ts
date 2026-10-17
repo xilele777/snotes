@@ -1,5 +1,25 @@
-import { describe, expect, it } from 'vitest'
-import { composeSharedNote, parseLaunchIntent } from './launch'
+import { afterEach, describe, expect, it } from 'vitest'
+import { clearLaunchParams, composeSharedNote, parseLaunchIntent } from './launch'
+
+afterEach(() => history.replaceState(null, '', '/'))
+
+describe('clearLaunchParams', () => {
+  it('保留路由使用的笔记与搜索参数', () => {
+    history.replaceState(null, '', '/star?note=n1&q=hello')
+    clearLaunchParams()
+    expect(location.pathname + location.search).toBe('/star?note=n1&q=hello')
+  })
+
+  it('只清理已消费的启动参数', () => {
+    history.replaceState({ view: 'all' }, '', '/?notebook=book&note=n1&other=1')
+    clearLaunchParams()
+    expect(location.search).toBe('?other=1')
+    expect(history.state).toEqual({ view: 'all' })
+    history.replaceState(null, '', '/?share&text=hello&q=keep')
+    clearLaunchParams()
+    expect(location.search).toBe('?q=keep')
+  })
+})
 
 describe('parseLaunchIntent', () => {
   it('没有参数时返回 null', () => {

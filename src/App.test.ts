@@ -33,6 +33,7 @@ vi.mock('./api/client', async (importOriginal) => ({
 }))
 
 beforeEach(async () => {
+  window.history.replaceState(null, '', '/')
   setActivePinia(createPinia())
   await db.delete()
   await db.open()

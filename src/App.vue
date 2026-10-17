@@ -143,7 +143,7 @@ async function runShortcut(action: ShortcutAction) {
 onMounted(() => {
   // 先处理界面快捷键，避免编辑器的 Escape / Mod-K 抢走专注与搜索操作。
   window.addEventListener('keydown', onKeydown, true)
-  // Bug 2：启动时 replaceState 根快照，根界面按返回不退出应用
+  // main.ts 已在取数前恢复导航；独立挂载 App 时也初始化，重复调用不会覆盖状态。
   initNavigation()
 })
 onUnmounted(() => {

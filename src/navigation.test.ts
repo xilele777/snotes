@@ -1,6 +1,7 @@
 import { createPinia, setActivePinia } from 'pinia'
 import Dexie from 'dexie'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { nextTick } from 'vue'
 import { db } from './db/schema'
 import { backToList, closeWorkspacePage, initNavigation, isMobile, openDrawer, openWorkspacePage, openStatsNote, openManagedView, popNav, pushNav, showKnowledgeBases, showNotes, switchListView } from './navigation'
 import { useNotesStore } from './stores/notes'
@@ -12,11 +13,88 @@ beforeEach(async () => {
   await db.delete()
   await db.open()
   // 清掉上一个用例 push 的栈，每个用例从「无导航历史」起步
-  window.history.replaceState(null, '')
+  window.history.replaceState(null, '', '/')
   document.body.innerHTML = ''
 })
 
 describe('navigation 导航栈', () => {
+  it('刷新恢复设置分页及其底下的分组、笔记与搜索', async () => {
+    const ui = useUiStore()
+    ui.view = 'group'
+    ui.activeGroupId = 'work'
+    ui.query = '待办'
+    useNotesStore().currentId = 'n1'
+    initNavigation()
+    openWorkspacePage('settings', 'agents')
+    await nextTick()
+    expect(location.pathname).toBe('/settings/agents')
+    // A reload recreates Pinia while the current history entry survives.
+    setActivePinia(createPinia())
+    initNavigation()
+    expect(useUiStore()).toMatchObject({ workspacePage: 'settings', settingsTab: 'agents', view: 'group', activeGroupId: 'work', query: '待办' })
+    expect(useNotesStore().currentId).toBe('n1')
+    history.back()
+    await vi.waitFor(() => expect(useUiStore().workspacePage).toBeNull())
+    expect(useNotesStore().currentId).toBe('n1')
+  })
+
+  it('桌面选择笔记和切换设置分页会更新当前地址，不增加历史', async () => {
+    const ui = useUiStore()
+    initNavigation()
+    const length = history.length
+    useNotesStore().currentId = 'n2'
+    ui.query = '搜索'
+    await nextTick()
+    expect(location.search).toBe('?note=n2&q=%E6%90%9C%E7%B4%A2')
+    expect(history.length).toBe(length)
+    openWorkspacePage('settings')
+    ui.settingsTab = 'about'
+    await nextTick()
+    expect(location.pathname).toBe('/settings/about')
+    expect(history.state.settingsTab).toBe('about')
+  })
+
+  it('直接打开笔记本地址可恢复目录节点，数据同步前不会丢失选中笔记', async () => {
+    history.replaceState(null, '', '/notebooks/book?note=n1&node=chapter&q=hello')
+    initNavigation()
+    const notes = useNotesStore()
+    await notes.load()
+    expect(useUiStore()).toMatchObject({ view: 'knowledge-bases', activeKnowledgeBaseId: 'book', activeTocNodeId: 'chapter', query: 'hello' })
+    expect(notes.currentId).toBe('n1')
+    await notes.finishSelectionRestore()
+    expect(notes.currentId).toBeNull()
+  })
+
+  it('直接打开设置或手机笔记链接时，界面返回有列表兜底', async () => {
+    history.replaceState(null, '', '/settings/data')
+    initNavigation()
+    closeWorkspacePage()
+    expect(useUiStore().workspacePage).toBeNull()
+    await nextTick()
+    expect(location.pathname).toBe('/')
+    setActivePinia(createPinia())
+    history.replaceState(null, '', '/?note=n1')
+    initNavigation()
+    backToList()
+    await nextTick()
+    expect(useNotesStore().currentId).toBeNull()
+    expect(useUiStore().mobilePane).toBe('list')
+    expect(location.search).toBe('')
+  })
+
+  it('地址与旧历史状态冲突时以地址为准，未知路径回到首页', () => {
+    initNavigation()
+    history.replaceState(history.state, '', '/settings/shortcuts')
+    setActivePinia(createPinia())
+    initNavigation()
+    expect(useUiStore().settingsTab).toBe('shortcuts')
+    history.replaceState({ arbitrary: true }, '', '/missing')
+    setActivePinia(createPinia())
+    initNavigation()
+    expect(useUiStore().view).toBe('all')
+    expect(location.pathname).toBe('/')
+  })
+
   it('浏览器返回后前进会恢复真正的目标视图', async () => {
     const ui = useUiStore()
     initNavigation()
@@ -109,6 +187,8 @@ describe('navigation 导航栈', () => {
       mobilePane: 'list',
       drawerOpen: false,
       workspacePage: null,
+      settingsTab: 'appearance',
+      depth: 0,
       scroll: { list: 0, editor: 0, groups: 0 },
     })
   })
@@ -173,6 +253,8 @@ describe('navigation 导航栈', () => {
   })
 
   it('popNav / backToList 都走 history.back', () => {
+    initNavigation()
+    pushNav()
     const back = vi.spyOn(window.history, 'back')
     popNav()
     backToList()
