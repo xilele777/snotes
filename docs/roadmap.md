@@ -355,3 +355,10 @@
   - 提交与发布：`083ce98`（`chore(release): v0.23.1`）及注解标签 `v0.23.1` 已推送；安装文档已更新到本次稳定版。GitHub Release https://github.com/xilele777/snotes/releases/tag/v0.23.1，使用 CHANGELOG 对应条目作为发布说明，已发布为正式稳定版。
   - 部署结果：`npm run deploy -- --message 'Release v0.23.1'` 成功；Cloudflare Version ID `7f0016fa-75b9-459d-b56d-c8afd699e9b4`，Deployment ID `e09d4549-2345-495e-9db0-f81b1c4f2cec`，经 Wrangler 确认承接 100% 生产流量。
   - 线上核验：正式站点 https://note.alover.me 的首页和 `/api/health` 均返回 200，健康响应为 `ok=true`；首页引用的 `/assets/index-Dy-pPQa3.js` 与本地发布构建一致，线上资源包含应用版本 `0.23.1`。未执行登录后的生产笔记读写验证。
+
+- 2026-10-17：v0.23.2 将 Agent 凭证和最近写入收敛为紧凑的文字分隔列表，移除彩线、装饰图标、彩色标签与卡片底色；有效期改用支持键盘和窄屏边界适配的浮层菜单。加载状态使用固定宽度的刷新按钮，短提示复用现有 Toast；失败原因与重试入口放在对应字段或操作旁。
+  - 失败处理：分别加载凭证与写入记录，记录接口失败不影响凭证管理；区分网络、超时、服务不可用、权限和服务端未支持等情况。创建或撤销结果未确认时引导刷新核对，未确认的创建请求在成功刷新前不会再次提交。
+  - 验证：`npm run test:all` 共 1005 项通过（客户端/领域 766、Worker 184、Node/SQLite 55）；`npm run build` 与部署再次构建通过。Agent 接入与设置页端到端回归 4 项通过，最终 Agent 截图复核 2 项再次通过，覆盖 1440/320px、慢速加载和失败重试时的位置稳定、有效期键盘选择、提示图标、MCP 写入、撤销与笔记链接。浅色、深色、加载失败和下拉菜单截图均已核对。本次无数据库迁移。
+  - 提交与发布：`1ccec46`（`chore(release): v0.23.2`）及注解标签 `v0.23.2` 已推送；安装文档已同步。GitHub Release https://github.com/xilele777/snotes/releases/tag/v0.23.2，发布说明取自 CHANGELOG 对应条目，为正式稳定版。
+  - 部署结果：`npm run deploy -- --message 'Release v0.23.2'` 成功；Cloudflare Version ID `fc747d01-3e80-4b16-935a-a5ed0c4dfcc5`，Deployment ID `a2c5b7c9-3cd3-4af7-ba69-fc0e6a59c3fd`，经 Wrangler 确认承接 100% 生产流量。
+  - 线上核验：正式站点 https://note.alover.me 的首页和 `/api/health` 均返回 200，健康响应为 `ok=true`；首页引用的 `/assets/index-DcUogM5i.js` 与本地发布构建一致，线上资源包含应用版本 `0.23.2`。未执行登录后的生产笔记读写验证。
