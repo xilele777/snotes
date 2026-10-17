@@ -349,3 +349,9 @@
   - 提交与发布：`883924d`（`chore(release): v0.23.0`）及注解标签 `v0.23.0` 已推送。中英文安装指南已固定到本次稳定版；GitHub Release https://github.com/xilele777/snotes/releases/tag/v0.23.0，已核对为 Latest 正式稳定版。
   - 部署结果：`npm run deploy -- --message 'Release v0.23.0'` 成功；Cloudflare Version ID `6297b71f-3751-476d-94b3-b8bb6daa3fc9`，Deployment ID `80b71ffd-8783-40d7-8a87-ac94dd1bde87`，经 Wrangler 确认承接 100% 生产流量。
   - 线上核验范围：正式站点 https://note.alover.me 的首页和 `/api/health` 均返回 302 至 Cloudflare Access，未完成登录后的线上界面与健康响应核验；部署、绑定、迁移及流量状态已通过 Cloudflare 确认。外部 Agent 仍须通过 Access 网关认证；使用 Access 服务令牌时需额外配置两个 `CF-Access-Client-*` 请求头，详见接入说明。
+
+- 2026-10-17：v0.23.1 精简 Agent 接入设置，移除重复标题，将说明收进支持悬浮、聚焦与点击的提示图标；优化凭证状态、授权范围、权限标签与时间信息，宽屏支持凭证并排展示；最近写入改为紧凑活动列表，笔记 ID 可按需展开，适配深浅色主题。修复悬浮说明无法通过 Esc 收起的问题。
+  - 验证：`npm run test:all` 共 1002 项通过（客户端/领域 763、Worker 184、Node/SQLite 55）；`npm run build` 与部署再次构建通过。开发阶段 Agent 接入与设置页端到端回归共 4 项通过，覆盖 1440/320px、悬浮/点击/键盘提示、MCP 写入、撤销与笔记链接；核对深浅色卡片截图。本次无数据库迁移。
+  - 提交与发布：`083ce98`（`chore(release): v0.23.1`）及注解标签 `v0.23.1` 已推送；安装文档已更新到本次稳定版。GitHub Release https://github.com/xilele777/snotes/releases/tag/v0.23.1，使用 CHANGELOG 对应条目作为发布说明，已发布为正式稳定版。
+  - 部署结果：`npm run deploy -- --message 'Release v0.23.1'` 成功；Cloudflare Version ID `7f0016fa-75b9-459d-b56d-c8afd699e9b4`，Deployment ID `e09d4549-2345-495e-9db0-f81b1c4f2cec`，经 Wrangler 确认承接 100% 生产流量。
+  - 线上核验：正式站点 https://note.alover.me 的首页和 `/api/health` 均返回 200，健康响应为 `ok=true`；首页引用的 `/assets/index-Dy-pPQa3.js` 与本地发布构建一致，线上资源包含应用版本 `0.23.1`。未执行登录后的生产笔记读写验证。
