@@ -14,8 +14,18 @@ function onOutside(event: PointerEvent) {
   if (!root.value?.contains(event.target as Node)) open.value = false
 }
 
-onMounted(() => document.addEventListener('pointerdown', onOutside))
-onUnmounted(() => document.removeEventListener('pointerdown', onOutside))
+function onEscape(event: KeyboardEvent) {
+  if (event.key === 'Escape') open.value = false
+}
+
+onMounted(() => {
+  document.addEventListener('pointerdown', onOutside)
+  document.addEventListener('keydown', onEscape)
+})
+onUnmounted(() => {
+  document.removeEventListener('pointerdown', onOutside)
+  document.removeEventListener('keydown', onEscape)
+})
 </script>
 
 <template>
