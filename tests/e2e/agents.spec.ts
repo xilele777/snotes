@@ -3,6 +3,8 @@ import { Client } from '@modelcontextprotocol/sdk/client/index.js'
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js'
 import { resetServer } from './reset-server'
 
+test.use({ serviceWorkers: 'block' })
+
 for (const width of [1440, 320]) test(`Agent credential, MCP document, deep link and revocation at ${width}px`, async ({ page, browser, baseURL }) => {
   resetServer()
   await page.setViewportSize({ width, height: 900 })
@@ -16,8 +18,41 @@ for (const width of [1440, 320]) test(`Agent credential, MCP document, deep link
   await page.reload()
   if (width < 1020) await page.getByRole('button', { name: '打开侧栏' }).click()
   await page.locator('.sidebar-footer').getByRole('button', { name: '设置', exact: true }).click()
+  let finishInitialLoad!: () => void
+  let failCredentials = false
+  const initialLoad = new Promise<void>(resolve => { finishInitialLoad = resolve })
+  await page.route(/\/api\/agent-tokens(?:\/activity)?$/, async route => {
+    await initialLoad
+    if (failCredentials && route.request().url().endsWith('/agent-tokens')) {
+      failCredentials = false
+      await route.fulfill({ status: 503, json: { error: 'temporarily_unavailable' } })
+      return
+    }
+    await route.continue()
+  })
   await page.getByRole('tab', { name: 'Agent 接入', exact: true }).click()
   const pane = page.locator('.agents-page')
+  const refresh = pane.getByRole('button', { name: '刷新', exact: true })
+  await expect(refresh).toBeDisabled()
+  await expect(refresh).toHaveText('加载中')
+  const loadingHeading = await pane.locator('#agent-create-heading').boundingBox()
+  const loadingConnection = await pane.locator('#agent-connect-heading').boundingBox()
+  const loadingRefresh = await refresh.boundingBox()
+  finishInitialLoad()
+  await expect(refresh).toBeEnabled()
+  expect(await pane.locator('#agent-create-heading').boundingBox()).toEqual(loadingHeading)
+  expect(await pane.locator('#agent-connect-heading').boundingBox()).toEqual(loadingConnection)
+  expect(await refresh.boundingBox()).toEqual(loadingRefresh)
+  failCredentials = true
+  await refresh.click()
+  const loadFailure = pane.locator('.agent-book-options').getByRole('alert')
+  await expect(loadFailure).toContainText('服务暂时不可用，请稍后重试。')
+  expect(await pane.locator('#agent-create-heading').boundingBox()).toEqual(loadingHeading)
+  expect(await pane.locator('#agent-connect-heading').boundingBox()).toEqual(loadingConnection)
+  await page.screenshot({ path: `tmp/agent-review/load-error-${width}.png`, animations: 'disabled' })
+  await loadFailure.getByRole('button', { name: '重试', exact: true }).click()
+  await expect(refresh).toBeEnabled()
+  await expect(loadFailure).toHaveCount(0)
   await expect(pane.getByRole('heading', { name: 'Agent 接入', exact: true })).toHaveCount(0)
   await expect(pane.getByRole('tooltip')).toHaveCount(0)
   const createHint = pane.getByRole('button', { name: '创建凭证说明', exact: true })
@@ -28,6 +63,23 @@ for (const width of [1440, 320]) test(`Agent credential, MCP document, deep link
   expect(hintBox.x).toBeGreaterThanOrEqual(0)
   expect(hintBox.x + hintBox.width).toBeLessThanOrEqual(width)
   await page.keyboard.press('Escape')
+  const expiry = pane.getByRole('button', { name: '有效期：30 天', exact: true })
+  await expiry.press('ArrowDown')
+  const expiryMenu = page.getByRole('menu', { name: '有效期', exact: true })
+  await expect(expiryMenu.getByRole('menuitemradio', { name: '30 天', exact: true })).toBeFocused()
+  await page.keyboard.press('End')
+  await page.keyboard.press('Enter')
+  await expect(pane.getByRole('button', { name: '有效期：长期有效', exact: true })).toBeFocused()
+  await pane.getByRole('button', { name: '有效期：长期有效', exact: true }).click()
+  await expect(expiryMenu).toBeVisible()
+  await expect(expiryMenu).toHaveCSS('opacity', '1')
+  const expiryBox = (await expiryMenu.boundingBox())!
+  expect(expiryBox.x).toBeGreaterThanOrEqual(0)
+  expect(expiryBox.x + expiryBox.width).toBeLessThanOrEqual(width)
+  await page.screenshot({ path: `tmp/agent-review/expiry-${width}.png`, animations: 'disabled' })
+  await expiryMenu.getByRole('menuitemradio', { name: '30 天', exact: true }).click()
+  await expect(expiry).toBeFocused()
+  await expect(expiryMenu).toHaveCount(0)
   await expect(pane.getByRole('tooltip')).toHaveCount(0)
   await pane.getByRole('button', { name: '修改说明', exact: true }).focus()
   await expect(pane.getByRole('tooltip')).toHaveText('替换正文或追加内容')
@@ -64,9 +116,9 @@ for (const width of [1440, 320]) test(`Agent credential, MCP document, deep link
   await expect(pane.locator('.agent-activity > li')).toHaveCount(2)
   await pane.getByText('MCP 配置示例', { exact: true }).click()
   await pane.locator('.agent-token-list').scrollIntoViewIfNeeded()
-  await page.screenshot({ path: `tmp/agent-review/cards-${width}.png` })
+  await page.screenshot({ path: `tmp/agent-review/simple-records-${width}.png`, style: '.toast-host { visibility: hidden; }' })
   await page.evaluate(() => { document.documentElement.dataset.theme = 'dark' })
-  await page.screenshot({ path: `tmp/agent-review/cards-dark-${width}.png`, animations: 'disabled' })
+  await page.screenshot({ path: `tmp/agent-review/simple-records-dark-${width}.png`, animations: 'disabled', style: '.toast-host { visibility: hidden; }' })
   await page.evaluate(() => { document.documentElement.dataset.theme = 'light' })
   await pane.getByRole('button', { name: '最近写入说明', exact: true }).click()
   await expect(pane.getByRole('tooltip')).toHaveText('显示最近 50 次成功写入，重复请求只计一次。')

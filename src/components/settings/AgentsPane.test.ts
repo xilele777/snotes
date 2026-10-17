@@ -1,6 +1,7 @@
 import { mount, flushPromises } from '@vue/test-utils'
 import { beforeEach, expect, it, vi } from 'vitest'
 import AgentsPane from './AgentsPane.vue'
+import { ApiError } from '../../api/client'
 
 const apiFetch = vi.hoisted(() => vi.fn())
 vi.mock('../../api/client', async original => ({ ...(await original<typeof import('../../api/client')>()), apiFetch }))
@@ -40,8 +41,60 @@ it('surfaces loading failures and prevents credential creation while disconnecte
   apiFetch.mockRejectedValue(new Error('offline'))
   const wrapper = mount(AgentsPane)
   await flushPromises()
-  expect(wrapper.get('[role="alert"]').text()).toContain('请求失败')
+  expect(wrapper.get('.agent-book-options [role="alert"]').text()).toContain('请检查网络')
+  expect(wrapper.find('.agents-page > [role="alert"]').exists()).toBe(false)
   expect(wrapper.find('button[type="submit"]').attributes('disabled')).toBeDefined()
+  const retry = wrapper.get('.agent-book-options button')
+  expect(retry.element.matches(':disabled')).toBe(false)
+  apiFetch.mockImplementation((path: string) => Promise.resolve(path.endsWith('/activity') ? { activity: [] } : {
+    tokens: [], notebooks: [{ id: 'book1', name: '项目资料' }],
+  }))
+  await retry.trigger('click')
+  await flushPromises()
+  expect(wrapper.find('[role="alert"]').exists()).toBe(false)
+  expect(wrapper.find('input[name="agent-notebooks"]').exists()).toBe(true)
+  wrapper.unmount()
+})
+
+it('keeps credential management available when only activity fails', async () => {
+  apiFetch.mockImplementation((path: string) => path.endsWith('/activity')
+    ? Promise.reject(new ApiError(503, 'unavailable'))
+    : Promise.resolve({ tokens: [credential], notebooks: [{ id: 'book1', name: '项目资料' }] }))
+  const wrapper = mount(AgentsPane)
+  await flushPromises()
+  expect(wrapper.get('[aria-labelledby="agent-activity-heading"] [role="alert"]').text()).toContain('服务暂时不可用')
+  expect(wrapper.get('.agent-token-list').text()).toContain('研究助手')
+  await wrapper.get('input[name="agent-name"]').setValue('新助手')
+  await wrapper.get('input[name="agent-notebooks"]').setValue(true)
+  expect(wrapper.get('button[type="submit"]').attributes('disabled')).toBeUndefined()
+  wrapper.unmount()
+})
+
+it('requires a refresh to reconcile an uncertain credential creation instead of resubmitting it', async () => {
+  const wrapper = mount(AgentsPane)
+  await flushPromises()
+  await wrapper.get('input[name="agent-name"]').setValue('研究助手')
+  await wrapper.get('input[name="agent-notebooks"]').setValue(true)
+  apiFetch.mockRejectedValueOnce(new TypeError('Failed to fetch'))
+  await wrapper.get('form').trigger('submit')
+  await flushPromises()
+  expect(wrapper.get('.agent-submit-row [role="alert"]').text()).toContain('创建结果未确认')
+  expect(wrapper.get('button[type="submit"]').attributes('disabled')).toBeDefined()
+  await wrapper.get('.agent-submit-row [role="alert"] button').trigger('click')
+  await flushPromises()
+  expect(apiFetch.mock.calls.filter(([, init]) => init?.method === 'POST')).toHaveLength(1)
+  expect(wrapper.find('[role="alert"]').exists()).toBe(false)
+  expect(wrapper.get('button[type="submit"]').attributes('disabled')).toBeUndefined()
+  wrapper.unmount()
+})
+
+it('offers server upgrade guidance only when the endpoint is unsupported', async () => {
+  apiFetch.mockRejectedValue(new ApiError(404, 'not found'))
+  const wrapper = mount(AgentsPane)
+  await flushPromises()
+  const failure = wrapper.get('.agent-book-options [role="alert"]')
+  expect(failure.text()).toContain('服务端尚不支持 Agent 接入，请先升级')
+  expect(failure.find('button').exists()).toBe(false)
   wrapper.unmount()
 })
 
@@ -57,5 +110,11 @@ it('shows expired/revoked credentials and opens a confirmation before revocation
   await wrapper.get('[aria-label="撤销 研究助手"]').trigger('click')
   expect(wrapper.get('[role="alertdialog"]').text()).toContain('撤销 Agent 凭证')
   expect(apiFetch.mock.calls.some(([, init]) => init?.method === 'DELETE')).toBe(false)
+  apiFetch.mockRejectedValueOnce(new TypeError('Failed to fetch'))
+  await wrapper.get('[role="alertdialog"] [data-op="confirm"]').trigger('click')
+  await flushPromises()
+  expect(wrapper.get('.agent-token-card [role="alert"]').text()).toContain('撤销结果未确认')
+  expect(wrapper.get('.agent-token-card .agent-badge').text()).toBe('有效')
+  expect(wrapper.find('.agents-page > [role="alert"]').exists()).toBe(false)
   wrapper.unmount()
 })

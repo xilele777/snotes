@@ -44,7 +44,7 @@ Notes are saved in the browser first, then synced with your own backend. Run the
 Requires **Node.js 24 LTS**. No Cloudflare account is needed: notes use SQLite and images are stored on disk.
 
 ```bash
-git clone --branch v0.23.1 https://github.com/xilele777/snotes.git
+git clone --branch v0.23.2 https://github.com/xilele777/snotes.git
 cd snotes
 npm ci
 npm run build:server

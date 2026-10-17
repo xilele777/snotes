@@ -4,7 +4,7 @@
 
 ## Version selection
 
-The installation below pins stable release `v0.23.1`. Choose other tags from [Releases](https://github.com/xilele777/snotes/releases); `main` may contain unreleased changes. A pinned deployment uses detached HEAD. For upgrades, back up first, run `git fetch origin --tags`, then `git switch --detach <new-release-tag>`. Do not use `git pull` on detached HEAD or force a checkout over local settings.
+The installation below pins stable release `v0.23.2`. Choose other tags from [Releases](https://github.com/xilele777/snotes/releases); `main` may contain unreleased changes. A pinned deployment uses detached HEAD. For upgrades, back up first, run `git fetch origin --tags`, then `git switch --detach <new-release-tag>`. Do not use `git pull` on detached HEAD or force a checkout over local settings.
 
 
 You need one Worker, one D1 database, and one R2 bucket. Each product offers a free allowance; actual costs depend on usage. See [Free tier](#free-tier).
@@ -22,7 +22,7 @@ You need one Worker, one D1 database, and one R2 bucket. Each product offers a f
 ## 1. Clone and install
 
 ```bash
-git clone --branch v0.23.1 https://github.com/xilele777/snotes.git
+git clone --branch v0.23.2 https://github.com/xilele777/snotes.git
 cd snotes
 npm ci
 ```
