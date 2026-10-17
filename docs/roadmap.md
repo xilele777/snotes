@@ -362,3 +362,10 @@
   - 提交与发布：`1ccec46`（`chore(release): v0.23.2`）及注解标签 `v0.23.2` 已推送；安装文档已同步。GitHub Release https://github.com/xilele777/snotes/releases/tag/v0.23.2，发布说明取自 CHANGELOG 对应条目，为正式稳定版。
   - 部署结果：`npm run deploy -- --message 'Release v0.23.2'` 成功；Cloudflare Version ID `fc747d01-3e80-4b16-935a-a5ed0c4dfcc5`，Deployment ID `a2c5b7c9-3cd3-4af7-ba69-fc0e6a59c3fd`，经 Wrangler 确认承接 100% 生产流量。
   - 线上核验：正式站点 https://note.alover.me 的首页和 `/api/health` 均返回 200，健康响应为 `ok=true`；首页引用的 `/assets/index-DcUogM5i.js` 与本地发布构建一致，线上资源包含应用版本 `0.23.2`。未执行登录后的生产笔记读写验证。
+
+- 2026-10-17：v0.23.3 修复刷新后回到主页的问题。笔记视图、分组、笔记本、统计与设置使用独立页面地址，启动先恢复当前位置再加载数据；设置分页、当前笔记、搜索条件与目录节点可随地址和历史快照恢复，保留原有前进、后退与旧笔记本分享链接。
+  - 直接链接：本地尚未缓存目标笔记时，保留选中项直到首次同步完成；直接进入设置或手机笔记详情、没有应用内历史时，页面内返回可回到工作区或列表。启动参数只清理已消费的分享、新建或旧分享链接参数，刷新不会重复新建笔记。
+  - 验证：发布前 `npm run test:all` 共 1024 项通过（客户端/领域 785、Worker 184、Node/SQLite 55）；`npm run build` 与部署再次构建通过。开发阶段浏览器回归共 21 项通过（Cloudflare 本地 17、Node 4），覆盖桌面与手机刷新、当前笔记和设置分页恢复、前进后退、空缓存直达笔记本、旧分享链接、新建快捷入口、既有工作区、设置与链接行为。本次没有数据库迁移，已确认生产 D1 无待执行迁移。
+  - 提交与发布：`8ed06c5`（`chore(release): v0.23.3`）及注解标签 `v0.23.3` 已推送；中英文 README 与安装文档已同步。GitHub Release https://github.com/xilele777/snotes/releases/tag/v0.23.3，发布说明取自 CHANGELOG 对应条目，已核对为 Latest 正式稳定版。
+  - 部署结果：`npm run deploy -- --message 'Release v0.23.3'` 成功；Cloudflare Version ID `35307ad8-20ba-44f2-875d-dc83690d803d`，Deployment ID `36aa1659-3e0a-4bd8-aa42-0641fe3ed4ca`，经 Wrangler 确认承接 100% 生产流量。部署与线上检查日志保存在部署机 `tmp/release-v0.23.3-*`，未纳入 Git。
+  - 线上核验：正式站点 https://note.alover.me 的首页、`/api/health`、`/settings/agents` 与 `/notebooks` 均返回 200，健康响应为 `ok=true`；页面均引用本次入口 `/assets/index-AW8HBBme.js`，线上入口资源与本地构建 SHA256 一致（`0943219a576f65e6553a12ddbe1ae7b549e08bfc52be9a37af36d09c6af86ee2`），并包含应用版本 `0.23.3`。未执行登录后的生产笔记读写验证。
