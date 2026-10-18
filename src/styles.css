@@ -6,8 +6,8 @@
   --text-disabled: #adb0b8;
   --bg-app: #f7f7f7;
   --bg-surface: #ffffff;
-  --bg-rail: #f3f3f4;
-  --bg-list: #fafafa;
+  --bg-rail: #f5f6f8;
+  --bg-list: #ffffff;
   --bg-hover: #ededf0;
   --bg-press: #e5e7eb;
   --bg-divider: #e8e9ec;
@@ -93,10 +93,10 @@ kbd { font-family: inherit; font-size: 10px; line-height: 20px; white-space: now
 .icon-button:hover { background: var(--bg-press); }
 
 /* One stable shell for notes and knowledge bases. */
-.layout { --sidebar-width: 232px; --list-width: 320px; display: grid; grid-template-columns: var(--sidebar-width) var(--list-width) minmax(0, 1fr); height: 100vh; height: 100dvh; position: relative; overflow: hidden; }
+.layout { --sidebar-width: var(--preferred-sidebar-width, 232px); --list-width: var(--preferred-list-width, 336px); display: grid; grid-template-columns: var(--sidebar-width) var(--list-width) minmax(0, 1fr); height: 100vh; height: 100dvh; position: relative; overflow: hidden; }
 .layout.is-library-list .list-pane { grid-column: 2 / -1; }
-.sidebar-pane { background: var(--bg-rail); border-right: 1px solid var(--border-default); overflow: hidden; min-width: 0; }
-.list-pane { min-width: 0; min-height: 0; background: var(--bg-list); border-right: 1px solid var(--border-default); overflow: hidden; }
+.sidebar-pane { background: var(--bg-rail); border-right: 1px solid var(--border-light); overflow: hidden; min-width: 0; }
+.list-pane { min-width: 0; min-height: 0; background: var(--bg-list); border-right: 1px solid var(--border-light); overflow: hidden; }
 .editor-pane { min-width: 0; min-height: 0; background: var(--bg-surface); display: flex; flex-direction: column; overflow: hidden; }
 .layout[data-view='metrics'] .list-pane { grid-column: 2 / -1; }
 .layout.is-focused { grid-template-columns: minmax(0, 1fr); }
@@ -181,9 +181,9 @@ kbd { font-family: inherit; font-size: 10px; line-height: 20px; white-space: now
 .list-caption { display: flex; align-items: center; gap: 6px; min-height: 28px; padding: 0 22px 8px; color: var(--text-tertiary); font-size: 11px; flex: none; }
 .list-caption button { margin-left: auto; padding: 2px 0; background: transparent; border: 0; color: var(--accent); font-size: 11px; }
 .note-list { list-style: none; flex: 1; min-height: 0; margin: 0; padding: 0 0 12px; overflow-y: auto; overscroll-behavior: contain; }
-.note-item { position: relative; min-width: 0; height: 96px; margin: 0 8px 2px; border-radius: 7px; overflow: hidden; transition: background-color 120ms; }
+.note-item { position: relative; min-width: 0; height: 106px; margin: 0 10px 4px; border-radius: 8px; overflow: hidden; transition: background-color 120ms; }
 .note-item:hover { background: var(--bg-hover); }
-.note-item.is-active { background: var(--selected-bg); box-shadow: inset 0 0 0 1px var(--focus-ring); }
+.note-item.is-active { background: var(--selected-bg); }
 .note-item.is-active .note-title { color: var(--selected-text); }
 .note-item::before { content: ""; position: absolute; inset: 12px auto 12px 0; width: 2px; border-radius: 2px; background: var(--skin, transparent); z-index: 1; pointer-events: none; }
 .note-item::after { content: ""; position: absolute; bottom: 0; left: 14px; right: 14px; height: 1px; background: var(--bg-divider); pointer-events: none; }
@@ -191,13 +191,13 @@ kbd { font-family: inherit; font-size: 10px; line-height: 20px; white-space: now
 .note-select { display: grid; grid-template-columns: minmax(0, 1fr) auto; column-gap: 10px; align-content: center; position: relative; width: 100%; height: 100%; border: 0; border-radius: inherit; padding: 12px 14px; background: transparent; text-align: left; touch-action: pan-y; }
 .note-select:focus-visible { outline-offset: -2px; }
 .note-text { grid-column: 1; grid-row: 1; min-width: 0; }
-.note-title { height: 23px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 15px; font-weight: 600; line-height: 23px; color: var(--text-primary); }
-.note-summary { height: 20px; margin-top: 3px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; line-height: 20px; color: var(--text-secondary); }
-.note-meta { grid-column: 1; grid-row: 2; min-width: 0; display: flex; align-items: center; gap: 7px; height: 18px; margin-top: 6px; color: var(--text-tertiary); font-size: 12px; line-height: 18px; }
+.note-title { height: 23px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 14px; font-weight: 600; line-height: 23px; color: var(--text-primary); }
+.note-summary { height: 20px; margin-top: 4px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; line-height: 20px; color: var(--text-secondary); }
+.note-meta { grid-column: 1; grid-row: 2; min-width: 0; display: flex; align-items: center; gap: 7px; height: 18px; margin-top: 8px; color: var(--text-tertiary); font-size: 11px; line-height: 18px; }
 .note-date { font-variant-numeric: tabular-nums; }
 .note-pin, .note-star { display: inline-flex; color: var(--text-tertiary); }
 .note-star .app-icon { color: var(--accent); fill: var(--accent); }
-.note-group-label { max-width: 100px; margin-left: auto; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font-size: 11px; }
+.note-group-label { max-width: 100px; margin-left: auto; padding: 0 5px; border-radius: 3px; background: var(--bg-rail); overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font-size: 10px; }
 /* 「不上首页」标记：放在分组名之前，避免和悬停时出现的删除按钮抢位置 */
 .note-hidden { display: inline-flex; color: var(--text-disabled); }
 .note-item .thumb { grid-column: 2; grid-row: 1 / span 2; align-self: center; width: 44px; height: 44px; border: 1px solid var(--border-light); border-radius: 4px; object-fit: cover; }
@@ -464,7 +464,7 @@ textarea.dialog-input { height: auto; min-height: 112px; padding: 10px 12px; lin
 
 /* Loading and scrolling */
 .list-skeleton { list-style: none; padding: 0 8px; margin: 0; }
-.list-skeleton-row { height: 92px; padding: 14px; display: flex; flex-direction: column; gap: 10px; }
+.list-skeleton-row { height: 106px; padding: 14px; display: flex; flex-direction: column; gap: 10px; }
 .skeleton-line { display: block; width: 100%; height: 10px; border-radius: 4px; background: var(--bg-press); animation: skeleton-pulse 1.8s ease-in-out infinite; }
 .skeleton-title { width: 55%; height: 15px; }
 .skeleton-summary { width: 83%; }
@@ -512,7 +512,6 @@ textarea.dialog-input { height: auto; min-height: 112px; padding: 10px 12px; lin
 .toast { pointer-events: auto; display: flex; align-items: center; gap: 16px; max-width: min(360px, calc(100vw - 32px)); padding: 9px 14px; border-radius: 8px; background: var(--text-primary); color: var(--bg-surface); font-size: 13px; line-height: 1.5; box-shadow: 0 6px 24px rgb(0 0 0 / 18%); overflow-wrap: anywhere; }
 
 @media (max-width: 1240px) and (min-width: 1021px) {
-  .layout { --sidebar-width: 224px; --list-width: 296px; }
   .sidebar-content { padding: 0 8px; }
   .sidebar-brand { padding-left: 10px; }
   .views li > button, .group-link { padding-left: 10px; gap: 8px; }
@@ -522,7 +521,7 @@ textarea.dialog-input { height: auto; min-height: 112px; padding: 10px 12px; lin
 }
 @media (max-width: 1020px) {
   .layout.is-library-list .list-pane { grid-column: 1 / -1; }
-  .layout { --sidebar-width: 280px; --list-width: 296px; grid-template-columns: var(--list-width) minmax(0, 1fr); }
+  .layout { --sidebar-width: 280px; --list-width: clamp(260px, var(--preferred-list-width, 336px), calc(100vw - 360px)); grid-template-columns: var(--list-width) minmax(0, 1fr); }
   /* Opening must expose the controls immediately so focus can enter before the slide finishes. */
   .sidebar-pane { position: fixed; top: 0; bottom: 0; left: 0; width: var(--sidebar-width); z-index: 40; transform: translateX(-100%); visibility: hidden; transition: transform 180ms ease, visibility 0s linear 180ms; box-shadow: 4px 0 24px rgb(0 0 0 / 8%); }
   .sidebar-pane.is-open { transform: translateX(0); visibility: visible; transition-delay: 0s; }
@@ -635,7 +634,7 @@ textarea.dialog-input { height: auto; min-height: 112px; padding: 10px 12px; lin
   html, body, #app { height: auto; }
   body { background: #fff; }
   .layout { display: block; height: auto; overflow: visible; padding: 0; }
-  .sidebar-pane, .list-pane, .drawer-mask, .editor-top-bar, .format-bar, .reading-banner, .link-tooltip, .lightbox-mask, .dialog-mask, .editor-welcome, .task-checkbox, .toast-host, .action-menu { display: none !important; }
+  .sidebar-pane, .list-pane, .workspace-divider, .drawer-mask, .editor-top-bar, .format-bar, .reading-banner, .link-tooltip, .lightbox-mask, .dialog-mask, .editor-welcome, .task-checkbox, .toast-host, .action-menu { display: none !important; }
   .editor-pane { display: block; height: auto; overflow: visible; background: #fff; }
   .editor-body { overflow: visible; }
   .editor-body .milkdown, .editor-body .milkdown-mock { max-width: none; min-height: 0; margin: 0; padding: 0; font-size: 12pt; line-height: 1.6; }

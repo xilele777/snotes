@@ -206,17 +206,6 @@ watch(
       <span class="header-title" tabindex="-1" :title="viewTitle">{{ viewTitle }}</span>
       <span v-if="!notes.stale" class="header-count">{{ notes.visible.length }}</span>
 
-      <button
-        type="button"
-        class="header-refresh"
-        :title="refreshBusy ? '正在刷新' : '刷新笔记'"
-        aria-label="刷新笔记"
-        :aria-busy="refreshBusy"
-        :disabled="refreshBusy"
-        @click="refreshNotes"
-      >
-        <AppIcon name="refresh" :size="16" :class="{ 'sync-spinner': refreshBusy }" />
-      </button>
       <button class="header-create" title="新建笔记" aria-label="新建笔记" @click="notes.create()">
         <AppIcon name="plus" :size="15" />
         <span>新建</span>
@@ -226,6 +215,7 @@ watch(
     <div class="list-search-tools">
       <NoteSearch @first="focusFirst" />
       <SortMenu label="笔记排序" :model-value="preferences.noteSort" :options="[{ value: 'updated', label: '最近更新' }, { value: 'created', label: '最近创建' }, { value: 'title', label: '标题顺序' }]" @update:model-value="updateWorkspacePreferences({ noteSort: $event as NoteSort })" />
+      <button type="button" class="header-refresh" :title="refreshBusy ? '正在刷新' : '刷新笔记'" aria-label="刷新笔记" :aria-busy="refreshBusy" :disabled="refreshBusy" @click="refreshNotes"><AppIcon name="refresh" :size="16" :class="{ 'sync-spinner': refreshBusy }" /></button>
     </div>
     <div v-if="ui.query.trim()" class="list-caption" aria-live="polite">
       <span>找到 {{ notes.visible.length }} 条笔记</span><button @click="ui.query = ''">清除筛选</button>

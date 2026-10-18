@@ -169,7 +169,7 @@ watch(() => ui.drawerOpen, (open) => { if (!open) menuGroup.value = null })
         <button class="sidebar-close icon-button" aria-label="关闭侧栏" title="关闭侧栏" @click="ui.drawerOpen = false"><AppIcon name="close" /></button>
       </div>
 
-      <div class="nav-section-label">随手记</div>
+      <div class="nav-section-label">工作区</div>
       <ul class="views">
         <li data-view="all" :class="{ active: !ui.workspacePage && ui.view === 'all' }" @click="switchListView('all')">
           <button type="button" aria-label="全部笔记" title="全部笔记" :aria-current="!ui.workspacePage && ui.view === 'all' ? 'page' : undefined"><AppIcon name="notes" /><span>全部笔记</span><span v-if="ui.view === 'all' && !notes.stale" class="nav-count">{{ notes.notes.length }}</span></button>
@@ -180,16 +180,13 @@ watch(() => ui.drawerOpen, (open) => { if (!open) menuGroup.value = null })
         <li data-view="hidden" :class="{ active: !ui.workspacePage && ui.view === 'hidden' }" @click="switchListView('hidden')">
           <button type="button" aria-label="已隐藏笔记" title="已隐藏笔记" :aria-current="!ui.workspacePage && ui.view === 'hidden' ? 'page' : undefined"><AppIcon name="eyeOff" /><span>已隐藏笔记</span></button>
         </li>
-      </ul>
-      <div class="nav-section-label">知识库</div>
-      <ul class="views notebook-views">
-        <li data-view="knowledge-bases" :class="{ active: !ui.workspacePage && ui.view === 'knowledge-bases' }" @click="showKnowledgeBases()">
+        <li class="notebook-entry" data-view="knowledge-bases" :class="{ active: !ui.workspacePage && ui.view === 'knowledge-bases' }" @click="showKnowledgeBases()">
           <button type="button" aria-label="笔记本" title="笔记本" :aria-current="!ui.workspacePage && ui.view === 'knowledge-bases' ? 'page' : undefined"><AppIcon name="book" /><span>笔记本</span><span v-if="books.length" class="nav-count">{{ books.length }}</span></button>
         </li>
       </ul>
       <div ref="groupList" class="sidebar-scroll">
       <div class="group-header">
-        <button class="section-toggle" :aria-expanded="!preferences.groupsCollapsed" aria-controls="sidebar-groups" :aria-label="preferences.groupsCollapsed ? '展开分组' : '折叠分组'" @click="updateWorkspacePreferences({ groupsCollapsed: !preferences.groupsCollapsed })"><span>分组</span><span class="section-count">{{ groups.groups.length }}</span><AppIcon name="chevron" :size="12" :class="{ expanded: !preferences.groupsCollapsed }" /></button>
+        <button class="section-toggle" title="按分组筛选笔记" :aria-expanded="!preferences.groupsCollapsed" aria-controls="sidebar-groups" :aria-label="preferences.groupsCollapsed ? '展开分组' : '折叠分组'" @click="updateWorkspacePreferences({ groupsCollapsed: !preferences.groupsCollapsed })"><AppIcon name="chevron" :size="12" :class="{ expanded: !preferences.groupsCollapsed }" /><span>分组</span><span class="section-count">{{ groups.groups.length }}</span></button>
         <button class="group-add" title="新建分组" aria-label="新建分组" @click="openCreate">
           <AppIcon name="plus" :size="15" />
         </button>
