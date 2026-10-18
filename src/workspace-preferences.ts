@@ -15,7 +15,9 @@ export interface WorkspacePreferences {
 }
 export const WORKSPACE_PREFERENCES_KEY = 'snotes_workspace_preferences'
 export const WORKSPACE_WIDTHS = {
-  sidebar: { min: 200, max: 340, default: 232 },
+  // Keep the navigation at its compact minimum on a fresh device. Users can
+  // still drag it wider and the chosen width is persisted.
+  sidebar: { min: 200, max: 340, default: 200 },
   list: { min: 260, max: 520, default: 336 },
 } as const
 function parseWidth(value: unknown, range: { min: number; max: number; default: number }) {
