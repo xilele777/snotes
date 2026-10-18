@@ -116,7 +116,7 @@
   .editor-location { margin-left: 0; width: 30px; padding: 0; justify-content: center; }
 }
 @media (min-width: 1021px) {
-  .layout.is-list-collapsed:not(.is-focused) { grid-template-columns: var(--sidebar-width) minmax(0, 1fr); }
+  .layout.is-list-collapsed { grid-template-columns: var(--sidebar-width) minmax(0, 1fr); }
   .layout.is-list-collapsed .list-pane { display: none; }
 }
 @media (max-width: 1020px) {

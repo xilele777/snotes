@@ -71,7 +71,6 @@ export async function switchListView(view: ListView, groupId: string | null = nu
   updateWorkspacePreferences({ listCollapsed: false })
   navigationGeneration++
   const ui = useUiStore()
-  ui.focusMode = false
   if (!ui.workspacePage && ui.view === view && ui.activeGroupId === groupId) {
     ui.drawerOpen = false
     return
@@ -118,7 +117,6 @@ export async function showKnowledgeBases(id: string | null = null) {
   if (isNotesView(ui.view) && !ui.workspacePage) ui.lastNotesPosition = snapshot()
   pushNav()
   ui.workspacePage = null
-  ui.focusMode = false
   ui.view = 'knowledge-bases'
   ui.activeKnowledgeBaseId = id
   ui.activeGroupId = null
@@ -156,7 +154,6 @@ export async function openManagedView(target: 'hidden' | 'trash') {
   const notes = useNotesStore()
   if (!ui.workspacePage) pushNav()
   ui.workspacePage = null
-  ui.focusMode = false
   ui.drawerOpen = false
   ui.restorePosition = null
   ui.query = ''
@@ -186,7 +183,6 @@ export function openWorkspacePage(kind: WorkspacePage, tab?: SettingsTab) {
   else if (kind === 'settings') ui.settingsTab = 'appearance'
   if (ui.workspacePage === kind) return
   ui.drawerOpen = false
-  ui.focusMode = false
   if (!ui.workspacePage) pushNav()
   ui.workspacePage = kind
   replaceSnapshot()
@@ -216,7 +212,6 @@ export async function openStatsNote(id: string) {
   const ui = useUiStore()
   const notes = useNotesStore()
   ui.workspacePage = null
-  ui.focusMode = false
   ui.drawerOpen = false
   ui.restorePosition = null
   ui.query = ''

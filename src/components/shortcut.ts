@@ -7,7 +7,6 @@ export type ShortcutAction =
   | { type: 'trash' }
   | { type: 'nextNote' }
   | { type: 'prevNote' }
-  | { type: 'toggleFocus' }
   | { type: 'syncNow' }
   | { type: 'openSettings' }
 
@@ -30,7 +29,6 @@ export const SHORTCUT_LIST: { keys: string; label: string }[] = [
   { keys: 'Mod Shift P', label: '置顶 / 取消置顶' },
   { keys: 'Mod Alt D', label: '删除当前笔记' },
   { keys: 'Mod Alt ↑ ↓', label: '上一条 / 下一条' },
-  { keys: 'Mod Alt F', label: '专注模式' },
   { keys: 'Mod Alt U', label: '立即同步' },
 ]
 
@@ -59,6 +57,7 @@ export const EDITOR_SHORTCUT_LIST: { keys: string; label: string }[] = [
   { keys: 'Mod Z', label: '撤销' },
   { keys: 'Mod Y', label: '重做' },
   { keys: 'Mod P', label: '双栏预览' },
+  { keys: "Mod '", label: '编辑器全屏 / 退出全屏' },
   { keys: 'Mod Alt 7 / 8 / 9', label: '所见即所得 / 即时渲染 / 分屏预览' },
   { keys: 'Mod 点击链接', label: '在新标签打开链接' },
   { keys: '双击 / 长按图片', label: '打开灯箱' },
@@ -84,7 +83,6 @@ export const MARKDOWN_HINTS: { keys: string; label: string }[] = [
  * - Cmd/Ctrl + Shift + S / P → 星标、置顶；Alt + D / U → 删除、同步
  * - Cmd/Ctrl + Alt + ↑ / ↓ → 列表里切到上一条 / 下一条（不用单独的 Alt+方向键，
  *   那在 Mac 编辑器里是按词移动光标）
- * - Cmd/Ctrl + Alt + F → 专注模式
  * - 不再占用 Mod+Shift+数字：与浏览器和系统输入法的快捷键冲突
  *
  * 只接收一个最小化的 event 形状与上下文，便于纯函数测试。
@@ -101,7 +99,6 @@ export function resolveShortcut(
   if (mod && e.altKey && !e.shiftKey) {
     if (key === 'd') return { type: 'trash' }
     if (key === 'u') return { type: 'syncNow' }
-    if (key === 'f') return { type: 'toggleFocus' }
   }
 
   if (mod && e.shiftKey && !e.altKey) {

@@ -349,7 +349,7 @@ onMounted(() => {
       { name: 'highlight', tip: '高亮', hotkey: '⌥⌘H', click: highlight, icon: '<svg viewBox="0 0 24 24"><path d="M5 3h3v7h8V3h3v18h-3v-8H8v8H5z"/></svg>' },
       'link', '|', 'list', 'ordered-list', 'check', 'outdent', 'indent', '|',
       'quote', 'line', 'code', 'inline-code', 'insert-before', 'insert-after', '|',
-      'upload', 'table', '|', 'undo', 'redo', '|', 'outline', 'edit-mode',
+      'upload', 'table', '|', 'undo', 'redo', '|', 'outline', 'fullscreen', 'edit-mode',
       // Keep document tools and mode/theme controls that belong in this app.
       // Vditor's product links and diagnostics are intentionally omitted.
       { name: 'more', tip: '主题与预览设置', toolbar: ['both', 'preview', 'code-theme', 'content-theme'] },

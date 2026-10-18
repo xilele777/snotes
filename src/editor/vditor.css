@@ -28,7 +28,6 @@
 .snotes-vditor.is-readonly[data-mode='sv'] .vditor-sv { display: none !important; }
 .snotes-vditor.is-readonly[data-mode='sv'] .vditor-preview { display: block !important; }
 .snotes-vditor.is-readonly :is(.vditor-panel, .vditor-hint) { display: none !important; }
-.is-focused .snotes-vditor :is(.vditor-reset, .vditor-sv) { max-width: var(--editor-focus-max-width); }
 .snotes-vditor.vditor--fullscreen { min-height: 100dvh; overflow: auto; z-index: 90; }
 .snotes-vditor.vditor--fullscreen .vditor-content { flex: 1; overflow: auto; }
 @media (max-width: 720px) {

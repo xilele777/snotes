@@ -125,12 +125,6 @@ const directActions = computed(() => !compact.value && paneWidth.value >= 620)
  */
 const canEdit = computed(() => !props.readonly)
 
-async function toggleFocus() {
-  ui.focusMode = !ui.focusMode
-  await nextTick()
-  editorRef.value?.focus()
-}
-
 /**
  * 切换当前笔记的首页信息流可见性。分组设置只是默认值，这里是单条笔记的覆盖：
  * 隐藏后它在「全部笔记」里消失，但仍在「已隐藏」、分组和星标视图里。
@@ -383,7 +377,7 @@ async function runShare() {
 <template>
   <main ref="editorPane" class="editor-pane">
     <div v-if="notes.current" class="editor-top-bar">
-      <button v-if="!ui.focusMode" type="button" class="icon-button list-visibility-toggle" :title="preferences.listCollapsed ? '展开笔记列表' : '收起笔记列表'" :aria-label="preferences.listCollapsed ? '展开笔记列表' : '收起笔记列表'" :aria-expanded="!preferences.listCollapsed" aria-controls="workspace-list" @click="updateWorkspacePreferences({ listCollapsed: !preferences.listCollapsed })"><AppIcon name="listPanel" :size="18" /></button>
+      <button type="button" class="icon-button list-visibility-toggle" :title="preferences.listCollapsed ? '展开笔记列表' : '收起笔记列表'" :aria-label="preferences.listCollapsed ? '展开笔记列表' : '收起笔记列表'" :aria-expanded="!preferences.listCollapsed" aria-controls="workspace-list" @click="updateWorkspacePreferences({ listCollapsed: !preferences.listCollapsed })"><AppIcon name="listPanel" :size="18" /></button>
       <!-- 移动端返回按钮，仅 <720px 显示 -->
       <button class="back-btn" title="返回列表" aria-label="返回列表" @click="$emit('back')">
         <AppIcon name="back" :size="20" />
@@ -471,11 +465,6 @@ async function runShare() {
         </button>
         <button v-if="directActions" class="op-btn desktop-direct-op" data-op="wordcount" title="字数统计" aria-label="字数统计" @click="showWordCount = true">
           <AppIcon name="sort" />
-        </button>
-
-        <span class="op-separator" aria-hidden="true"></span>
-        <button class="op-btn focus-toggle" data-op="focus" :class="{ selected: ui.focusMode }" :aria-pressed="ui.focusMode" :title="ui.focusMode ? '退出专注模式 (Esc)' : '专注模式'" :aria-label="ui.focusMode ? '退出专注模式' : '专注模式'" @click="toggleFocus">
-          <AppIcon :name="ui.focusMode ? 'collapse' : 'focus'" />
         </button>
 
         <!-- 管理浮层靠右对齐，窄编辑区从更多菜单进入。 -->

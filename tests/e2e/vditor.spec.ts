@@ -118,7 +118,7 @@ test('原生链接和高亮快捷键可用，搜索使用更新后的键位', as
   expect(errors).toEqual([])
 })
 
-test('移除阅读模式入口，回收站仍禁止修改清单', async ({ page }) => {
+test('移除阅读和专注入口，保留原生全屏，回收站仍禁止修改清单', async ({ page }) => {
   await switchMode(page, 'sv')
   await body(page).fill('- [ ] 买牛奶\n')
   await switchMode(page, 'wysiwyg')
@@ -127,7 +127,21 @@ test('移除阅读模式入口，回收站仍禁止修改清单', async ({ page 
   await expect.poll(() => saved(page)).toMatch(/\[[xX]\] 买牛奶/)
   await expect(page.locator('[data-op="reading"]')).toHaveCount(0)
   await expect(page.locator('[data-action="reading"]')).toHaveCount(0)
-  await expect(page.locator('.vditor-toolbar [data-type="fullscreen"]')).toHaveCount(0)
+  await expect(page.locator('[data-op="focus"]')).toHaveCount(0)
+  await tool(page, 'fullscreen').click()
+  await expect(page.locator('.snotes-vditor')).toHaveClass(/vditor--fullscreen/)
+  const fullscreenBounds = (await page.locator('.snotes-vditor').boundingBox())!
+  expect(fullscreenBounds.x).toBe(0)
+  expect(fullscreenBounds.y).toBe(0)
+  expect(fullscreenBounds.width).toBe(page.viewportSize()!.width)
+  await tool(page, 'fullscreen').click()
+  await expect(page.locator('.snotes-vditor')).not.toHaveClass(/vditor--fullscreen/)
+  await body(page).click()
+  await page.keyboard.press("Control+'")
+  await expect(page.locator('.snotes-vditor')).toHaveClass(/vditor--fullscreen/)
+  await page.keyboard.press("Control+'")
+  await expect(page.locator('.snotes-vditor')).not.toHaveClass(/vditor--fullscreen/)
+  await expect.poll(() => saved(page)).toMatch(/\[[xX]\] 买牛奶/)
   await page.locator('[data-op="more"]').click()
   await page.locator('[data-action="trash"]').click()
   await page.locator('.group-sidebar [data-view="trash"]').click()

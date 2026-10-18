@@ -83,37 +83,14 @@ describe('App 侧栏抽屉', () => {
 })
 
 describe('App 新建入口', () => {
-  it('Ctrl+K 退出专注模式并直接聚焦列表搜索', async () => {
-    const notes = useNotesStore()
-    await notes.create()
-    const ui = useUiStore()
+  it('Ctrl+F 直接聚焦列表搜索', async () => {
     const wrapper = mount(App, { attachTo: document.body })
     await flushPromises()
-    ui.focusMode = true
 
-    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'k', ctrlKey: true, cancelable: true }))
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'f', ctrlKey: true, cancelable: true }))
     await flushPromises()
 
-    expect(ui.focusMode).toBe(false)
-    expect(ui.drawerOpen).toBe(false)
     expect(document.activeElement).toBe(wrapper.get('.note-search input').element)
-    wrapper.unmount()
-  })
-
-  it('Esc 退出专注模式时保留当前笔记', async () => {
-    const notes = useNotesStore()
-    const note = await notes.create()
-    const ui = useUiStore()
-    const wrapper = mount(App, { attachTo: document.body })
-    await flushPromises()
-    ui.focusMode = true
-    await wrapper.vm.$nextTick()
-
-    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', cancelable: true }))
-    await wrapper.vm.$nextTick()
-
-    expect(ui.focusMode).toBe(false)
-    expect(notes.currentId).toBe(note.id)
     wrapper.unmount()
   })
 

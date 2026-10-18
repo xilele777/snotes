@@ -256,7 +256,7 @@ test('分享目标参数启动时新建一条带内容的笔记并擦掉地址�
   await expect(page.locator('.note-item')).toHaveCount(1)
 })
 
-test('快捷键：Ctrl+Shift+S 星标、Ctrl+Alt+↓ 切下一条、Ctrl+Alt+F 专注', async ({ page }) => {
+test('快捷键：Ctrl+Shift+S 星标、Ctrl+Alt+↓ 切下一条', async ({ page }) => {
   await createNote(page)
   await page.locator('.snotes-vditor [role="textbox"]:visible').click()
   await page.keyboard.type('# 第一条')
@@ -272,10 +272,7 @@ test('快捷键：Ctrl+Shift+S 星标、Ctrl+Alt+↓ 切下一条、Ctrl+Alt+F �
   await page.keyboard.press('Control+Alt+ArrowDown')
   await expect(page.locator('.note-item.is-active')).toContainText('第一条')
 
-  await page.keyboard.press('Control+Alt+F')
-  await expect(page.locator('.layout')).toHaveClass(/is-focused/)
-  await page.keyboard.press('Escape')
-  await expect(page.locator('.layout')).not.toHaveClass(/is-focused/)
+  await expect(page.locator('[data-op="focus"]')).toHaveCount(0)
 })
 
 test('删除后进回收站，能看详情，可恢复', async ({ page }) => {
@@ -894,18 +891,14 @@ test('同步：两个上下文之间数据可互通', async ({ browser }) => {
   await b.close()
 })
 
-test('新建直接输入，专注模式与快捷搜索保留正文', async ({ page }) => {
+test('新建直接输入与快捷搜索保留正文', async ({ page }) => {
   await createNote(page)
   const editor = page.getByRole('textbox', { name: '笔记正文' })
   await expect(editor).toBeFocused()
   await page.keyboard.type('把重要的想法记下来')
   await expect(page.locator('.note-title').first()).toContainText('重要的想法')
 
-  await page.keyboard.press('Control+Alt+f')
-  await expect(page.locator('.list-pane')).toBeHidden()
-  await expect(editor).toContainText('把重要的想法记下来')
-  await page.keyboard.press('Escape')
-  await expect(page.locator('.list-pane')).toBeVisible()
+  await expect(page.locator('[data-op="focus"]')).toHaveCount(0)
 
   await page.keyboard.press('Control+f')
   const search = page.getByRole('searchbox', { name: '搜索笔记' })

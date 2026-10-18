@@ -76,9 +76,8 @@ describe('resolveShortcut 扩展键位', () => {
     expect(resolveShortcut(shift('p'), ctx)).toEqual({ type: 'togglePin' })
     expect(resolveShortcut(alt('D'), ctx)).toEqual({ type: 'trash' })
   })
-
-  it('Mod+Alt+F 是专注模式而不是搜索', () => {
-    expect(resolveShortcut(alt('F'), ctx)).toEqual({ type: 'toggleFocus' })
+  it('Mod+Alt+F 不再触发应用专注模式', () => {
+    expect(resolveShortcut(alt('F'), ctx)).toBeNull()
   })
 
   it('Mod+Alt+U → 立即同步', () => {

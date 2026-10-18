@@ -27,7 +27,6 @@ button, .views li, .groups li, .kb-tree-row {
 
 @media (min-width: 1021px) {
   .layout { transition: grid-template-columns var(--motion-normal) var(--motion-ease); }
-  .layout.is-focused { transition: none; }
 }
 @media (max-width: 1020px) {
   .sidebar-pane { transition: transform var(--motion-normal) var(--motion-ease), visibility 0s linear var(--motion-normal); }

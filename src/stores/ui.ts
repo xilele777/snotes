@@ -58,8 +58,6 @@ export const useUiStore = defineStore('ui', () => {
   const drawerOpen = ref(false)
   /** 移动端列表↔编辑器互斥（UI 规格 §2.3）；放进 store 才能被导航快照保存/恢复 */
   const mobilePane = ref<MobilePane>('list')
-  /** 只影响布局，不销毁编辑器，避免切换专注模式打断输入。 */
-  const focusMode = ref(false)
   /** 当前功能页面；null 时展示原笔记或笔记本工作区。 */
   const workspacePage = ref<WorkspacePage | null>(null)
   const settingsTab = ref<SettingsTab>('appearance')
@@ -74,5 +72,5 @@ export const useUiStore = defineStore('ui', () => {
   const lastNotesPosition = ref<WorkspacePosition | null>(null)
   const restorePosition = ref<WorkspacePosition | null>(null)
 
-  return { view, activeGroupId, activeKnowledgeBaseId, knowledgeBaseFilter, activeTocNodeId, collapsedKnowledgeBaseNodes, knowledgeBaseSyncError, query, syncing, lastSyncError, failedCount, drawerOpen, mobilePane, focusMode, workspacePage, settingsTab, trashRequest, trashRetentionDays, lastNotesPosition, restorePosition }
+  return { view, activeGroupId, activeKnowledgeBaseId, knowledgeBaseFilter, activeTocNodeId, collapsedKnowledgeBaseNodes, knowledgeBaseSyncError, query, syncing, lastSyncError, failedCount, drawerOpen, mobilePane, workspacePage, settingsTab, trashRequest, trashRetentionDays, lastNotesPosition, restorePosition }
 })

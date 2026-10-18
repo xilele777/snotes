@@ -54,15 +54,8 @@ watch(() => ui.drawerOpen, async (open) => {
   }
 })
 
-watch(() => [notes.currentId, ui.view], () => {
-  if (!notes.currentId || ui.view === 'metrics' || ui.view === 'trash') {
-    ui.focusMode = false
-  }
-})
-
 async function focusSearch() {
   if (ui.workspacePage) await showNotes()
-  ui.focusMode = false
   updateWorkspacePreferences({ listCollapsed: false })
   ui.drawerOpen = false
   if (ui.view === 'metrics') {
@@ -95,12 +88,10 @@ watch(
 function onKeydown(e: KeyboardEvent) {
   // 弹窗和菜单打开时把键盘交给它们：Esc 该关的是浮层，不是抽屉或搜索词
   if (!hasToken.value || e.defaultPrevented || e.isComposing || document.querySelector('[aria-modal="true"], [role="menu"]')) return
-  if (e.key === 'Escape' && (ui.drawerOpen || (!ui.workspacePage && ui.focusMode))) {
+  if (e.key === 'Escape' && ui.drawerOpen) {
     e.preventDefault()
     e.stopPropagation()
-    // 由外到内：抽屉 -> 专注模式
-    if (ui.drawerOpen) ui.drawerOpen = false
-    else ui.focusMode = false
+    ui.drawerOpen = false
     return
   }
   if (e.key === 'Tab' && compact.value && ui.drawerOpen) {
@@ -147,7 +138,6 @@ async function runShortcut(action: ShortcutAction) {
     case 'trash': if (editable) ui.trashRequest += 1; return
     case 'nextNote': stepNote(1); return
     case 'prevNote': stepNote(-1); return
-    case 'toggleFocus': if (editable) ui.focusMode = !ui.focusMode; return
     case 'syncNow': await retrySyncNow(); return
     case 'openSettings': openWorkspacePage('settings'); return
   }
@@ -169,7 +159,7 @@ onUnmounted(() => {
 <template>
   <TokenGate v-if="!hasToken" />
 
-  <div v-else class="layout" :class="{ 'is-focused': ui.focusMode, 'is-sidebar-collapsed': preferences.sidebarCollapsed, 'is-list-collapsed': listCollapsed, 'is-library-list': ui.view === 'knowledge-bases' && !ui.activeKnowledgeBaseId, 'is-utility-page': !!ui.workspacePage }" :style="{ '--preferred-sidebar-width': `${preferences.sidebarWidth}px`, '--preferred-list-width': `${listWidth}px` }" :data-mobile-pane="ui.mobilePane" :data-view="ui.workspacePage ?? ui.view">
+  <div v-else class="layout" :class="{ 'is-sidebar-collapsed': preferences.sidebarCollapsed, 'is-list-collapsed': listCollapsed, 'is-library-list': ui.view === 'knowledge-bases' && !ui.activeKnowledgeBaseId, 'is-utility-page': !!ui.workspacePage }" :style="{ '--preferred-sidebar-width': `${preferences.sidebarWidth}px`, '--preferred-list-width': `${listWidth}px` }" :data-mobile-pane="ui.mobilePane" :data-view="ui.workspacePage ?? ui.view">
     <!-- 窄屏将分组导航收进抽屉，搜索仍留在笔记列表上方。 -->
     <aside id="workspace-sidebar" class="sidebar-pane" :class="{ 'is-open': ui.drawerOpen }" :inert="compact && !ui.drawerOpen">
       <GroupSidebar />
@@ -182,8 +172,8 @@ onUnmounted(() => {
       <KnowledgeBaseWorkspace v-else-if="ui.view === 'knowledge-bases'" />
       <NoteList v-else />
     </section>
-    <WorkspaceDivider v-if="!compact && !ui.focusMode && !preferences.sidebarCollapsed" pane="sidebar" label="调整侧栏宽度" controls="workspace-sidebar" :size="sidebarWidth" :min="WORKSPACE_WIDTHS.sidebar.min" :max="WORKSPACE_WIDTHS.sidebar.max" :default-size="WORKSPACE_WIDTHS.sidebar.default" @resize="updateWorkspacePreferences({ sidebarWidth: $event })" />
-    <WorkspaceDivider v-if="!compact && !ui.focusMode && !listCollapsed && !ui.workspacePage && ui.view !== 'metrics' && !(ui.view === 'knowledge-bases' && !ui.activeKnowledgeBaseId)" pane="list" label="调整笔记列表宽度" controls="workspace-list" :size="listWidth" :min="WORKSPACE_WIDTHS.list.min" :max="listMax" :default-size="WORKSPACE_WIDTHS.list.default" @resize="updateWorkspacePreferences({ listWidth: $event })" />
+    <WorkspaceDivider v-if="!compact && !preferences.sidebarCollapsed" pane="sidebar" label="调整侧栏宽度" controls="workspace-sidebar" :size="sidebarWidth" :min="WORKSPACE_WIDTHS.sidebar.min" :max="WORKSPACE_WIDTHS.sidebar.max" :default-size="WORKSPACE_WIDTHS.sidebar.default" @resize="updateWorkspacePreferences({ sidebarWidth: $event })" />
+    <WorkspaceDivider v-if="!compact && !listCollapsed && !ui.workspacePage && ui.view !== 'metrics' && !(ui.view === 'knowledge-bases' && !ui.activeKnowledgeBaseId)" pane="list" label="调整笔记列表宽度" controls="workspace-list" :size="listWidth" :min="WORKSPACE_WIDTHS.list.min" :max="listMax" :default-size="WORKSPACE_WIDTHS.list.default" @resize="updateWorkspacePreferences({ listWidth: $event })" />
 
     <!--
       回收站详情与编辑详情用同一个组件，只是 readonly 不同。
