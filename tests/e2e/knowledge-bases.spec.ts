@@ -106,11 +106,11 @@ for (const width of [1440, 720, 390, 320]) {
     await page.evaluate(() => document.documentElement.dataset.theme = 'light')
     if (width <= 720) await page.locator('.kb-mobile-overview summary').click()
     await page.locator('.kb-toolbar').getByRole('button', { name: '新建笔记', exact: true }).click()
-    const editor = page.locator('.ProseMirror[contenteditable="true"]')
+    const editor = page.locator('.snotes-vditor [role="textbox"]:visible[contenteditable="true"]')
     await expect(editor).toBeVisible()
     await editor.fill('新建实践\n\n离线记录')
     if (width <= 720) {
-      // Allow Milkdown's debounced body write, then return through the real nav.
+      // Allow the editor's debounced body write, then return through the real nav.
       await expect.poll(async () => page.evaluate(async () => {
         const db = await new Promise<IDBDatabase>(resolve => { const req = indexedDB.open('snotes'); req.onsuccess = () => resolve(req.result) })
         try { return await new Promise<boolean>(resolve => { const req = db.transaction('notes').objectStore('notes').getAll(); req.onsuccess = () => resolve(req.result.some(n => n.body.includes('离线记录'))) }) } finally { db.close() }

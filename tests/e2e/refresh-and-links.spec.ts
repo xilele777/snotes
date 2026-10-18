@@ -4,7 +4,10 @@ import { resetServer } from './reset-server'
 test.beforeEach(async ({ page }) => {
   resetServer()
   await page.goto('/')
-  await page.evaluate(() => localStorage.setItem('snotes_token', 'dev-token'))
+  await page.evaluate(() => {
+    localStorage.setItem('snotes_token', 'dev-token')
+    localStorage.setItem('snotes_editor_mode', 'wysiwyg')
+  })
   await page.reload()
   await expect(page.getByRole('button', { name: '刷新笔记' })).toBeEnabled()
 })
@@ -45,12 +48,11 @@ for (const width of [320, 390]) {
 
 test('输入网址并保存后，重开与刷新页面都不向链接添加 >', async ({ page }) => {
   await page.locator('.header-create').click()
-  const editor = page.locator('.milkdown .ProseMirror')
+  const editor = page.locator('.snotes-vditor [role="textbox"]:visible')
   await editor.click()
-  await page.locator('.format-bar [data-format="link"]').click()
-  const dialog = page.locator('.link-dialog')
-  await dialog.getByLabel('链接地址').fill('https://anyrouter.top\u00a0')
-  await dialog.getByRole('button', { name: '确定' }).click()
+  await page.keyboard.press('Control+k')
+  await page.locator('.vditor-wysiwyg .vditor-panel input[placeholder="链接"]').fill('https://anyrouter.top\u00a0')
+  await editor.click()
   await expect(editor.locator('a')).toHaveAttribute('href', 'https://anyrouter.top')
 
   // 等待 debounce 确实落库，之后验证序列化产生的自动链接能正常加载。
@@ -67,7 +69,7 @@ test('输入网址并保存后，重开与刷新页面都不向链接添加 >', 
         req.onerror = () => reject(req.error)
       })
     } finally { db.close() }
-  })).toContain('<https://anyrouter.top>')
+  })).toContain('https://anyrouter.top')
 
   await page.locator('.header-create').click()
   await expect(editor.locator('a')).toHaveCount(0)

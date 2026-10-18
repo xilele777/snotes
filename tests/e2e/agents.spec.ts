@@ -137,7 +137,7 @@ for (const width of [1440, 320]) test(`Agent credential, MCP document, deep link
     await target.goto(noteUrl!)
     await target.getByLabel('访问令牌', { exact: true }).fill('dev-token')
     await target.getByRole('button', { name: '进入我的便签' }).click()
-    await expect(target.locator('.milkdown .ProseMirror')).toContainText('这是 MCP 客户端写入的正文。')
+    await expect(target.locator('.snotes-vditor [role="textbox"]:visible')).toContainText('这是 MCP 客户端写入的正文。')
     if (width > 720) await expect(target.locator('.kb-tree-row').filter({ hasText: 'Agent 文档验收' })).toBeVisible()
     expect(await target.evaluate(() => document.documentElement.scrollWidth)).toBe(width)
     await target.screenshot({ path: `tmp/agent-review/document-${width}.png` })

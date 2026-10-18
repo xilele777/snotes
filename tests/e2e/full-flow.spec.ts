@@ -8,6 +8,7 @@ async function signIn(page: Page) {
   await page.goto('/')
   await page.evaluate((t) => {
     localStorage.setItem('snotes_token', t)
+    localStorage.setItem('snotes_editor_mode', 'wysiwyg')
     document.cookie = `snotes_token=${t}; Path=/api/images/; SameSite=Strict`
   }, TOKEN)
   await page.reload()
@@ -121,14 +122,9 @@ async function openStatsPage(page: Page) {
 const PNG_BASE64 =
   'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=='
 
-/**
- * 往编辑器里粘一张图。
- * 必须把 paste 派发到 ProseMirror 的 contenteditable（.milkdown 下的 .ProseMirror）。
- * 派发到 .milkdown 外壳没用：ProseMirror 的 paste 监听挂在可编辑元素上，
- * .milkdown 是它的父级，事件不会向下冒泡到子元素的处理函数。
- */
+/** 把图片粘贴事件交给 Vditor 当前的正文输入区域。 */
 async function pasteImage(page: Page) {
-  await page.locator('.milkdown .ProseMirror').evaluate((el, base64) => {
+  await page.locator('.snotes-vditor [role="textbox"]:visible').evaluate((el, base64) => {
     const bytes = Uint8Array.from(atob(base64), (c) => c.charCodeAt(0))
     const file = new File([bytes], 'a.png', { type: 'image/png' })
     const dt = new DataTransfer()
@@ -162,7 +158,7 @@ test.beforeEach(async ({ page }) => {
 test('新建笔记后标题出现在列表中', async ({ page }) => {
   await createNote(page)
 
-  await page.locator('.milkdown').click()
+  await page.locator('.snotes-vditor [role="textbox"]:visible').click()
   await page.keyboard.type('# 我的第一条笔记')
 
   await expect(page.locator('.note-item').first()).toContainText('我的第一条笔记', {
@@ -172,7 +168,7 @@ test('新建笔记后标题出现在列表中', async ({ page }) => {
 
 test('编辑内容后刷新仍在——数据落在本地', async ({ page }) => {
   await createNote(page)
-  await page.locator('.milkdown').click()
+  await page.locator('.snotes-vditor [role="textbox"]:visible').click()
   await page.keyboard.type('# 持久化测试')
 
   await expect(page.locator('.note-item').first()).toContainText('持久化测试')
@@ -203,13 +199,13 @@ test('分组弹窗可取消，取消后不建分组', async ({ page }) => {
 
 test('搜索按标题过滤', async ({ page }) => {
   await createNote(page)
-  await page.locator('.milkdown').click()
+  await page.locator('.snotes-vditor [role="textbox"]:visible').click()
   await page.keyboard.type('# 苹果')
 
   await expect(page.locator('.note-item').first()).toContainText('苹果')
 
   await createNote(page)
-  await page.locator('.milkdown').click()
+  await page.locator('.snotes-vditor [role="textbox"]:visible').click()
   await page.keyboard.type('# 香蕉')
 
   await expect(page.locator('.note-item')).toHaveCount(2)
@@ -222,15 +218,15 @@ test('搜索按标题过滤', async ({ page }) => {
 
 test('搜索多个关键词取交集，分组视图搜不到时可跳到全部笔记', async ({ page }) => {
   await createNote(page)
-  await page.locator('.milkdown').click()
+  await page.locator('.snotes-vditor [role="textbox"]:visible').click()
   await page.keyboard.type('# 周会记录')
   await page.keyboard.press('Enter')
   await page.keyboard.type('讨论了预算')
   await expect(page.locator('.note-item').first()).toContainText('周会记录')
 
   // 新建后要等编辑器真的切到新笔记再输入，否则标题会丢字（见 docs/进度.md）
-  await createNoteAndWait(page, page.locator('.ProseMirror'))
-  await page.locator('.milkdown').click()
+  await createNoteAndWait(page, page.locator('.snotes-vditor [role="textbox"]:visible'))
+  await page.locator('.snotes-vditor [role="textbox"]:visible').click()
   await page.keyboard.type('# 周会记录 二')
   // 等第二条的标题真的落库并出现在列表里，再切视图；否则 debounce 还没存盘就切走，正文会空
   await expect(page.locator('.note-item').first()).toContainText('周会记录 二')
@@ -253,20 +249,20 @@ test('搜索多个关键词取交集，分组视图搜不到时可跳到全部�
 test('分享目标参数启动时新建一条带内容的笔记并擦掉地址栏参数', async ({ page }) => {
   await page.goto('/?share&title=分享标题&text=分享正文&url=https%3A%2F%2Fexample.com%2Fx')
   await expect(page.locator('.note-item').first()).toContainText('分享标题')
-  await expect(page.locator('.milkdown')).toContainText('分享正文')
-  await expect(page.locator('.milkdown')).toContainText('https://example.com/x')
+  await expect(page.locator('.snotes-vditor [role="textbox"]:visible')).toContainText('分享正文')
+  await expect(page.locator('.snotes-vditor [role="textbox"]:visible')).toContainText('https://example.com/x')
   await expect(page).toHaveURL(/\/$/)
   await page.reload()
   await expect(page.locator('.note-item')).toHaveCount(1)
 })
 
-test('快捷键：Ctrl+Shift+S 星标、Ctrl+Alt+↓ 切下一条、Ctrl+Shift+F 专注', async ({ page }) => {
+test('快捷键：Ctrl+Shift+S 星标、Ctrl+Alt+↓ 切下一条、Ctrl+Alt+F 专注', async ({ page }) => {
   await createNote(page)
-  await page.locator('.milkdown').click()
+  await page.locator('.snotes-vditor [role="textbox"]:visible').click()
   await page.keyboard.type('# 第一条')
   await expect(page.locator('.note-item').first()).toContainText('第一条')
   await createNote(page)
-  await page.locator('.milkdown').click()
+  await page.locator('.snotes-vditor [role="textbox"]:visible').click()
   await page.keyboard.type('# 第二条')
   await expect(page.locator('.note-item')).toHaveCount(2)
 
@@ -276,7 +272,7 @@ test('快捷键：Ctrl+Shift+S 星标、Ctrl+Alt+↓ 切下一条、Ctrl+Shift+F
   await page.keyboard.press('Control+Alt+ArrowDown')
   await expect(page.locator('.note-item.is-active')).toContainText('第一条')
 
-  await page.keyboard.press('Control+Shift+F')
+  await page.keyboard.press('Control+Alt+F')
   await expect(page.locator('.layout')).toHaveClass(/is-focused/)
   await page.keyboard.press('Escape')
   await expect(page.locator('.layout')).not.toHaveClass(/is-focused/)
@@ -284,7 +280,7 @@ test('快捷键：Ctrl+Shift+S 星标、Ctrl+Alt+↓ 切下一条、Ctrl+Shift+F
 
 test('删除后进回收站，能看详情，可恢复', async ({ page }) => {
   await createNote(page)
-  await page.locator('.milkdown').click()
+  await page.locator('.snotes-vditor [role="textbox"]:visible').click()
   await page.keyboard.type('# 待删除')
 
   await expect(page.locator('.note-item').first()).toContainText('待删除')
@@ -304,8 +300,8 @@ test('删除后进回收站，能看详情，可恢复', async ({ page }) => {
   // 回收站里点条目也能看详情，且是只读的
   await page.locator('.note-item').first().click()
   await expect(page.locator('.editor-top-bar')).toContainText(/此笔记还有 \d+ 天被删除/)
-  await expect(page.locator('.milkdown .ProseMirror')).toContainText('待删除')
-  await expect(page.locator('.milkdown .ProseMirror')).toHaveAttribute('contenteditable', 'false')
+  await expect(page.locator('.snotes-vditor [role="textbox"]:visible')).toContainText('待删除')
+  await expect(page.locator('.snotes-vditor [role="textbox"]:visible')).toHaveAttribute('contenteditable', 'false')
 
   await page.locator('[data-op="recover"]').click()
   await page.getByRole('button', { name: '笔记', exact: true }).click()
@@ -315,32 +311,31 @@ test('删除后进回收站，能看详情，可恢复', async ({ page }) => {
 
 test('顶栏撤销/重做按钮能撤掉又恢复输入', async ({ page }) => {
   await createNote(page)
-  await page.locator('.milkdown').click()
+  await page.locator('.snotes-vditor [role="textbox"]:visible').click()
   await page.keyboard.type('第一段')
   await page.keyboard.press('Enter')
   await page.keyboard.type('第二段')
 
-  await expect(page.locator('.milkdown .ProseMirror')).toContainText('第二段')
+  await expect(page.locator('.snotes-vditor [role="textbox"]:visible')).toContainText('第二段')
 
   // undo 撤销最近一次输入（第二段），redo 再把它找回来
-  await page.locator('[data-op="undo"]').click()
-  await expect(page.locator('.milkdown .ProseMirror')).not.toContainText('第二段')
+  await page.locator('.vditor-toolbar [data-type="undo"]').click()
+  await expect(page.locator('.snotes-vditor [role="textbox"]:visible')).not.toContainText('第二段')
 
-  await page.locator('[data-op="redo"]').click()
-  await expect(page.locator('.milkdown .ProseMirror')).toContainText('第二段')
+  await page.locator('.vditor-toolbar [data-type="redo"]').click()
+  await expect(page.locator('.snotes-vditor [role="textbox"]:visible')).toContainText('第二段')
 })
 
 test('GFM 表格在编辑器里渲染成 table', async ({ page }) => {
   await createNote(page)
-  await page.locator('.milkdown').click()
+  await page.locator('.snotes-vditor [role="textbox"]:visible').click()
 
-  // Milkdown 的表输入规则：`|2x2| `（尾随空格）生成 2 行 × 2 列表格
-  await page.keyboard.type('|2x2| ')
+  await page.locator('.vditor-toolbar [data-type="table"]').click()
 
-  const table = page.locator('.milkdown table.children')
+  const table = page.locator('.snotes-vditor [role="textbox"]:visible table')
   await expect(table).toHaveCount(1, { timeout: 5_000 })
-  await expect(table.locator('th')).toHaveCount(2)
-  await expect(table.locator('td')).toHaveCount(2)
+  await expect(table.locator('th')).toHaveCount(3)
+  await expect(table.locator('td')).toHaveCount(6)
 
   // 光标落在首个表头格，直接输入标题文字
   await page.keyboard.type('名称')
@@ -354,51 +349,40 @@ test('GFM 表格在编辑器里渲染成 table', async ({ page }) => {
   // 刷新后表格应从 markdown 反解析回格子（Bug 3 回归点：没有 GFM preset，这里就是纯文本管道符）
   await page.reload()
   await expect(table).toHaveCount(1, { timeout: 5_000 })
-  await expect(page.locator('.milkdown table.children th').first()).toHaveText('名称')
+  await expect(page.locator('.snotes-vditor [role="textbox"]:visible table th').first()).toHaveText('名称')
 })
 
-test('表格在文末时按 ↓ 能跳到表格后继续输入，且可以加行加列', async ({ page }) => {
+test('原生表格支持加行加列，并在表格后继续输入', async ({ page }) => {
   await createNote(page)
-  await page.locator('.milkdown').click()
-  await page.keyboard.type('|2x2| ')
-  const table = page.locator('.milkdown table.children')
-  await expect(table).toHaveCount(1, { timeout: 5_000 })
-
-  // 从最后一格往下：trailing 保证表格后有空段落，gap cursor 保证能走出去
-  await page.keyboard.press('ArrowDown')
-  await page.keyboard.press('ArrowDown')
+  const editor = page.getByRole('textbox', { name: '笔记正文' })
+  await expect(editor).toBeFocused()
+  await page.locator('.vditor-toolbar [data-type="table"]').click()
+  const table = editor.locator('table')
+  await expect(table).toHaveCount(1)
+  await table.locator('td').last().click()
+  await page.keyboard.press('Control+Equal')
+  await expect(table.locator('tr')).toHaveCount(4)
+  await page.keyboard.press('Control+Shift+Equal')
+  await expect(table.locator('th')).toHaveCount(4)
+  await page.keyboard.press('Control+Shift+e')
   await page.keyboard.type('表格后面的文字')
-  await expect(page.locator('.milkdown .ProseMirror p').last()).toHaveText('表格后面的文字')
-
-  // 表格操作 UI：点进单元格后出现加行/加列按钮
-  // 表格操作 UI：指针靠近单元格下边缘出现「加行」，靠近右边缘出现「加列」
-  const lastCell = table.locator('td').last()
-  await lastCell.click()
-  const box = (await lastCell.boundingBox())!
-  const block = page.locator('.milkdown-table-block')
-  await lastCell.hover({ position: { x: box.width / 2, y: box.height - 3 } })
-  await expect(block.locator('[data-role="x-line-drag-handle"]')).toHaveAttribute('data-show', 'true')
-  await block.locator('[data-role="x-line-drag-handle"] button').click()
-  await expect(table.locator('tr')).toHaveCount(3)
-  await lastCell.hover({ position: { x: box.width - 3, y: box.height / 2 } })
-  await expect(block.locator('[data-role="y-line-drag-handle"]')).toHaveAttribute('data-show', 'true')
-  await block.locator('[data-role="y-line-drag-handle"] button').click()
-  await expect(table.locator('th')).toHaveCount(3)
+  await expect(editor.locator('p').last()).toHaveText('表格后面的文字')
+  await expect.poll(() => savedBody(page)).toContain('表格后面的文字')
 })
 
 test('==文字== 渲染成高亮，刷新后仍是高亮', async ({ page }) => {
   await createNote(page)
-  await page.locator('.milkdown').click()
+  await page.locator('.snotes-vditor [role="textbox"]:visible').click()
   await page.keyboard.type('前 ==重点== 后')
-  await expect(page.locator('.milkdown mark')).toHaveText('重点')
+  await expect(page.locator('.snotes-vditor [role="textbox"]:visible mark')).toHaveText('重点')
   await expect.poll(() => savedBody(page), { timeout: 5_000 }).toContain('==重点==')
   await page.reload()
-  await expect(page.locator('.milkdown mark')).toHaveText('重点')
+  await expect(page.locator('.snotes-vditor [role="textbox"]:visible mark')).toHaveText('重点')
 })
 
 test('刷新后默认选中列表第一条并打开详情', async ({ page }) => {
   await createNote(page)
-  await page.locator('.milkdown').click()
+  await page.locator('.snotes-vditor [role="textbox"]:visible').click()
   await page.keyboard.type('# 默认选中我')
 
   await expect(page.locator('.note-item').first()).toContainText('默认选中我')
@@ -407,12 +391,12 @@ test('刷新后默认选中列表第一条并打开详情', async ({ page }) => 
 
   // 没显式选过任何笔记，加载时应自动选中第一条并展示详情
   await expect(page.locator('.editor-top-bar')).toBeVisible()
-  await expect(page.locator('.milkdown .ProseMirror')).toContainText('默认选中我')
+  await expect(page.locator('.snotes-vditor [role="textbox"]:visible')).toContainText('默认选中我')
 })
 
 test('切换笔记时编辑器正文跟着换（含长正文）', async ({ page }) => {
   await seedLongNotes(page, ['长文记录 1', '长文记录 2'])
-  const body = page.locator('.milkdown .ProseMirror')
+  const body = page.locator('.snotes-vditor [role="textbox"]:visible')
 
   // 带着已有笔记重新加载：编辑器创建期间不能再被格式状态读取打断。一旦抛错，
   // provider 里的编辑器实例永远建不起来，点哪条笔记正文都不会换。
@@ -427,7 +411,7 @@ test('切换笔记时编辑器正文跟着换（含长正文）', async ({ page 
 
 test('以图片开头的笔记，列表标题不是一串 base64', async ({ page }) => {
   await createNote(page)
-  await page.locator('.milkdown').click()
+  await page.locator('.snotes-vditor [role="textbox"]:visible').click()
 
   // 走真实粘贴路径：先插 blob 占位、上传完再换成 /api/images/。
   // 这两个阶段的正文首行都是图片语法，标题都不该把它当文字用。
@@ -439,13 +423,13 @@ test('以图片开头的笔记，列表标题不是一串 base64', async ({ page
   await expect(title).not.toContainText('blob:')
 
   // 上传落地后仍然不该冒出 base64 / 路径当标题
-  await expect(page.locator('.milkdown img[src^="/api/images/"]')).toHaveCount(1, {
+  await expect(page.locator('.snotes-vditor [role="textbox"]:visible img[src^="/api/images/"]')).toHaveCount(1, {
     timeout: 15_000,
   })
   await expect(title).toHaveText('无标题')
 
   // 图后面补一行文字，标题应该取这行文字
-  await page.locator('.milkdown .ProseMirror').click()
+  await page.locator('.snotes-vditor [role="textbox"]:visible').click()
   await page.keyboard.press('Control+End')
   await page.keyboard.press('Enter')
   await page.keyboard.type('白板照片')
@@ -455,7 +439,7 @@ test('以图片开头的笔记，列表标题不是一串 base64', async ({ page
 
 test('双击图片打开灯箱：缩放、左右切换、下载与关闭', async ({ page }) => {
   await createNote(page)
-  await page.locator('.milkdown').click()
+  await page.locator('.snotes-vditor [role="textbox"]:visible').click()
 
   // 粘贴两张图片
   await pasteImage(page)
@@ -463,17 +447,17 @@ test('双击图片打开灯箱：缩放、左右切换、下载与关闭', async
   await pasteImage(page)
 
   // 等待图片上传完成
-  await expect(page.locator('.milkdown img[src^="/api/images/"]')).toHaveCount(2, {
+  await expect(page.locator('.snotes-vditor [role="textbox"]:visible img[src^="/api/images/"]')).toHaveCount(2, {
     timeout: 15_000,
   })
 
   // 只认上传完成的站内图片：占位阶段的 blob: 会在图上停留一会儿
   const uploaded = await page
-    .locator('.milkdown img[src^="/api/images/"]')
+    .locator('.snotes-vditor [role="textbox"]:visible img[src^="/api/images/"]')
     .evaluateAll((els) => els.map((el) => el.getAttribute('src') ?? ''))
   expect(uploaded).toHaveLength(2)
 
-  await page.locator('.milkdown img').first().dblclick()
+  await page.locator('.snotes-vditor [role="textbox"]:visible img').first().dblclick()
 
   const stage = page.locator('.lightbox-stage img')
   await expect(page.locator('.lightbox-mask')).toBeVisible()
@@ -509,13 +493,13 @@ test('双击图片打开灯箱：缩放、左右切换、下载与关闭', async
   await expect(page.locator('.lightbox-mask')).toHaveCount(0)
 
   // 单张图片不显示计数，避免「1 / 1」这种没信息量的提示
-  await page.locator('.milkdown .ProseMirror').click()
+  await page.locator('.snotes-vditor [role="textbox"]:visible').click()
   await page.keyboard.press('Control+a')
   await page.keyboard.press('Backspace')
-  await page.locator('.milkdown').click()
+  await page.locator('.snotes-vditor [role="textbox"]:visible').click()
   await pasteImage(page)
-  await expect(page.locator('.milkdown img[src^="/api/images/"]')).toHaveCount(1, { timeout: 15_000 })
-  await page.locator('.milkdown img').first().dblclick()
+  await expect(page.locator('.snotes-vditor [role="textbox"]:visible img[src^="/api/images/"]')).toHaveCount(1, { timeout: 15_000 })
+  await page.locator('.snotes-vditor [role="textbox"]:visible img').first().dblclick()
   await expect(page.locator('.lightbox-stage img')).toBeVisible()
   await expect(page.locator('.lightbox-counter')).toHaveCount(0)
 })
@@ -526,11 +510,11 @@ test.describe('触摸操作', () => {
 
   test('长按图片打开灯箱，轻点不会误触发', async ({ page }) => {
     await createNote(page)
-    await page.locator('.milkdown').click()
+    await page.locator('.snotes-vditor [role="textbox"]:visible').click()
     await pasteImage(page)
-    await expect(page.locator('.milkdown img[src^="/api/images/"]')).toHaveCount(1, { timeout: 15_000 })
+    await expect(page.locator('.snotes-vditor [role="textbox"]:visible img[src^="/api/images/"]')).toHaveCount(1, { timeout: 15_000 })
 
-    const box = (await page.locator('.milkdown img').first().boundingBox())!
+    const box = (await page.locator('.snotes-vditor [role="textbox"]:visible img').first().boundingBox())!
     const x = box.x + box.width / 2
     const y = box.y + box.height / 2
 
@@ -548,11 +532,11 @@ test.describe('触摸操作', () => {
 
   test('长按后手指滑动（滚动正文）不会弹出灯箱', async ({ page }) => {
     await createNote(page)
-    await page.locator('.milkdown').click()
+    await page.locator('.snotes-vditor [role="textbox"]:visible').click()
     await pasteImage(page)
-    await expect(page.locator('.milkdown img[src^="/api/images/"]')).toHaveCount(1, { timeout: 15_000 })
+    await expect(page.locator('.snotes-vditor [role="textbox"]:visible img[src^="/api/images/"]')).toHaveCount(1, { timeout: 15_000 })
 
-    const box = (await page.locator('.milkdown img').first().boundingBox())!
+    const box = (await page.locator('.snotes-vditor [role="textbox"]:visible img').first().boundingBox())!
     const x = box.x + box.width / 2
     const y = box.y + box.height / 2
 
@@ -624,7 +608,7 @@ test('统计页面保留编辑器、撤销和滚动位置，侧栏可切换页�
   await page.setViewportSize({ width: 1440, height: 900 })
   const groupId = await seedNavigationNotes(page)
   await page.locator('[data-note-id="navigation-12"] .note-select').click()
-  const editor = page.locator('.ProseMirror')
+  const editor = page.locator('.snotes-vditor [role="textbox"]:visible')
   await editor.click()
   await page.keyboard.press('Control+End')
   await page.keyboard.type('统计前补充的内容')
@@ -655,7 +639,7 @@ test('统计页面保留编辑器、撤销和滚动位置，侧栏可切换页�
   await expect(page.getByRole('searchbox', { name: '搜索笔记', exact: true })).toHaveValue('项目')
   expect(await page.locator('.note-list').evaluate(el => el.scrollTop)).toBe(610)
   expect(await page.locator('.editor-body').evaluate(el => el.scrollTop)).toBe(880)
-  await page.locator('[data-op="undo"]').click()
+  await page.locator('.vditor-toolbar [data-type="undo"]').click()
   await expect(editor).not.toContainText('统计前补充的内容')
   // 撤销不能跨笔记：切换笔记后按撤销，绝不会把上一条笔记的正文倒回当前这条
   await expect(editor.locator('h1')).toHaveText('项目记录 13')
@@ -671,7 +655,7 @@ test('统计页面保留编辑器、撤销和滚动位置，侧栏可切换页�
   await expect(dialog).toHaveCount(0)
   await expect(page.locator('.layout')).toHaveAttribute('data-view', 'all')
   await expect(page.getByRole('searchbox', { name: '搜索笔记', exact: true })).toHaveValue('')
-  await expect(page.locator('.ProseMirror h1')).toHaveText('项目记录 13')
+  await expect(page.locator('.snotes-vditor [role="textbox"]:visible h1')).toHaveText('项目记录 13')
   await page.goBack()
   await expect(page.locator('.layout')).toHaveAttribute('data-view', 'group')
   await expect(page.locator('[data-note-id="navigation-12"]')).toHaveClass(/is-active/)
@@ -682,7 +666,7 @@ test('回收站预览与正文对齐，返回后恢复分组、搜索和阅读�
   await page.setViewportSize({ width: 1440, height: 900 })
   const groupId = await seedNavigationNotes(page)
   await page.locator('[data-note-id="navigation-12"] .note-select').click()
-  await expect(page.locator('.ProseMirror')).toContainText('项目记录 13')
+  await expect(page.locator('.snotes-vditor [role="textbox"]:visible')).toContainText('项目记录 13')
   await page.locator('.note-list').evaluate(el => { el.scrollTop = 610 })
   await page.locator('.editor-body').evaluate(el => { el.scrollTop = 880 })
   const before = await page.locator('.editor-pane').boundingBox()
@@ -694,7 +678,7 @@ test('回收站预览与正文对齐，返回后恢复分组、搜索和阅读�
   expect(await page.locator('.list-pane').boundingBox()).toEqual(beforeList)
   expect(await page.locator('.editor-pane').boundingBox()).toEqual(before)
   await expect(page.getByRole('searchbox', { name: '搜索笔记', exact: true })).toHaveValue('')
-  await expect(page.locator('.ProseMirror')).toHaveAttribute('contenteditable', 'false')
+  await expect(page.locator('.snotes-vditor [role="textbox"]:visible')).toHaveAttribute('contenteditable', 'false')
 
   await openStatsPage(page)
   await page.getByRole('button', { name: '返回工作区' }).click()
@@ -707,131 +691,84 @@ test('回收站预览与正文对齐，返回后恢复分组、搜索和阅读�
   await expect(page.locator(`.groups [data-group-id="${groupId}"]`)).toHaveClass(/active/)
   await expect(page.getByRole('searchbox', { name: '搜索笔记', exact: true })).toHaveValue('项目')
   await expect(page.locator('[data-note-id="navigation-12"]')).toHaveClass(/is-active/)
-  await expect(page.locator('.ProseMirror')).toHaveAttribute('contenteditable', 'true')
+  await expect(page.locator('.snotes-vditor [role="textbox"]:visible')).toHaveAttribute('contenteditable', 'true')
   expect(await page.locator('.editor-pane').boundingBox()).toEqual(before)
   await expect.poll(() => page.locator('.note-list').evaluate(el => el.scrollTop)).toBe(610)
   await expect.poll(() => page.locator('.editor-body').evaluate(el => el.scrollTop)).toBe(880)
 })
 
-test('编辑工具栏把格式写进正文，且不抢编辑器焦点', async ({ page }) => {
-  // 标题：光标所在的段落整段升级成二级标题
+test('原生编辑工具栏写入标题、加粗、清单和表格', async ({ page }) => {
   await createNote(page)
   const editor = page.getByRole('textbox', { name: '笔记正文' })
   await expect(editor).toBeFocused()
   await page.keyboard.type('小标题')
-  await page.keyboard.press('Shift+Home')
-  await page.locator('.format-bar [data-format="heading2"]').click()
+  await page.keyboard.press('Control+Alt+2')
   await expect(editor.locator('h2')).toHaveText('小标题')
   await expect.poll(() => savedBody(page)).toMatch(/^## 小标题/)
-  // 按钮上的 mousedown 被拦住了，点完还能接着敲字，不用再点一次正文
-  await expect(editor).toBeFocused()
-
-  // 加粗：同级按钮再点一次应该取消，而不是叠加
+  await createNoteAndWait(page, editor)
+  await page.keyboard.type('需要加粗')
   await page.keyboard.press('Control+a')
-  await page.locator('.format-bar [data-format="bold"]').click()
-  await expect(editor.locator('strong')).toHaveText('小标题')
-  await expect.poll(() => savedBody(page)).toContain('## **小标题**')
-  await page.locator('.format-bar [data-format="bold"]').click()
-  await expect(editor.locator('strong')).toHaveCount(0)
+  await page.locator('.vditor-toolbar [data-type="bold"]').click()
+  await expect(editor.locator('b, strong')).toHaveText('需要加粗')
+  await expect.poll(() => savedBody(page)).toContain('**需要加粗**')
+  await page.locator('.vditor-toolbar [data-type="bold"]').click()
+  await expect(editor.locator('b, strong')).toHaveCount(0)
 
-  // 待办清单：正文段落直接变成可勾选的清单
   await createNoteAndWait(page, editor)
   await page.keyboard.type('买牛奶')
-  await page.keyboard.press('Shift+Home')
-  await page.locator('.format-bar [data-format="taskList"]').click()
-  await expect(page.locator('.task-checkbox')).toHaveCount(1)
+  await page.locator('.vditor-toolbar [data-type="check"]').click()
+  await expect(editor.locator('input[type="checkbox"]')).toHaveCount(1)
   await expect.poll(() => savedBody(page)).toContain('[ ] 买牛奶')
 
-  // 表格：先在弹窗里定行列，确认后走 Milkdown 的表格预设插入
   await createNoteAndWait(page, editor)
-  await page.locator('.format-bar [data-format="table"]').click()
-  const tableDialog = page.locator('.table-dialog')
-  await expect(tableDialog).toBeVisible()
-  await tableDialog.locator('[data-field="cols"]').fill('4')
-  await tableDialog.locator('[data-op="confirm"]').click()
-  const table = page.locator('.milkdown table.children')
-  await expect(table).toHaveCount(1)
-  await expect(page.locator('.milkdown table.children th')).toHaveCount(4)
-  await expect.poll(() => savedBody(page)).toContain('| :')
-
-  // 链接：选中文字后填地址，改成 https 并写进正文
-  await createNoteAndWait(page, editor)
-  await page.keyboard.type('参考资料')
-  await page.keyboard.press('Shift+Home')
-  await page.locator('.format-bar [data-format="link"]').click()
-  const dialog = page.locator('.link-dialog')
-  await expect(dialog).toBeVisible()
-  await expect(dialog.locator('[data-field="text"]')).toHaveValue('参考资料')
-  await dialog.locator('[data-field="href"]').fill('example.com')
-  await dialog.locator('[data-op="confirm"]').click()
-  await expect(dialog).toHaveCount(0)
-  await expect(page.locator('.milkdown a[href="https://example.com"]')).toHaveText('参考资料')
-  await expect.poll(() => savedBody(page)).toContain('[参考资料](https://example.com)')
-  await expect(editor).toBeFocused()
+  await page.locator('.vditor-toolbar [data-type="table"]').click()
+  await expect(editor.locator('table')).toHaveCount(1)
+  await expect(editor.locator('th')).toHaveCount(3)
+  await expect.poll(() => savedBody(page)).toContain('| col1')
 })
 
-test('链接气泡：打开、复制、编辑地址与移除，外链带 noopener', async ({ page }) => {
-  await page.context().grantPermissions(['clipboard-read', 'clipboard-write'])
+test('原生链接浮层编辑地址，Mod 点击安全打开，取消链接保留文字', async ({ page }) => {
   await createNote(page)
   const editor = page.getByRole('textbox', { name: '笔记正文' })
   await expect(editor).toBeFocused()
   await page.keyboard.type('参考资料')
-  await page.keyboard.press('Shift+Home')
-  await page.locator('.format-bar [data-format="link"]').click()
-  const dialog = page.locator('.link-dialog')
-  await dialog.locator('[data-field="href"]').fill('example.com')
-  await dialog.locator('[data-op="confirm"]').click()
-
-  const anchor = page.locator('.milkdown a[href="https://example.com"]')
-  await expect(anchor).toHaveText('参考资料')
-  // 外链另开标签时必须带 noopener，否则新页面能通过 window.opener 反向操作本站
-  await expect(anchor).toHaveAttribute('target', '_blank')
-  await expect(anchor).toHaveAttribute('rel', 'noopener noreferrer')
-
-  // 光标进到链接里，气泡浮出来
-  await anchor.click()
-  const tooltip = page.locator('.link-tooltip')
-  await expect(tooltip).toBeVisible()
-
-  await tooltip.locator('[data-link-action="copy"]').click()
-  // 提示走顶部 Toast，不再放在会被手机浏览器工具栏挡住的底栏
-  await expect(page.locator('.toast')).toHaveText('已复制链接')
-  expect(await page.evaluate(() => navigator.clipboard.readText())).toBe('https://example.com')
-  // 气泡里的按钮同样不能把编辑器的选区抢走，否则按完一下气泡就自己没了
-  await expect(tooltip).toBeVisible()
-
-  // Ctrl + 点击直接打开。这里手工派发带 ctrlKey 的点击：真实按键在 Chromium 里走的是
-  // 浏览器自己的「新标签打开」，Playwright 会一直等那个打不开的新页面加载完。
+  await page.keyboard.press('Control+a')
+  await page.keyboard.press('Control+k')
+  const address = page.locator('.vditor-wysiwyg .vditor-panel input[placeholder="链接"]')
+  await expect(address).toBeFocused()
+  await address.fill('example.com')
+  await editor.click()
+  const anchor = editor.locator('a').filter({ hasText: '参考资料' })
+  await expect(anchor).toHaveAttribute('href', 'https://example.com')
+  await expect.poll(() => savedBody(page)).toContain('[参考资料](https://example.com)')
   await page.evaluate(() => {
-    const opened: string[] = []
+    const opened: unknown[] = []
     ;(window as unknown as Record<string, unknown>).__opened = opened
-    window.open = (url?: string | URL) => {
-      opened.push(String(url))
-      return null
-    }
+    window.open = (...args: Parameters<typeof window.open>) => { opened.push(args); return null }
   })
-  await anchor.evaluate((el) => {
-    el.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, ctrlKey: true }))
-  })
-  expect(await page.evaluate(() => (window as unknown as { __opened: string[] }).__opened))
-    .toEqual(['https://example.com'])
+  await anchor.dispatchEvent('click', { ctrlKey: true })
+  expect(await page.evaluate(() => (window as unknown as { __opened: unknown[] }).__opened))
+    .toEqual([['https://example.com', '_blank', 'noopener,noreferrer']])
 
-  // 编辑地址：只换地址，文字保持不动
-  await tooltip.locator('[data-link-action="edit"]').click()
-  await expect(dialog.locator('[data-field="href"]')).toHaveValue('https://example.com')
-  await expect(dialog.locator('[data-field="text"]')).toHaveValue('参考资料')
-  await dialog.locator('[data-field="href"]').fill('/笔记/1')
-  await dialog.locator('[data-op="confirm"]').click()
-  await expect(page.locator('.milkdown a[href="/笔记/1"]')).toHaveText('参考资料')
+  await anchor.click()
+  await page.keyboard.press('Control+k')
+  const editAddress = page.locator('.vditor-wysiwyg .vditor-panel input[placeholder="链接"]')
+  await expect(editAddress).toBeVisible()
+  await editAddress.fill('/笔记/1')
+  await editor.click()
+  const updatedAnchor = editor.locator('a').filter({ hasText: '参考资料' })
+  await expect(updatedAnchor).toHaveAttribute('href', '/笔记/1')
   await expect.poll(() => savedBody(page)).toContain('[参考资料](/笔记/1)')
-
-  // 移除：文字留下，链接没了
-  await page.locator('.milkdown a[href="/笔记/1"]').click()
-  await expect(tooltip).toBeVisible()
-  await tooltip.locator('[data-link-action="remove"]').click()
-  await expect(page.locator('.milkdown a')).toHaveCount(0)
+  await updatedAnchor.evaluate(element => {
+    const range = document.createRange()
+    range.selectNodeContents(element)
+    const selection = window.getSelection()!
+    selection.removeAllRanges()
+    selection.addRange(range)
+  })
+  await page.keyboard.press('Control+k')
+  await expect(editor.locator('a')).toHaveCount(0)
   await expect(editor).toContainText('参考资料')
-  await expect.poll(() => savedBody(page)).toContain('参考资料')
   await expect.poll(() => savedBody(page)).not.toContain('](')
 })
 
@@ -864,7 +801,7 @@ for (const width of [390, 320]) {
     await expect(page.locator('.note-item')).toHaveCount(3)
     await expect(page.locator('.list-pane')).toBeVisible()
     await page.locator('.note-select').first().click()
-    await expect(page.locator('.ProseMirror')).toHaveAttribute('contenteditable', 'false')
+    await expect(page.locator('.snotes-vditor [role="textbox"]:visible')).toHaveAttribute('contenteditable', 'false')
     await page.getByRole('button', { name: '返回列表' }).click()
     await expect(page.locator('.list-pane')).toBeVisible()
     await page.getByRole('button', { name: '打开侧栏' }).click()
@@ -878,16 +815,16 @@ for (const width of [390, 320]) {
 
 test('粘贴图片后能正常显示——覆盖同源 Cookie 鉴权那条路径', async ({ page }) => {
   await createNote(page)
-  await page.locator('.milkdown').click()
+  await page.locator('.snotes-vditor [role="textbox"]:visible').click()
   await page.keyboard.type('# 带图的笔记')
 
   await pasteImage(page)
 
   // 一次粘贴只能落一张图。DataTransfer 的 items 与 files 是同一批文件的两个视图，
   // 早先把两边拼起来会上传两遍，并在正文里留下一个替换不掉的 blob 死链。
-  const img = page.locator('.milkdown img[src^="/api/images/"]')
+  const img = page.locator('.snotes-vditor [role="textbox"]:visible img[src^="/api/images/"]')
   await expect(img).toHaveCount(1, { timeout: 15_000 })
-  await expect(page.locator('.milkdown img[src^="blob:"]')).toHaveCount(0)
+  await expect(page.locator('.snotes-vditor [role="textbox"]:visible img[src^="blob:"]')).toHaveCount(0)
 
   // 这条断言才是重点：src 对不代表图能加载出来。
   // <img> 带不了 Authorization 头，全靠 setToken 写的那份 Cookie 通过鉴权；
@@ -901,9 +838,9 @@ test('点图片把文本光标放到图片旁边，打字不会吞掉图片', as
   // 手机上传的照片在电脑端往往占满整个编辑区，用户能点的只有图片本身。
   // 默认的 NodeSelection 会隐藏光标、打字直接替换掉图片——看起来就是「无法聚焦」。
   await createNote(page)
-  await page.locator('.milkdown').click()
+  await page.locator('.snotes-vditor [role="textbox"]:visible').click()
   // 1x1 的 PNG 分不出左右半边，在页面里画一张 400x300 再粘贴
-  await page.locator('.milkdown .ProseMirror').evaluate(async (el) => {
+  await page.locator('.snotes-vditor [role="textbox"]:visible').evaluate(async (el) => {
     const c = document.createElement('canvas')
     c.width = 400; c.height = 300
     c.getContext('2d')!.fillRect(0, 0, 400, 300)
@@ -912,25 +849,23 @@ test('点图片把文本光标放到图片旁边，打字不会吞掉图片', as
     dt.items.add(new File([blob], 'wide.png', { type: 'image/png' }))
     el.dispatchEvent(new ClipboardEvent('paste', { clipboardData: dt, bubbles: true }))
   })
-  const img = page.locator('.milkdown img[src^="/api/images/"]')
+  const img = page.locator('.snotes-vditor [role="textbox"]:visible img[src^="/api/images/"]')
   await expect(img).toHaveCount(1, { timeout: 15_000 })
   await expect.poll(() => img.evaluate((el: HTMLImageElement) => el.naturalWidth), { timeout: 15_000 }).toBe(400)
 
   const box = (await img.boundingBox())!
   // 点右半边：光标落在图片后
   await page.mouse.click(box.x + box.width * 0.75, box.y + box.height / 2)
-  await expect(page.locator('.ProseMirror-hideselection')).toHaveCount(0)
   await page.keyboard.type('后')
   await expect(img).toHaveCount(1)
-  await expect(page.locator('.ProseMirror p').first()).toHaveText('后')
+  await expect(page.locator('.snotes-vditor [role="textbox"]:visible p').first()).toHaveText('后')
 
   // 点左半边：光标落在图片前
   await page.mouse.click(box.x + box.width * 0.25, box.y + box.height / 2)
-  await expect(page.locator('.ProseMirror-hideselection')).toHaveCount(0)
   await page.keyboard.type('前')
   await expect(img).toHaveCount(1)
-  await expect(page.locator('.ProseMirror p').first()).toHaveText('前后')
-  await expect.poll(() => page.locator('.ProseMirror p').first().evaluate((p) => Array.from(p.childNodes).map((n) => n.nodeName).join(',')))
+  await expect(page.locator('.snotes-vditor [role="textbox"]:visible p').first()).toHaveText('前后')
+  await expect.poll(() => page.locator('.snotes-vditor [role="textbox"]:visible p').first().evaluate((p) => Array.from(p.childNodes).map((n) => n.nodeName).join(',')))
     .toMatch(/^#text,IMG,#text/)
 })
 
@@ -940,7 +875,7 @@ test('同步：两个上下文之间数据可互通', async ({ browser }) => {
   await signIn(pageA)
 
   await pageA.locator('.header-create').click()
-  await pageA.locator('.milkdown').click()
+  await pageA.locator('.snotes-vditor [role="textbox"]:visible').click()
   await pageA.keyboard.type('# 跨端同步验证')
   await expect(pageA.locator('.note-item').first()).toContainText('跨端同步验证')
 
@@ -988,16 +923,16 @@ test('清单可勾选、撤销并保存，回收站中保持只读', async ({ pa
   const editor = page.getByRole('textbox', { name: '笔记正文' })
   await expect(editor).toBeFocused()
   await page.keyboard.type('- [ ] 买牛奶')
-  const checkbox = page.locator('.task-checkbox')
+  const checkbox = page.locator('.snotes-vditor input[type="checkbox"]:visible')
   await expect(checkbox).toHaveCount(1)
   await expect(checkbox).not.toBeChecked()
   await expect.poll(() => savedBody(page)).toContain('[ ] 买牛奶')
 
   await checkbox.check()
   await expect(checkbox).toBeChecked()
-  await page.locator('[data-op="undo"]').click()
+  await page.locator('.vditor-toolbar [data-type="undo"]').click()
   await expect(checkbox).not.toBeChecked()
-  await page.locator('[data-op="redo"]').click()
+  await page.locator('.vditor-toolbar [data-type="redo"]').click()
   await expect(checkbox).toBeChecked()
   await expect.poll(() => savedBody(page)).toContain('[x] 买牛奶')
 
@@ -1031,14 +966,14 @@ for (const width of [1440, 320]) {
     await picker.setFiles({ name: 'Markflow.md', mimeType: 'text/markdown', buffer: Buffer.from(pasteMarkdown) })
     await expect(menu).toHaveCount(0)
     await expect(editor.locator('h1')).toHaveText('Markflow｜技术讲解')
-    await expect(editor.locator('table.children')).toHaveCount(1)
-    await expect(editor.locator('pre')).toHaveText('flowchart LR\n    A --> B')
+    await expect(editor.locator('table')).toHaveCount(1)
+    await expect(editor.locator('.vditor-wysiwyg__pre')).toHaveText('flowchart LR\n    A --> B')
     await expect.poll(() => savedBody(page)).toContain('原笔记保留内容')
     await expect.poll(() => savedBody(page)).toContain('# Markflow')
     await page.reload()
     if (width <= 720) await page.getByRole('button', { name: '打开笔记：Markflow｜技术讲解' }).click()
     await expect(editor.locator('h1')).toHaveText('Markflow｜技术讲解')
-    await expect(editor.locator('table.children')).toHaveCount(1)
+    await expect(editor.locator('table')).toHaveCount(1)
     await expect(editor.locator('strong')).toHaveText('重点')
   })
 }
@@ -1059,18 +994,18 @@ for (const source of ['VS Code', 'pre 包装'] as const) {
     }, { text: pasteMarkdown, source })
 
     await expect(editor.locator('h1')).toHaveText('Markflow｜技术讲解')
-    await expect(editor.locator('table.children')).toHaveCount(1)
-    await expect(editor.locator('pre')).toHaveText('flowchart LR\n    A --> B')
-    await page.locator('[data-op="undo"]').click()
+    await expect(editor.locator('table')).toHaveCount(1)
+    await expect(editor.locator('.vditor-wysiwyg__pre')).toHaveText('flowchart LR\n    A --> B')
+    await page.locator('.vditor-toolbar [data-type="undo"]').click()
     await expect(editor.locator('h1')).toHaveCount(0)
-    await page.locator('[data-op="redo"]').click()
+    await page.locator('.vditor-toolbar [data-type="redo"]').click()
     await expect(editor.locator('h1')).toHaveText('Markflow｜技术讲解')
     await expect.poll(() => savedBody(page)).toMatch(/^# Markflow/)
     await page.reload()
     await expect(editor.locator('h2')).toHaveText('实现机制')
     await expect(editor.locator('strong')).toHaveText('重点')
-    await expect(editor.locator('table.children')).toHaveCount(1)
-    await expect(editor.locator('pre')).toHaveText('flowchart LR\n    A --> B')
+    await expect(editor.locator('table')).toHaveCount(1)
+    await expect(editor.locator('.vditor-wysiwyg__pre')).toHaveText('flowchart LR\n    A --> B')
   })
 }
 
@@ -1085,9 +1020,9 @@ test('取消误粘贴的 Markdown 代码块时恢复正文格式', async ({ page
   }, pasteMarkdown)
   await expect(editor.locator('pre')).toHaveText(pasteMarkdown)
   await editor.locator('pre').click()
-  await page.locator('[data-format="codeBlock"]').click()
+  await page.locator('.vditor-toolbar [data-type="code"]').click()
   await expect(editor.locator('h1')).toHaveText('Markflow｜技术讲解')
-  await expect(editor.locator('table.children')).toHaveCount(1)
+  await expect(editor.locator('table')).toHaveCount(1)
   await expect(editor.locator('pre')).toHaveText('flowchart LR\n    A --> B')
   await expect.poll(() => savedBody(page)).toMatch(/^# Markflow/)
   await page.reload()
@@ -1158,11 +1093,11 @@ test.describe('手机操作', () => {
     expect(toolbar!.x).toBeGreaterThanOrEqual(0)
     expect(toolbar!.x + toolbar!.width).toBeLessThanOrEqual(320)
     // 格式工具栏是横向滚动的一条，不能把页面撑宽
-    const formatBar = await page.locator('.format-bar').boundingBox()
+    const formatBar = await page.locator('.vditor-toolbar').boundingBox()
     expect(formatBar!.x).toBeGreaterThanOrEqual(0)
     expect(formatBar!.x + formatBar!.width).toBeLessThanOrEqual(320)
     expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(320)
-    await expect(page.locator('.format-bar [data-format="bold"]')).toBeVisible()
+    await expect(page.locator('.vditor-toolbar [data-type="bold"]')).toBeVisible()
     // 手机顶栏没有余量：删除、字数、信息、历史都让位给「⋯」，从菜单里进；没有底栏
     await expect(page.locator('[data-op="trash"]')).toHaveCount(0)
     await expect(page.locator('[data-op="wordcount"]')).toHaveCount(0)
@@ -1195,14 +1130,14 @@ test.describe('手机操作', () => {
     // 1x1 PNG。手机端没有键盘粘贴，选图是唯一可靠入口，走的必须是隐藏 input 的 change。
     const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==', 'base64')
     const chooser = page.waitForEvent('filechooser')
-    await page.locator('[data-op="image"]').click()
+    await page.locator('.vditor-toolbar input[type="file"]').click()
     const picker = await chooser
     expect(picker.isMultiple()).toBe(true)
     await picker.setFiles({ name: 'phone.png', mimeType: 'image/png', buffer: png })
 
-    const img = page.locator('.milkdown img[src^="/api/images/"]')
+    const img = page.locator('.snotes-vditor [role="textbox"]:visible img[src^="/api/images/"]')
     await expect(img).toHaveCount(1, { timeout: 15_000 })
-    await expect(page.locator('.milkdown img[src^="blob:"]')).toHaveCount(0)
+    await expect(page.locator('.snotes-vditor [role="textbox"]:visible img[src^="blob:"]')).toHaveCount(0)
     await expect.poll(() => savedBody(page), { timeout: 15_000 }).toContain('](/api/images/')
   })
 

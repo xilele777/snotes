@@ -65,8 +65,8 @@ for (const width of [1440, 320]) {
     expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(width)
 
     await page.locator('.note-select').click()
-    await expect(page.locator('.milkdown .ProseMirror')).toBeVisible()
-    const bodyStyle = await page.locator('.milkdown .ProseMirror').evaluate(el => {
+    await expect(page.locator('.snotes-vditor [role="textbox"]:visible')).toBeVisible()
+    const bodyStyle = await page.locator('.snotes-vditor [role="textbox"]:visible').evaluate(el => {
       const style = getComputedStyle(el)
       return { lineHeight: parseFloat(style.lineHeight), fontSize: parseFloat(style.fontSize) }
     })

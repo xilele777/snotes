@@ -226,7 +226,7 @@ test('浏览章节不改变顶部创建位置，章节菜单创建子项，首�
   await folder.locator('.kb-node-link').click()
   await expect(page.getByText('改为根目录', { exact: true })).toHaveCount(0)
   await page.locator('.kb-primary-create').click()
-  await expect(page.locator('.ProseMirror[contenteditable="true"]')).toBeVisible()
+  await expect(page.locator('.snotes-vditor [role="textbox"]:visible[contenteditable="true"]')).toBeVisible()
   await expect(page.locator('.kb-tree-row')).toHaveCount(2)
   await folder.locator('.kb-node-menu').click()
   await page.getByRole('menuitem', { name: '在此新建笔记', exact: true }).click()
