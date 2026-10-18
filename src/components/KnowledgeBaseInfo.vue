@@ -66,7 +66,7 @@ time { display: block; color: var(--text-primary); font-size: 14px; line-height:
 .compact dd { min-height: 34px; }
 .compact .kb-info-stat dd { font-size: 28px; }
 .compact time { font-size: 15px; }
-@container (max-width: 620px) {
+@container (max-width: 440px) {
   .kb-info-stats { grid-template-columns: minmax(0, 1fr); }
   .kb-info-stats > div:nth-child(even) { border-left: 0; }
   .kb-info-stats > div + div { border-top: 1px solid var(--border-light); }
