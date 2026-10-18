@@ -41,7 +41,7 @@ snotes 面向想自己掌握数据的个人用户：随手记录日常笔记，�
 需要 **Node.js 24 LTS**。不需要 Cloudflare 账号，笔记存入 SQLite，图片保存在本地磁盘。
 
 ```bash
-git clone --branch v0.23.3 https://github.com/xilele777/snotes.git
+git clone --branch v0.23.4 https://github.com/xilele777/snotes.git
 cd snotes
 npm ci
 npm run build:server

@@ -251,7 +251,7 @@ test('分享目标参数启动时新建一条带内容的笔记并擦掉地址�
   await expect(page.locator('.note-item').first()).toContainText('分享标题')
   await expect(page.locator('.snotes-vditor [role="textbox"]:visible')).toContainText('分享正文')
   await expect(page.locator('.snotes-vditor [role="textbox"]:visible')).toContainText('https://example.com/x')
-  await expect(page).toHaveURL(/\/$/)
+  await expect.poll(() => new URL(page.url()).searchParams.has('share')).toBe(false)
   await page.reload()
   await expect(page.locator('.note-item')).toHaveCount(1)
 })
@@ -318,6 +318,7 @@ test('顶栏撤销/重做按钮能撤掉又恢复输入', async ({ page }) => {
 
   await expect(page.locator('.snotes-vditor [role="textbox"]:visible')).toContainText('第二段')
 
+  await expect(page.locator('.vditor-toolbar [data-type="undo"]')).not.toHaveClass(/vditor-menu--disabled/)
   // undo 撤销最近一次输入（第二段），redo 再把它找回来
   await page.locator('.vditor-toolbar [data-type="undo"]').click()
   await expect(page.locator('.snotes-vditor [role="textbox"]:visible')).not.toContainText('第二段')
@@ -493,9 +494,8 @@ test('双击图片打开灯箱：缩放、左右切换、下载与关闭', async
   await expect(page.locator('.lightbox-mask')).toHaveCount(0)
 
   // 单张图片不显示计数，避免「1 / 1」这种没信息量的提示
-  await page.locator('.snotes-vditor [role="textbox"]:visible').click()
-  await page.keyboard.press('Control+a')
-  await page.keyboard.press('Backspace')
+  await createNote(page)
+  await expect(page.locator('.snotes-vditor [role="textbox"]:visible img')).toHaveCount(0)
   await page.locator('.snotes-vditor [role="textbox"]:visible').click()
   await pasteImage(page)
   await expect(page.locator('.snotes-vditor [role="textbox"]:visible img[src^="/api/images/"]')).toHaveCount(1, { timeout: 15_000 })
@@ -621,7 +621,7 @@ test('统计页面保留编辑器、撤销和滚动位置，侧栏可切换页�
   await expect(page.locator('.layout')).toHaveAttribute('data-view', 'stats')
   await expect(page.locator('.layout')).not.toHaveAttribute('inert')
   await expect(editor).toBeHidden()
-  await expect(editor).toHaveAttribute('data-preserved-editor', 'yes')
+  await expect(page.locator('.snotes-vditor [data-preserved-editor="yes"]')).toHaveCount(1)
   await expect(dialog.getByRole('heading', { name: '统计' })).toBeFocused()
   const grid = (await dialog.locator('.stats-grid').boundingBox())!
   const heatmap = (await dialog.locator('.panel-heatmap').boundingBox())!
@@ -634,7 +634,7 @@ test('统计页面保留编辑器、撤销和滚动位置，侧栏可切换页�
 
   await expect(dialog).toHaveCount(0)
   await expect(page.getByRole('button', { name: '统计', exact: true })).toBeFocused()
-  await expect(editor).toHaveAttribute('data-preserved-editor', 'yes')
+  await expect(page.locator('.snotes-vditor [data-preserved-editor="yes"]')).toHaveCount(1)
   await expect(page.locator(`.groups [data-group-id="${groupId}"]`)).toHaveClass(/active/)
   await expect(page.getByRole('searchbox', { name: '搜索笔记', exact: true })).toHaveValue('项目')
   expect(await page.locator('.note-list').evaluate(el => el.scrollTop)).toBe(610)
@@ -751,7 +751,6 @@ test('原生链接浮层编辑地址，Mod 点击安全打开，取消链接保�
     .toEqual([['https://example.com', '_blank', 'noopener,noreferrer']])
 
   await anchor.click()
-  await page.keyboard.press('Control+k')
   const editAddress = page.locator('.vditor-wysiwyg .vditor-panel input[placeholder="链接"]')
   await expect(editAddress).toBeVisible()
   await editAddress.fill('/笔记/1')
@@ -778,6 +777,7 @@ for (const width of [390, 320]) {
     const groupId = await seedNavigationNotes(page)
     await page.setViewportSize({ width, height: 844 })
     await page.reload()
+    await page.getByRole('button', { name: '返回列表', exact: true }).click()
     await page.getByRole('button', { name: '打开侧栏' }).click()
     await page.locator(`.groups [data-group-id="${groupId}"] .group-link`).click()
     await page.getByRole('searchbox', { name: '搜索笔记', exact: true }).fill('项目')
@@ -901,13 +901,13 @@ test('新建直接输入，专注模式与快捷搜索保留正文', async ({ pa
   await page.keyboard.type('把重要的想法记下来')
   await expect(page.locator('.note-title').first()).toContainText('重要的想法')
 
-  await page.getByRole('button', { name: '专注模式', exact: true }).click()
+  await page.keyboard.press('Control+Alt+f')
   await expect(page.locator('.list-pane')).toBeHidden()
   await expect(editor).toContainText('把重要的想法记下来')
   await page.keyboard.press('Escape')
   await expect(page.locator('.list-pane')).toBeVisible()
 
-  await page.keyboard.press('Control+k')
+  await page.keyboard.press('Control+f')
   const search = page.getByRole('searchbox', { name: '搜索笔记' })
   await expect(search).toBeFocused()
   await search.fill('重要的想法')
@@ -930,6 +930,7 @@ test('清单可勾选、撤销并保存，回收站中保持只读', async ({ pa
 
   await checkbox.check()
   await expect(checkbox).toBeChecked()
+  await expect.poll(() => savedBody(page)).toContain('[x] 买牛奶')
   await page.locator('.vditor-toolbar [data-type="undo"]').click()
   await expect(checkbox).not.toBeChecked()
   await page.locator('.vditor-toolbar [data-type="redo"]').click()
@@ -971,7 +972,6 @@ for (const width of [1440, 320]) {
     await expect.poll(() => savedBody(page)).toContain('原笔记保留内容')
     await expect.poll(() => savedBody(page)).toContain('# Markflow')
     await page.reload()
-    if (width <= 720) await page.getByRole('button', { name: '打开笔记：Markflow｜技术讲解' }).click()
     await expect(editor.locator('h1')).toHaveText('Markflow｜技术讲解')
     await expect(editor.locator('table')).toHaveCount(1)
     await expect(editor.locator('strong')).toHaveText('重点')
@@ -996,6 +996,7 @@ for (const source of ['VS Code', 'pre 包装'] as const) {
     await expect(editor.locator('h1')).toHaveText('Markflow｜技术讲解')
     await expect(editor.locator('table')).toHaveCount(1)
     await expect(editor.locator('.vditor-wysiwyg__pre')).toHaveText('flowchart LR\n    A --> B')
+    await expect(page.locator('.vditor-toolbar [data-type="undo"]')).not.toHaveClass(/vditor-menu--disabled/)
     await page.locator('.vditor-toolbar [data-type="undo"]').click()
     await expect(editor.locator('h1')).toHaveCount(0)
     await page.locator('.vditor-toolbar [data-type="redo"]').click()
@@ -1018,12 +1019,12 @@ test('取消误粘贴的 Markdown 代码块时恢复正文格式', async ({ page
     clipboardData.setData('text/plain', `\`\`\`\`markdown\n${text}\n\`\`\`\``)
     element.dispatchEvent(new ClipboardEvent('paste', { clipboardData, bubbles: true, cancelable: true }))
   }, pasteMarkdown)
-  await expect(editor.locator('pre')).toHaveText(pasteMarkdown)
-  await editor.locator('pre').click()
+  await expect(editor.locator('pre.vditor-wysiwyg__pre')).toHaveText(pasteMarkdown)
+  await editor.locator('pre.vditor-wysiwyg__pre').click()
   await page.locator('.vditor-toolbar [data-type="code"]').click()
   await expect(editor.locator('h1')).toHaveText('Markflow｜技术讲解')
   await expect(editor.locator('table')).toHaveCount(1)
-  await expect(editor.locator('pre')).toHaveText('flowchart LR\n    A --> B')
+  await expect(editor.locator('pre.vditor-wysiwyg__pre')).toHaveText('flowchart LR\n    A --> B')
   await expect.poll(() => savedBody(page)).toMatch(/^# Markflow/)
   await page.reload()
   await expect(editor.locator('h1')).toHaveText('Markflow｜技术讲解')
@@ -1077,6 +1078,7 @@ test.describe('手机操作', () => {
     await page.keyboard.type('手机上随手记')
     await expect.poll(() => savedBody(page)).toContain('手机上随手记')
     await page.reload()
+    await page.getByRole('button', { name: '返回列表', exact: true }).click()
 
     await expect(page.locator('.list-pane')).toBeVisible()
     await expect(page.locator('.editor-pane')).toBeHidden()
@@ -1118,7 +1120,7 @@ test.describe('手机操作', () => {
     expect(groups!.x + groups!.width).toBeLessThanOrEqual(320)
     await page.keyboard.press('Escape')
     await expect(page.locator('[data-op="group"]')).toBeFocused()
-    await page.keyboard.press('Control+k')
+    await page.keyboard.press('Control+f')
     await expect(page.getByRole('searchbox')).toBeFocused()
     await expect(page.locator('.list-pane')).toBeVisible()
   })

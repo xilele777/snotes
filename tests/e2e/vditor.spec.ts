@@ -89,7 +89,7 @@ test('原生格式工具和撤销重做', async ({ page }) => {
   await expect(body(page).locator('b, strong')).toHaveText('需要加粗')
 })
 
-test('原生链接和高亮快捷键可用，搜索与阅读使用更新后的键位', async ({ page }) => {
+test('原生链接和高亮快捷键可用，搜索使用更新后的键位', async ({ page }) => {
   const errors: string[] = []
   page.on('pageerror', error => errors.push(error.message))
   await expect(page.locator('.format-bar, .link-dialog, .table-dialog')).toHaveCount(0)
@@ -111,9 +111,8 @@ test('原生链接和高亮快捷键可用，搜索与阅读使用更新后的�
   await page.keyboard.press('Control+Alt+h')
   await expect(body(page)).toHaveValue('==重点==')
   await page.keyboard.press('Control+Alt+e')
-  await expect(page.locator('.reading-banner')).toBeVisible()
+  await expect(page.locator('.reading-banner')).toHaveCount(0)
   await expect.poll(() => saved(page)).toContain('==重点==')
-  await page.keyboard.press('Escape')
   await page.keyboard.press('Control+f')
   await expect(page.getByRole('searchbox', { name: '搜索笔记' })).toBeFocused()
   expect(errors).toEqual([])

@@ -125,6 +125,12 @@ const directActions = computed(() => !compact.value && paneWidth.value >= 620)
  */
 const canEdit = computed(() => !props.readonly)
 
+async function toggleFocus() {
+  ui.focusMode = !ui.focusMode
+  await nextTick()
+  editorRef.value?.focus()
+}
+
 /**
  * 切换当前笔记的首页信息流可见性。分组设置只是默认值，这里是单条笔记的覆盖：
  * 隐藏后它在「全部笔记」里消失，但仍在「已隐藏」、分组和星标视图里。
@@ -240,12 +246,6 @@ function onFlush(id: string, md: string, base: string) {
 }
 
 const editorRef = ref<InstanceType<typeof VditorEditorComponent> | null>(null)
-
-async function toggleFocus() {
-  ui.focusMode = !ui.focusMode
-  await nextTick()
-  editorRef.value?.focus()
-}
 
 /** 每次导入一个 Markdown 文件，新建笔记后打开，沿用设置里的导入逻辑。 */
 const markdownInput = ref<HTMLInputElement | null>(null)

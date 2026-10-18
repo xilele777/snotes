@@ -32,6 +32,7 @@ let timer: ReturnType<typeof setTimeout> | undefined
 let observer: MutationObserver | undefined
 let contentObserver: MutationObserver | undefined
 let observedMode: string | undefined
+let forwardingPaste = false
 
 function clearTimer() {
   clearTimeout(timer)
@@ -122,13 +123,27 @@ function onInput(event: Event) {
 }
 
 function onPaste(event: ClipboardEvent) {
+  if (forwardingPaste) return
   if (!ready || !editor || props.editable === false || !event.clipboardData
     || event.clipboardData.files.length || editor.getCurrentMode() === 'sv') return
   const target = event.target instanceof Element ? event.target : null
   const selectionNode = window.getSelection()?.anchorNode
   const selectionElement = selectionNode instanceof Element ? selectionNode : selectionNode?.parentElement
-  if (!target?.closest('.vditor-reset[contenteditable="true"]')
-    || selectionElement?.closest('pre, code, [data-type="code-block"]')) return
+  const editableRoot = target?.closest('.vditor-reset[contenteditable="true"]')
+  const code = selectionElement?.closest('pre, code, [data-type="code-block"]')
+  if (!editableRoot || (code && code !== editableRoot)) return
+  const html = event.clipboardData.getData('text/html')
+  if (/<ol\b[^>]*\bstart\s*=\s*(["'])\s*\1/i.test(html)) {
+    const clipboardData = new DataTransfer()
+    for (const type of event.clipboardData.types) clipboardData.setData(type, event.clipboardData.getData(type))
+    clipboardData.setData('text/html', html.replace(/(<ol\b[^>]*\bstart\s*=\s*)(["'])\s*\2/gi, '$1"1"'))
+    event.preventDefault()
+    event.stopPropagation()
+    forwardingPaste = true
+    try { event.target?.dispatchEvent(new ClipboardEvent('paste', { clipboardData, bubbles: true, cancelable: true })) }
+    finally { forwardingPaste = false }
+    return
+  }
   const markdown = markdownFromClipboard(event.clipboardData)
   if (!markdown) return
   event.preventDefault()
