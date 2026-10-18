@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, defineAsyncComponent, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
+import { computed, defineAsyncComponent, nextTick, onMounted, onUnmounted, ref, shallowRef, watch } from 'vue'
 import { hasToken } from './api/token'
 import GroupSidebar from './components/GroupSidebar.vue'
 import NoteDetail from './components/NoteDetail.vue'
@@ -26,7 +26,9 @@ const KnowledgeBaseHome = defineAsyncComponent(() => import('./components/Knowle
 const QuickSearch = defineAsyncComponent(() => import('./components/QuickSearch.vue'))
 const globalSearchOpen = ref(false)
 const searchLoaded = ref(false)
+const searchTrigger = shallowRef<HTMLElement | null>(null)
 function openGlobalSearch() {
+  searchTrigger.value = document.activeElement instanceof HTMLElement ? document.activeElement : null
   ui.drawerOpen = false
   searchLoaded.value = true
   globalSearchOpen.value = true
@@ -219,6 +221,6 @@ onUnmounted(() => {
     <StatsPage v-if="ui.workspacePage === 'stats'" :open="true" :inert="compact && ui.drawerOpen" />
     <SettingsPage v-if="ui.workspacePage === 'settings'" :open="true" :inert="compact && ui.drawerOpen" />
   </div>
-  <QuickSearch v-if="searchLoaded" :open="globalSearchOpen" @close="globalSearchOpen = false" />
+  <QuickSearch v-if="searchLoaded" :open="globalSearchOpen" :return-focus="searchTrigger" @close="globalSearchOpen = false" />
   <Toast />
 </template>

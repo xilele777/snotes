@@ -6,12 +6,13 @@ import { isNoteHiddenFromHome } from '../db/repo'
 import { isMobile, openNotebookLink, showKnowledgeBases, switchListView } from '../navigation'
 import { useNotesStore } from '../stores/notes'
 import { useUiStore } from '../stores/ui'
+import { syncNow } from '../sync/engine'
 import { searchWorkspace, type SearchDestination } from '../global-search'
 import AppIcon from './AppIcon.vue'
 import { highlight } from './SearchBar'
 import { useDialogFocus } from './useDialogFocus'
 
-const props = defineProps<{ open: boolean }>()
+const props = defineProps<{ open: boolean; returnFocus?: HTMLElement | null }>()
 const emit = defineEmits<{ close: [] }>()
 const panel = ref<HTMLElement | null>(null)
 const query = ref('')
@@ -24,11 +25,17 @@ const data = shallowRef<SearchData | null>(null)
 const matches = computed(() => data.value ? searchWorkspace(...data.value, query.value) : [])
 const results = computed(() => matches.value.slice(0, query.value.trim() ? 40 : 10))
 let subscription: Subscription | undefined
+let generation = 0
 async function readData() {
   return await Promise.all([db.notes.where('invalid').equals(0).toArray(), db.knowledgeBases.toArray(), db.knowledgeBaseTocs.toArray(), db.groups.toArray()])
 }
-useDialogFocus(() => props.open, panel, () => emit('close'), previous => previous?.isConnected && previous.getClientRects().length ? previous : document.querySelector<HTMLElement>('.header-title, .kb-header h2, .drawer-btn'))
+useDialogFocus(() => props.open, panel, () => emit('close'), () => {
+  const previous = props.returnFocus
+  return previous?.isConnected && previous.getClientRects().length && !previous.closest('[inert]') && previous !== document.body
+    ? previous : [...document.querySelectorAll<HTMLElement>('.kb-header h2, .header-title, .drawer-btn, .back-btn')].find(el => el.getClientRects().length && !el.closest('[inert]')) ?? null
+})
 watch(() => props.open, open => {
+  generation++
   subscription?.unsubscribe()
   if (!open) { data.value = null; return }
   query.value = ''
@@ -42,8 +49,16 @@ watch(query, () => { selected.value = 0 })
 async function openResult(result: SearchDestination) {
   if (opening.value) return
   opening.value = true
+  const request = generation
   error.value = ''
   try {
+    // The first pull can deliver note bodies before notebook ownership. Resolve
+    // the destination again after that in-progress sync, using fresh local data.
+    if (useUiStore().syncing && navigator.onLine) await syncNow()
+    const latest = searchWorkspace(...await readData(), '').find(item => item.id === result.id && item.kind === result.kind)
+    if (!props.open || request !== generation) return
+    if (!latest) { error.value = '这条内容已被移走或删除。'; return }
+    result = latest
     if (result.kind === 'book') await showKnowledgeBases(result.id)
     else if (result.bookId) await openNotebookLink(result.bookId, result.id)
     else {
@@ -75,7 +90,7 @@ onUnmounted(() => subscription?.unsubscribe())
     <div v-if="open" class="quick-search-mask" @click.self="emit('close')">
       <section ref="panel" class="quick-search-dialog" role="dialog" aria-modal="true" aria-label="全局搜索" @keydown="keydown">
         <header><AppIcon name="search" :size="21" /><input v-model="query" type="search" role="combobox" aria-label="全局搜索笔记" aria-autocomplete="list" aria-expanded="true" aria-controls="quick-search-results" :aria-activedescendant="results.length ? `quick-search-result-${selected}` : undefined" data-autofocus placeholder="搜索笔记、正文或笔记本…" autocomplete="off" /><button class="icon-button" type="button" aria-label="关闭全局搜索" @click="emit('close')"><AppIcon name="close" :size="18" /></button></header>
-        <div class="search-results-caption" aria-live="polite">{{ loading ? '正在查找…' : query.trim() ? `${matches.length} 个结果${matches.length > 40 ? ' · 显示前 40 个' : ''}` : '最近更新 · 搜索全部笔记与笔记本' }}</div>
+        <div class="search-results-caption" aria-live="polite">{{ opening ? '正在打开…' : loading ? '正在查找…' : query.trim() ? `${matches.length} 个结果${matches.length > 40 ? ' · 显示前 40 个' : ''}` : '最近更新 · 搜索全部笔记与笔记本' }}</div>
         <p v-if="error" class="quick-search-error" role="alert">{{ error }}</p>
         <div id="quick-search-results" role="listbox" aria-label="搜索结果" :aria-busy="loading" class="quick-search-results">
           <button v-for="(result, index) in results" :id="`quick-search-result-${index}`" :key="`${result.kind}-${result.id}`" type="button" role="option" :aria-selected="selected === index" :disabled="opening" @pointermove="selected = index" @click="openResult(result)">

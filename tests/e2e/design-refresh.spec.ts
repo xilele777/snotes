@@ -64,6 +64,9 @@ for (const width of [1440, 390]) {
     await page.request.post('/api/knowledge-bases', { headers, data: { id: bookId, operation_id: crypto.randomUUID(), name: '探索手记', description: '', icon: '', ord: 0, invalid: 0 } })
     const nodes = [{ id: 'chapter', kind: 'folder', parent_id: null, ord: 0, title: '研究', note_id: null }, { id: 'entry', kind: 'note', parent_id: 'chapter', ord: 0, title: null, note_id: noteId }]
     expect((await page.request.put(`/api/knowledge-bases/${bookId}/toc`, { headers, data: { nodes, base_toc_version: 0, operation_id: crypto.randomUUID() } })).ok()).toBe(true)
+    let releaseNotebookPull!: () => void
+    const notebookPull = new Promise<void>(resolve => { releaseNotebookPull = resolve })
+    await page.route('**/api/knowledge-bases/sync/pull', async route => { await notebookPull; await route.continue() })
     await page.goto('/')
     await page.evaluate(() => localStorage.setItem('snotes_token', 'dev-token'))
     await page.reload()
@@ -76,7 +79,11 @@ for (const width of [1440, 390]) {
     await expect(search).toBeFocused()
     await search.fill('火星 基地')
     await expect(page.getByRole('option')).toHaveCount(1)
+    // Note bodies can arrive before the first notebook pull. Opening must wait
+    // for that pull and route to the newly discovered owner.
+    await expect(page.getByRole('option')).toContainText('独立笔记')
     await search.press('Enter')
+    releaseNotebookPull()
     await expect(page.getByRole('dialog', { name: '全局搜索', exact: true })).toHaveCount(0)
     const editor = page.locator('.ProseMirror')
     await expect(editor).toContainText('跨范围资料')
@@ -89,8 +96,16 @@ for (const width of [1440, 390]) {
     await expect(search).toHaveCount(0)
     await expect(editor).toHaveAttribute('data-continuity', 'search-preserved')
     if (width > 720) {
+      await expect(page.locator('.kb-header h2')).toBeFocused()
       await expect(page.locator('.kb-tree-row.selected')).toContainText('跨范围资料')
       await expect(page.locator('.kb-header h2')).toHaveText('探索手记')
+      await page.getByRole('button', { name: '探索手记', exact: true }).click()
+      await expect(page.getByRole('region', { name: '最近编辑', exact: true })).toBeVisible()
+      await page.getByRole('button', { name: '研究', exact: true }).click()
+      await expect(page.locator('.kb-node-link').filter({ hasText: '跨范围资料' })).toHaveCount(0)
+      await page.getByRole('button', { name: '继续编辑：跨范围资料', exact: true }).click()
+      await expect(editor).toContainText('火星基地')
+      await expect(page.locator('.kb-tree-row.selected')).toContainText('跨范围资料')
     }
   })
 }
