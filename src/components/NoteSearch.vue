@@ -6,7 +6,7 @@ import AppIcon from './AppIcon.vue'
 const emit = defineEmits<{ first: [] }>()
 const ui = useUiStore()
 const input = ref<HTMLInputElement | null>(null)
-const shortcut = /Mac|iPhone|iPad/.test(navigator.platform) ? '⌘ K' : 'Ctrl K'
+const shortcut = /Mac|iPhone|iPad/.test(navigator.platform) ? '⌘ F' : 'Ctrl F'
 const placeholder = computed(() => ui.view === 'group' ? '搜索当前分组' : ui.view === 'star' ? '搜索星标笔记' : ui.view === 'hidden' ? '搜索隐藏笔记' : ui.view === 'trash' ? '搜索回收站' : '搜索笔记')
 
 function clear() {

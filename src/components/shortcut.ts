@@ -1,6 +1,7 @@
 export type ShortcutAction =
   | { type: 'create' }
   | { type: 'focusSearch' }
+  | { type: 'globalSearch' }
   | { type: 'clearQuery' }
   | { type: 'toggleStar' }
   | { type: 'togglePin' }
@@ -25,7 +26,8 @@ export interface ShortcutEvent {
 /** 设置「快捷键」页展示用的全局快捷键清单；Mod 由界面按平台替换成 Ctrl 或 ⌘ */
 export const SHORTCUT_LIST: { keys: string; label: string }[] = [
   { keys: 'Alt N', label: '新建笔记' },
-  { keys: 'Mod K', label: '搜索' },
+  { keys: 'Mod K', label: '全局搜索' },
+  { keys: 'Mod F', label: '搜索当前列表' },
   { keys: 'Mod ,', label: '打开设置' },
   { keys: 'Mod Shift S', label: '星标 / 取消星标' },
   { keys: 'Mod Shift P', label: '置顶 / 取消置顶' },
@@ -90,7 +92,8 @@ export function resolveShortcut(
   }
 
   if (!mod && e.altKey && !e.shiftKey && (key === 'n' || e.code === 'KeyN')) return { type: 'create' }
-  if (mod && (key === 'f' || key === 'k')) return { type: 'focusSearch' }
+  if (mod && key === 'k' && !e.shiftKey && !e.altKey) return { type: 'globalSearch' }
+  if (mod && key === 'f') return { type: 'focusSearch' }
   if (mod && !e.shiftKey && !e.altKey && (key === ',' || e.code === 'Comma')) return { type: 'openSettings' }
   if (key === 'escape' && ctx.hasQuery) return { type: 'clearQuery' }
   return null

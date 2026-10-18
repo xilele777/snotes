@@ -62,7 +62,7 @@ test('列表独立收起保留编辑器与撤销，搜索和导航重新显示�
   await page.keyboard.press('Control+z')
   await expect(editor).not.toContainText('Layout continuity')
   await page.getByRole('button', { name: '收起笔记列表', exact: true }).click()
-  await page.keyboard.press('Control+k')
+  await page.keyboard.press('Control+f')
   await expect(page.getByRole('searchbox', { name: '搜索笔记', exact: true })).toBeFocused()
   await page.getByRole('button', { name: '收起笔记列表', exact: true }).click()
   await page.getByRole('button', { name: '星标笔记', exact: true }).click()

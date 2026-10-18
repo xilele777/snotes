@@ -26,9 +26,9 @@ describe('resolveShortcut', () => {
     expect(resolveShortcut({ ...ctrl(','), altKey: true }, { hasQuery: false })).toBeNull()
   })
 
-  it('Cmd/Ctrl + K → focusSearch', () => {
-    expect(resolveShortcut(mod('k'), { hasQuery: false })).toEqual({ type: 'focusSearch' })
-    expect(resolveShortcut(ctrl('k'), { hasQuery: false })).toEqual({ type: 'focusSearch' })
+  it('Cmd/Ctrl + K → globalSearch', () => {
+    expect(resolveShortcut(mod('k'), { hasQuery: false })).toEqual({ type: 'globalSearch' })
+    expect(resolveShortcut(ctrl('k'), { hasQuery: false })).toEqual({ type: 'globalSearch' })
   })
 
   it('Esc 在有查询时 → clearQuery', () => {

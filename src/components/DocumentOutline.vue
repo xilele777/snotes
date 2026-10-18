@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { nextTick, onUnmounted, ref, shallowRef, watch } from 'vue'
+import { onMounted, onUnmounted, ref, shallowRef, watch } from 'vue'
 import AppIcon from './AppIcon.vue'
 
 const props = defineProps<{ root: HTMLElement | null }>()
@@ -44,7 +44,7 @@ function jump(element: HTMLElement) {
   if (!props.root) return
   props.root.scrollTo({ top: props.root.scrollTop + element.getBoundingClientRect().top - props.root.getBoundingClientRect().top - 32, behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'instant' : 'smooth' })
 }
-void nextTick(() => panel.value?.querySelector<HTMLButtonElement>('.outline-close')?.focus({ preventScroll: true }))
+onMounted(() => panel.value?.querySelector<HTMLButtonElement>('.outline-close')?.focus({ preventScroll: true }))
 onUnmounted(detach)
 </script>
 

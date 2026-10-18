@@ -184,7 +184,7 @@ watch(() => ui.drawerOpen, (open) => { if (!open) menuGroup.value = null })
 
       <div class="sidebar-actions">
         <button type="button" class="sidebar-create" aria-label="快速新建笔记" title="在当前工作区新建笔记 (Alt N)" @click="quickCreate"><AppIcon name="plus" :size="18" /><span>新建笔记</span><kbd>Alt N</kbd></button>
-        <button type="button" class="sidebar-search" aria-label="搜索工作区" title="搜索当前工作区" @click="$emit('search')"><AppIcon name="search" :size="17" /><span>搜索</span><kbd>{{ searchShortcut }}</kbd></button>
+        <button type="button" class="sidebar-search" aria-label="全局搜索" title="搜索全部笔记与笔记本" @click="$emit('search')"><AppIcon name="search" :size="17" /><span>搜索全部内容</span><kbd>{{ searchShortcut }}</kbd></button>
       </div>
       <div class="nav-section-label">我的笔记</div>
       <ul class="views">

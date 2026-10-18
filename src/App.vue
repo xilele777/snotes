@@ -23,6 +23,14 @@ const ui = useUiStore()
 const MetricsView = defineAsyncComponent(() => import('./components/MetricsView.vue'))
 const KnowledgeBaseWorkspace = defineAsyncComponent(() => import('./components/KnowledgeBaseWorkspace.vue'))
 const KnowledgeBaseHome = defineAsyncComponent(() => import('./components/KnowledgeBaseHome.vue'))
+const QuickSearch = defineAsyncComponent(() => import('./components/QuickSearch.vue'))
+const globalSearchOpen = ref(false)
+const searchLoaded = ref(false)
+function openGlobalSearch() {
+  ui.drawerOpen = false
+  searchLoaded.value = true
+  globalSearchOpen.value = true
+}
 /** ≤1020px 侧栏是抽屉 */
 const compact = useMediaQuery('(max-width: 1020px)')
 const viewportWidth = ref(window.innerWidth)
@@ -97,7 +105,12 @@ watch(
 function onKeydown(e: KeyboardEvent) {
   // 弹窗和菜单打开时把键盘交给它们：Esc 该关的是浮层，不是抽屉或搜索词
   if (!hasToken.value || e.defaultPrevented || e.isComposing || document.querySelector('[aria-modal="true"], [role="menu"]')) return
-  if (e.key === 'Escape' && e.target instanceof HTMLElement && e.target.closest('.document-outline')) return
+  if (e.key === 'Escape' && !ui.drawerOpen && !ui.workspacePage && document.querySelector('.document-outline')) {
+    e.preventDefault()
+    e.stopPropagation()
+    document.querySelector<HTMLButtonElement>('.document-outline .outline-close')?.click()
+    return
+  }
   if (e.key === 'Escape' && (ui.drawerOpen || (!ui.workspacePage && (ui.focusMode || ui.readingMode)))) {
     e.preventDefault()
     e.stopPropagation()
@@ -117,7 +130,7 @@ function onKeydown(e: KeyboardEvent) {
   }
   const action = resolveShortcut(e, { hasQuery: ui.query.trim().length > 0 })
   if (!action) return
-  if (ui.workspacePage && action.type !== 'openSettings' && action.type !== 'focusSearch') return
+  if (ui.workspacePage && action.type !== 'openSettings' && action.type !== 'focusSearch' && action.type !== 'globalSearch') return
   e.preventDefault()
   e.stopPropagation()
 
@@ -141,6 +154,7 @@ async function runShortcut(action: ShortcutAction) {
   switch (action.type) {
     case 'create': void notes.create(); return
     case 'focusSearch': await focusSearch(); return
+    case 'globalSearch': openGlobalSearch(); return
     case 'clearQuery': ui.query = ''; return
     case 'toggleStar': if (editable) await notes.setProps(current.id, { star: current.star === 1 ? 0 : 1 }); return
     case 'togglePin': if (editable) await notes.setProps(current.id, { top: current.top === 1 ? 0 : 1 }); return
@@ -172,10 +186,10 @@ onUnmounted(() => {
 <template>
   <TokenGate v-if="!hasToken" />
 
-  <div v-else class="layout" :class="{ 'is-focused': ui.focusMode, 'is-sidebar-collapsed': preferences.sidebarCollapsed, 'is-list-collapsed': listCollapsed, 'is-library-list': ui.view === 'knowledge-bases' && !ui.activeKnowledgeBaseId, 'is-utility-page': !!ui.workspacePage }" :style="{ '--preferred-sidebar-width': `${preferences.sidebarWidth}px`, '--preferred-list-width': `${listWidth}px` }" :data-mobile-pane="ui.mobilePane" :data-view="ui.workspacePage ?? ui.view">
+  <div v-else class="layout" :inert="globalSearchOpen || undefined" :class="{ 'is-focused': ui.focusMode, 'is-sidebar-collapsed': preferences.sidebarCollapsed, 'is-list-collapsed': listCollapsed, 'is-library-list': ui.view === 'knowledge-bases' && !ui.activeKnowledgeBaseId, 'is-utility-page': !!ui.workspacePage }" :style="{ '--preferred-sidebar-width': `${preferences.sidebarWidth}px`, '--preferred-list-width': `${listWidth}px` }" :data-mobile-pane="ui.mobilePane" :data-view="ui.workspacePage ?? ui.view">
     <!-- 窄屏将分组导航收进抽屉，搜索仍留在笔记列表上方。 -->
     <aside id="workspace-sidebar" class="sidebar-pane" :class="{ 'is-open': ui.drawerOpen }" :inert="compact && !ui.drawerOpen">
-      <GroupSidebar @search="focusSearch" />
+      <GroupSidebar @search="openGlobalSearch" />
     </aside>
     <Transition name="veil"><div v-if="ui.drawerOpen" class="drawer-mask" @click="ui.drawerOpen = false"></div></Transition>
 
@@ -205,5 +219,6 @@ onUnmounted(() => {
     <StatsPage v-if="ui.workspacePage === 'stats'" :open="true" :inert="compact && ui.drawerOpen" />
     <SettingsPage v-if="ui.workspacePage === 'settings'" :open="true" :inert="compact && ui.drawerOpen" />
   </div>
+  <QuickSearch v-if="searchLoaded" :open="globalSearchOpen" @close="globalSearchOpen = false" />
   <Toast />
 </template>
