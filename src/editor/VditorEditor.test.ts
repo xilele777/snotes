@@ -1,0 +1,139 @@
+import { flushPromises, mount } from '@vue/test-utils'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { MockVditor } from '../../tests/unit/mock-vditor'
+import VditorEditor from './VditorEditor.vue'
+import { uploadImage } from './image-upload'
+
+vi.mock('vditor', async () => ({ default: (await import('../../tests/unit/mock-vditor')).MockVditor }))
+vi.mock('./image-upload', async original => ({ ...await original<typeof import('./image-upload')>(), uploadImage: vi.fn() }))
+
+const mounted: ReturnType<typeof mount>[] = []
+async function create(body = '原文', editable = true) {
+  const wrapper = mount(VditorEditor, { props: { noteId: 'a', modelValue: body, editable }, attachTo: document.body })
+  mounted.push(wrapper)
+  await flushPromises()
+  return { wrapper, editor: MockVditor.instances.at(-1)! }
+}
+
+beforeEach(() => { MockVditor.instances = []; vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] }); localStorage.clear() })
+afterEach(() => { mounted.splice(0).forEach(wrapper => wrapper.unmount()); vi.useRealTimers(); vi.clearAllMocks() })
+
+describe('Vditor 保存与同步边界', () => {
+  it('打开和序列化规范化不写回，真实输入 800ms 后携带原始基线保存', async () => {
+    const { wrapper, editor } = await create()
+    vi.advanceTimersByTime(1000)
+    expect(wrapper.emitted('update:modelValue')).toBeUndefined()
+    editor.type('新正文')
+    vi.advanceTimersByTime(799)
+    expect(wrapper.emitted('update:modelValue')).toBeUndefined()
+    vi.advanceTimersByTime(1)
+    expect(wrapper.emitted('update:modelValue')).toEqual([['新正文', '原文']])
+    await wrapper.setProps({ modelValue: '新正文' })
+    expect(editor.setValue).toHaveBeenCalledTimes(1)
+  })
+
+  it('切笔记读取最后一个按键，flush 带旧 id，并清空新文档撤销历史', async () => {
+    const { wrapper, editor } = await create()
+    editor.value = '还没触发 input 的最后一个字'
+    await wrapper.setProps({ noteId: 'b', modelValue: '另一篇' })
+    expect(wrapper.emitted('flush')).toEqual([['a', '还没触发 input 的最后一个字', '原文']])
+    expect(editor.setValue).toHaveBeenLastCalledWith('另一篇', true)
+    vi.advanceTimersByTime(2000)
+    expect(wrapper.emitted('update:modelValue')).toBeUndefined()
+  })
+
+  it('远端更新不覆盖还没触发 input 的本地输入，保留冲突基线', async () => {
+    const { wrapper, editor } = await create()
+    editor.value = '本地输入'
+    await wrapper.setProps({ modelValue: '远端输入' })
+    expect(editor.value).toBe('本地输入')
+    vi.advanceTimersByTime(800)
+    expect(wrapper.emitted('update:modelValue')).toEqual([['本地输入', '原文']])
+  })
+
+  it('无本地改动时接受远端更新，下一次编辑以远端正文为基线', async () => {
+    const { wrapper, editor } = await create()
+    await wrapper.setProps({ modelValue: '远端输入' })
+    expect(editor.value).toBe('远端输入')
+    editor.type('继续写')
+    vi.advanceTimersByTime(800)
+    expect(wrapper.emitted('update:modelValue')).toEqual([['继续写', '远端输入']])
+  })
+
+  it.each(['pagehide', 'unmount', 'readonly'])('%s 保存最后一次输入', async action => {
+    const { wrapper, editor } = await create()
+    editor.value = '最后输入'
+    if (action === 'pagehide') window.dispatchEvent(new Event('pagehide'))
+    if (action === 'unmount') wrapper.unmount()
+    if (action === 'readonly') await wrapper.setProps({ editable: false })
+    expect(wrapper.emitted('flush')).toEqual([['a', '最后输入', '原文']])
+    if (action === 'readonly') {
+      expect(editor.disabled).toHaveBeenCalled()
+      expect(editor.updateToolbarConfig).toHaveBeenLastCalledWith({ hide: true, pin: true })
+    }
+  })
+
+  it('异步初始化期间切换笔记，最终只加载最新笔记', async () => {
+    const wrapper = mount(VditorEditor, { props: { noteId: 'a', modelValue: 'A' } })
+    mounted.push(wrapper)
+    await wrapper.setProps({ noteId: 'b', modelValue: 'B' })
+    await flushPromises()
+    const editor = MockVditor.instances.at(-1)!
+    expect(editor.value).toBe('B')
+    editor.type('编辑 B')
+    wrapper.vm.flush()
+    expect(wrapper.emitted('flush')).toEqual([['b', '编辑 B', 'B']])
+  })
+
+  it('挂载后立即卸载时安全释放异步创建的实例', async () => {
+    const wrapper = mount(VditorEditor, { props: { noteId: 'a', modelValue: 'A' } })
+    wrapper.unmount()
+    await flushPromises()
+    expect(MockVditor.instances.at(-1)!.destroy).toHaveBeenCalledOnce()
+  })
+})
+
+describe('Vditor 图片与原生功能适配', () => {
+  it('上传结束后插入正式图片地址，正文中不出现临时地址', async () => {
+    const { wrapper, editor } = await create()
+    vi.mocked(uploadImage).mockResolvedValue({ file_key: 'i', url: '/api/images/i' })
+    await wrapper.vm.insertImages([new File(['x'], 'a.png', { type: 'image/png' })])
+    expect(uploadImage).toHaveBeenCalledWith(expect.any(File), 'a')
+    expect(editor.insertMD).toHaveBeenCalledWith('![](<\/api/images/i>)')
+    wrapper.vm.flush()
+    expect(JSON.stringify(wrapper.emitted('flush'))).not.toContain('blob:')
+  })
+
+  it.each(['switch', 'remote', 'readonly', 'unmount'])('上传中 %s 后不往当前文档插入图片', async action => {
+    const { wrapper, editor } = await create()
+    let resolve!: (value: { file_key: string; url: string }) => void
+    vi.mocked(uploadImage).mockReturnValue(new Promise(done => { resolve = done }))
+    const uploading = wrapper.vm.insertImages([new File(['x'], 'a.png', { type: 'image/png' })])
+    if (action === 'switch') await wrapper.setProps({ noteId: 'b', modelValue: 'B' })
+    if (action === 'remote') await wrapper.setProps({ modelValue: '远端版本' })
+    if (action === 'readonly') await wrapper.setProps({ editable: false })
+    if (action === 'unmount') wrapper.unmount()
+    resolve({ file_key: 'i', url: '/api/images/i' })
+    await uploading
+    expect(editor.insertMD).not.toHaveBeenCalled()
+  })
+
+  it('上传失败保留文字，拒绝不支持的文件', async () => {
+    const { wrapper, editor } = await create()
+    vi.mocked(uploadImage).mockRejectedValue(new Error('离线'))
+    await wrapper.vm.insertImages([new File(['x'], 'a.png', { type: 'image/png' }), new File(['x'], 'a.pdf', { type: 'application/pdf' })])
+    expect(uploadImage).toHaveBeenCalledTimes(1)
+    expect(editor.value).toBe('原文')
+    expect(wrapper.emitted('notice')).toHaveLength(2)
+  })
+
+  it('关闭第二套正文缓存，资源同源，保留三种模式与扩展语法', async () => {
+    localStorage.setItem('snotes_editor_mode', 'sv')
+    const { editor } = await create()
+    expect(editor.options.mode).toBe('sv')
+    expect(editor.options.cache?.enable).toBe(false)
+    expect(editor.options.cdn).toMatch(/^\/vendor\/vditor\/4\.0\.0$/)
+    expect(editor.options.toolbar).toContain('edit-mode')
+    expect(editor.options.preview?.markdown).toMatchObject({ mark: true, toc: true, sanitize: true })
+  })
+})

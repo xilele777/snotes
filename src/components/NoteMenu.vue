@@ -3,7 +3,7 @@ import ActionMenu from './ActionMenu.vue'
 import AppIcon from './AppIcon.vue'
 
 /** 桌面和移动端统一收纳低频管理操作。 */
-export type NoteMenuAction = 'color' | 'info' | 'notebooks' | 'history' | 'wordcount' | 'reading' | 'home-feed' | 'home-follow' | 'copy' | 'download' | 'import' | 'share' | 'print' | 'trash'
+export type NoteMenuAction = 'color' | 'info' | 'notebooks' | 'history' | 'wordcount' | 'home-feed' | 'home-follow' | 'copy' | 'download' | 'import' | 'share' | 'print' | 'trash'
 
 defineProps<{
   open: boolean
@@ -12,8 +12,10 @@ defineProps<{
   showDelete: boolean
   /** 文档信息 / 历史版本 / 字数统计是否进菜单 */
   showDocItems: boolean
-  /** 「加入笔记本」是否进菜单（桌面顶栏有独立入口，窄屏顶栏排不下） */
+  /** 是否显示笔记本管理入口 */
   showNotebooks?: boolean
+  showHistory?: boolean
+  showWordcount?: boolean
   /** 当前笔记已加入的笔记本数量，进菜单时给个上下文 */
   notebookCount?: number
   importing?: boolean
@@ -21,10 +23,6 @@ defineProps<{
   homeHidden?: boolean
   /** 笔记单独设过、而所属分组又有默认值：给一个回到「跟随分组」的出口 */
   canFollowGroup?: boolean
-  /** 阅读模式是否进菜单（≤720px 顶栏放不下这颗按钮，和删除同一个道理） */
-  showReading?: boolean
-  /** 当前是否在阅读模式里 */
-  reading?: boolean
 }>()
 
 const emit = defineEmits<{ action: [NoteMenuAction]; close: [] }>()
@@ -40,14 +38,11 @@ const emit = defineEmits<{ action: [NoteMenuAction]; close: [] }>()
       <button type="button" role="menuitem" class="menu-item" data-action="info" @click="emit('action', 'info')">
         <AppIcon name="info" :size="15" /><span>文档信息</span>
       </button>
-      <button type="button" role="menuitem" class="menu-item" data-action="history" @click="emit('action', 'history')">
+      <button v-if="showHistory !== false" type="button" role="menuitem" class="menu-item" data-action="history" @click="emit('action', 'history')">
         <AppIcon name="clock" :size="15" /><span>历史版本</span>
       </button>
-      <button type="button" role="menuitem" class="menu-item" data-action="wordcount" @click="emit('action', 'wordcount')">
+      <button v-if="showWordcount !== false" type="button" role="menuitem" class="menu-item" data-action="wordcount" @click="emit('action', 'wordcount')">
         <AppIcon name="sort" :size="15" /><span>字数统计</span>
-      </button>
-      <button v-if="showReading" type="button" role="menuitemcheckbox" class="menu-item" data-action="reading" :aria-checked="reading === true" @click="emit('action', 'reading')">
-        <AppIcon :name="reading ? 'edit' : 'book'" :size="15" /><span>{{ reading ? '退出阅读模式' : '阅读模式（正文只读）' }}</span>
       </button>
       <span class="menu-separator" aria-hidden="true"></span>
     </template>

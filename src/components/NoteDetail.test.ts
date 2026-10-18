@@ -3,19 +3,15 @@ import { createPinia, setActivePinia } from 'pinia'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { db } from '../db/schema'
 import { addKnowledgeBaseNode, createKnowledgeBase } from '../db/knowledge-base-repo'
-import MilkdownEditor from '../editor/MilkdownEditor.vue'
+import VditorEditor from '../editor/VditorEditor.vue'
 import { useGroupsStore } from '../stores/groups'
 import { useNotesStore } from '../stores/notes'
 import { useUiStore } from '../stores/ui'
 import { dismissNotice, notice, runNoticeAction } from '../notify'
 import NoteDetail from './NoteDetail.vue'
 
-// Milkdown 起真实 ProseMirror，单测里换成空壳
-vi.mock('@milkdown/vue', () => ({
-  Milkdown: { template: '<div class="milkdown-mock" />' },
-  MilkdownProvider: { template: '<div><slot /></div>' },
-  useEditor: () => ({ loading: { value: false }, get: () => undefined }),
-}))
+// Vditor 的真实 DOM 与解析器由浏览器测试覆盖。
+vi.mock('vditor', async () => ({ default: (await import('../../tests/unit/mock-vditor')).MockVditor }))
 
 beforeEach(async () => {
   setActivePinia(createPinia())
@@ -32,6 +28,7 @@ const op = (wrapper: ReturnType<typeof mount>, name: string) => wrapper.find(`[d
 const menu = () => document.querySelector<HTMLElement>('[role="menu"][aria-label="更多操作"]')
 const menuAction = (name: string) => document.querySelector<HTMLButtonElement>(`[role="menu"][aria-label="更多操作"] [data-action="${name}"]`)
 async function chooseMore(wrapper: ReturnType<typeof mount>, action: string) {
+  if (op(wrapper, action).exists()) { await op(wrapper, action).trigger('click'); return }
   await openMore(wrapper)
   menuAction(action)!.click()
   await wrapper.vm.$nextTick()
@@ -220,67 +217,6 @@ describe('NoteDetail 顶栏操作条', () => {
     wrapper.unmount()
   })
 
-  it('撤销/重做按钮渲染在格式工具栏，点击只是空转不报错', async () => {
-    const notes = useNotesStore()
-    const note = await notes.create()
-    notes.currentId = note.id
-
-    const wrapper = mount(NoteDetail, { attachTo: document.body })
-    await wrapper.vm.$nextTick()
-
-    expect(op(wrapper, 'undo').exists()).toBe(true)
-    expect(op(wrapper, 'redo').exists()).toBe(true)
-    // 编辑器是 @milkdown/vue 空壳，expose 的方法点了不该抛
-    await op(wrapper, 'undo').trigger('click')
-    await op(wrapper, 'redo').trigger('click')
-    expect(notes.notes.find((n) => n.id === note.id)).toBeDefined()
-    wrapper.unmount()
-  })
-
-  it('格式工具栏有插入图片按钮，点击打开图片文件选择器', async () => {
-    const notes = useNotesStore()
-    const note = await notes.create()
-    notes.currentId = note.id
-
-    const wrapper = mount(NoteDetail, { attachTo: document.body })
-    await wrapper.vm.$nextTick()
-
-    expect(op(wrapper, 'image').exists()).toBe(true)
-    const input = wrapper.find<HTMLInputElement>('input[type="file"]')
-    expect(input.exists()).toBe(true)
-    expect(input.attributes('accept')).toBe('image/*')
-    expect(input.attributes('multiple')).toBeDefined()
-
-    const click = vi.spyOn(input.element, 'click')
-    await op(wrapper, 'image').trigger('click')
-    expect(click).toHaveBeenCalledTimes(1)
-    wrapper.unmount()
-  })
-
-  it('选中文件后交给编辑器插入，并清空 input 以便再次选同一张', async () => {
-    const notes = useNotesStore()
-    const note = await notes.create()
-    notes.currentId = note.id
-
-    const wrapper = mount(NoteDetail, { attachTo: document.body })
-    await wrapper.vm.$nextTick()
-    await flushPromises()
-
-    const editor = wrapper.findComponent(MilkdownEditor)
-    // 父组件通过 ref 拿到的是 expose 代理，它实时读 instance.exposed；spy 必须打在这个对象上
-    const exposed = editor.vm.$.exposed as { insertImages: (files: File[]) => void }
-    const insert = vi.spyOn(exposed, 'insertImages').mockImplementation(() => {})
-
-    const input = wrapper.find<HTMLInputElement>('input[type="file"]')
-    const file = new File(['x'], 'a.png', { type: 'image/png' })
-    Object.defineProperty(input.element, 'files', { value: [file], configurable: true })
-    await input.trigger('change')
-
-    expect(insert).toHaveBeenCalledWith([file])
-    expect(input.element.value).toBe('')
-    wrapper.unmount()
-  })
-
   it('点浮层外部收起浮层', async () => {
     const notes = useNotesStore()
     const note = await notes.create()
@@ -298,7 +234,7 @@ describe('NoteDetail 顶栏操作条', () => {
     wrapper.unmount()
   })
 
-  it('桌面顶栏显示字数，文档信息和历史收进菜单', async () => {
+  it('字数与历史直接可达，文档信息保留在菜单', async () => {
     const notes = useNotesStore()
     const note = await notes.create()
     await notes.saveBody(note.id, '今天天气不错 hello')
@@ -308,18 +244,13 @@ describe('NoteDetail 顶栏操作条', () => {
     await wrapper.vm.$nextTick()
 
     expect(wrapper.find('.editor-footer').exists()).toBe(false)
-    expect(op(wrapper, 'wordcount').text()).toContain('7 字')
-    expect(op(wrapper, 'info').exists()).toBe(false)
-    expect(op(wrapper, 'history').exists()).toBe(false)
-    for (const name of ['share', 'help']) expect(op(wrapper, name).exists()).toBe(false)
-
-    await op(wrapper, 'wordcount').trigger('click')
-    await wrapper.vm.$nextTick()
+    expect(op(wrapper, 'wordcount').exists()).toBe(true)
+    await chooseMore(wrapper, 'wordcount')
     expect(document.querySelector('.wordcount-dialog')!.textContent).toContain('7')
     wrapper.unmount()
   })
 
-  it('桌面「⋯」菜单列首页信息流开关、复制、下载、导入、打印；文档信息、历史、字数与删除统一进入菜单，首项获得焦点', async () => {
+  it('桌面菜单保留低频动作，常用入口移出且首项获得焦点', async () => {
     const notes = useNotesStore()
     const note = await notes.create()
     notes.currentId = note.id
@@ -333,7 +264,8 @@ describe('NoteDetail 顶栏操作条', () => {
     expect(op(wrapper, 'more').attributes('aria-expanded')).toBe('true')
     for (const name of ['home-feed', 'copy', 'download', 'import', 'print']) expect(menuAction(name)).not.toBeNull()
     expect(menuAction('import')!.previousElementSibling).toBe(menuAction('download'))
-    for (const name of ['color', 'info', 'history', 'wordcount', 'trash']) expect(menuAction(name)).not.toBeNull()
+    for (const name of ['color', 'info', 'trash']) expect(menuAction(name)).not.toBeNull()
+    for (const name of ['notebooks', 'history', 'wordcount']) expect(menuAction(name)).toBeNull()
     // jsdom 没有 navigator.share，不给分享入口
     expect(menuAction('share')).toBeNull()
     expect(document.activeElement).toBe(menuAction('color'))
@@ -510,197 +442,7 @@ describe('NoteDetail 顶栏操作条', () => {
   })
 })
 
-describe('NoteDetail 编辑工具栏', () => {
-  it('编辑态渲染格式工具栏，按钮齐全', async () => {
-    const notes = useNotesStore()
-    const note = await notes.create()
-    notes.currentId = note.id
-
-    const wrapper = mount(NoteDetail, { attachTo: document.body })
-    await wrapper.vm.$nextTick()
-
-    expect(wrapper.find('.format-bar').exists()).toBe(true)
-    for (const action of ['bold', 'heading1', 'taskList', 'table', 'link']) {
-      expect(wrapper.find(`[data-format="${action}"]`).exists()).toBe(true)
-    }
-    wrapper.unmount()
-  })
-
-  it('点格式按钮转给编辑器，编辑器未就绪时空转不报错', async () => {
-    const notes = useNotesStore()
-    const note = await notes.create()
-    notes.currentId = note.id
-
-    const wrapper = mount(NoteDetail, { attachTo: document.body })
-    await wrapper.vm.$nextTick()
-    await flushPromises()
-
-    const exposed = wrapper.findComponent(MilkdownEditor).vm.$.exposed as {
-      format: (action: string) => void
-      insertTable: () => void
-    }
-    const format = vi.spyOn(exposed, 'format').mockImplementation(() => {})
-
-    await wrapper.find('[data-format="bold"]').trigger('click')
-
-    expect(format).toHaveBeenCalledWith('bold')
-    wrapper.unmount()
-  })
-
-  it('点表格按钮打开弹窗，自定义行列后交给编辑器插入', async () => {
-    const notes = useNotesStore()
-    const note = await notes.create()
-    notes.currentId = note.id
-
-    const wrapper = mount(NoteDetail, { attachTo: document.body })
-    await wrapper.vm.$nextTick()
-    await flushPromises()
-
-    const exposed = wrapper.findComponent(MilkdownEditor).vm.$.exposed as {
-      insertTable: (row: number, col: number) => void
-    }
-    const insertTable = vi.spyOn(exposed, 'insertTable').mockImplementation(() => {})
-
-    expect(document.querySelector('.table-dialog')).toBeNull()
-    await wrapper.find('[data-format="table"]').trigger('click')
-    await wrapper.vm.$nextTick()
-
-    const dialog = document.querySelector('.table-dialog')!
-    expect(dialog).not.toBeNull()
-    expect(insertTable).not.toHaveBeenCalled()
-
-    const rows = dialog.querySelector<HTMLInputElement>('[data-field="rows"]')!
-    const cols = dialog.querySelector<HTMLInputElement>('[data-field="cols"]')!
-    expect(rows.value).toBe('3')
-    expect(cols.value).toBe('3')
-    rows.value = '2'
-    rows.dispatchEvent(new Event('input'))
-    cols.value = '5'
-    cols.dispatchEvent(new Event('input'))
-    await wrapper.vm.$nextTick()
-    ;(dialog.querySelector('[data-op="confirm"]') as HTMLButtonElement).click()
-    await wrapper.vm.$nextTick()
-
-    expect(insertTable).toHaveBeenCalledWith(2, 5)
-    expect(document.querySelector('.table-dialog')).toBeNull()
-    wrapper.unmount()
-  })
-
-  it('表格行列超出范围时确定按钮不可用', async () => {
-    const notes = useNotesStore()
-    const note = await notes.create()
-    notes.currentId = note.id
-
-    const wrapper = mount(NoteDetail, { attachTo: document.body })
-    await wrapper.vm.$nextTick()
-    await flushPromises()
-
-    await wrapper.find('[data-format="table"]').trigger('click')
-    await wrapper.vm.$nextTick()
-    const dialog = document.querySelector('.table-dialog')!
-    const rows = dialog.querySelector<HTMLInputElement>('[data-field="rows"]')!
-    const confirm = dialog.querySelector<HTMLButtonElement>('[data-op="confirm"]')!
-    expect(confirm.disabled).toBe(false)
-
-    rows.value = '0'
-    rows.dispatchEvent(new Event('input'))
-    await wrapper.vm.$nextTick()
-    expect(confirm.disabled).toBe(true)
-
-    rows.value = '99'
-    rows.dispatchEvent(new Event('input'))
-    await wrapper.vm.$nextTick()
-    expect(confirm.disabled).toBe(true)
-    wrapper.unmount()
-  })
-
-  it('点链接按钮打开弹窗，填好地址后交给编辑器写入', async () => {
-    const notes = useNotesStore()
-    const note = await notes.create()
-    notes.currentId = note.id
-
-    const wrapper = mount(NoteDetail, { attachTo: document.body })
-    await wrapper.vm.$nextTick()
-    await flushPromises()
-
-    const exposed = wrapper.findComponent(MilkdownEditor).vm.$.exposed as {
-      currentLink: () => { href: string; text: string } | null
-      selectedText: () => string
-      setLinkAt: (href: string, text: string) => void
-    }
-    vi.spyOn(exposed, 'currentLink').mockReturnValue(null)
-    vi.spyOn(exposed, 'selectedText').mockReturnValue('参考资料')
-    const setLinkAt = vi.spyOn(exposed, 'setLinkAt').mockImplementation(() => {})
-
-    expect(document.querySelector('.link-dialog')).toBeNull()
-    await wrapper.find('[data-format="link"]').trigger('click')
-    await wrapper.vm.$nextTick()
-
-    const dialog = document.querySelector('.link-dialog')!
-    expect(dialog.textContent).toContain('插入链接')
-    // 选中的文字直接填进「文字」，少打一次字
-    expect((dialog.querySelector('[data-field="text"]') as HTMLInputElement).value).toBe('参考资料')
-
-    const href = dialog.querySelector('[data-field="href"]') as HTMLInputElement
-    href.value = 'example.com'
-    href.dispatchEvent(new Event('input', { bubbles: true }))
-    await wrapper.vm.$nextTick()
-    ;(dialog.querySelector('[data-op="confirm"]') as HTMLButtonElement).click()
-    await wrapper.vm.$nextTick()
-
-    expect(setLinkAt).toHaveBeenCalledWith('example.com', '参考资料')
-    expect(document.querySelector('.link-dialog')).toBeNull()
-    wrapper.unmount()
-  })
-
-  it('已有链接时弹窗预填地址并改成「编辑链接」', async () => {
-    const notes = useNotesStore()
-    const note = await notes.create()
-    notes.currentId = note.id
-
-    const wrapper = mount(NoteDetail, { attachTo: document.body })
-    await wrapper.vm.$nextTick()
-    await flushPromises()
-
-    const exposed = wrapper.findComponent(MilkdownEditor).vm.$.exposed as {
-      currentLink: () => { href: string; text: string } | null
-    }
-    vi.spyOn(exposed, 'currentLink').mockReturnValue({ href: 'https://a.cn', text: '文档' })
-
-    await wrapper.find('[data-format="link"]').trigger('click')
-    await wrapper.vm.$nextTick()
-
-    const dialog = document.querySelector('.link-dialog')!
-    expect(dialog.textContent).toContain('编辑链接')
-    expect((dialog.querySelector('[data-field="href"]') as HTMLInputElement).value).toBe('https://a.cn')
-    expect((dialog.querySelector('[data-field="text"]') as HTMLInputElement).value).toBe('文档')
-    wrapper.unmount()
-  })
-  it('正文气泡点「编辑」时带着地址打开弹窗，文字一并预填', async () => {
-    const notes = useNotesStore()
-    const note = await notes.create()
-    notes.currentId = note.id
-
-    const wrapper = mount(NoteDetail, { attachTo: document.body })
-    await wrapper.vm.$nextTick()
-    await flushPromises()
-
-    const editor = wrapper.findComponent(MilkdownEditor)
-    const exposed = editor.vm.$.exposed as {
-      currentLink: () => { href: string; text: string } | null
-    }
-    vi.spyOn(exposed, 'currentLink').mockReturnValue({ href: 'https://a.cn', text: '文档' })
-
-    editor.vm.$emit('edit-link', 'https://a.cn')
-    await wrapper.vm.$nextTick()
-
-    const dialog = document.querySelector('.link-dialog')!
-    expect(dialog.textContent).toContain('编辑链接')
-    expect((dialog.querySelector('[data-field="href"]') as HTMLInputElement).value).toBe('https://a.cn')
-    expect((dialog.querySelector('[data-field="text"]') as HTMLInputElement).value).toBe('文档')
-    wrapper.unmount()
-  })
-
+describe('NoteDetail 编辑器提示', () => {
   it('编辑器的一次性提示走顶部 Toast，不再显示在底栏', async () => {
     const notes = useNotesStore()
     const note = await notes.create()
@@ -710,7 +452,7 @@ describe('NoteDetail 编辑工具栏', () => {
     await wrapper.vm.$nextTick()
     await flushPromises()
 
-    wrapper.findComponent(MilkdownEditor).vm.$emit('notice', '已复制链接')
+    wrapper.findComponent(VditorEditor).vm.$emit('notice', '已复制链接')
     await wrapper.vm.$nextTick()
 
     expect(notice.value).toBe('已复制链接')
@@ -740,7 +482,6 @@ describe('NoteDetail 回收站只读态', () => {
     const { wrapper } = await mountTrashed()
 
     expect(wrapper.text()).toContain('此笔记还有 30 天被删除')
-    expect(wrapper.find('.format-bar').exists()).toBe(false)
     expect(op(wrapper, 'recover').exists()).toBe(true)
     expect(op(wrapper, 'purge').exists()).toBe(true)
     for (const name of ['more', 'wordcount', 'info', 'history']) expect(op(wrapper, name).exists()).toBe(false)
@@ -772,7 +513,7 @@ describe('NoteDetail 回收站只读态', () => {
     const { wrapper } = await mountTrashed()
     await flushPromises()
 
-    const editor = wrapper.findComponent(MilkdownEditor)
+    const editor = wrapper.findComponent(VditorEditor)
     expect(editor.exists()).toBe(true)
     expect(editor.props('modelValue')).toBe('删掉的笔记')
     expect(editor.props('editable')).toBe(false)
@@ -822,106 +563,13 @@ describe('NoteDetail 把编辑器的基线交给 store', () => {
     const wrapper = mount(NoteDetail, { attachTo: document.body })
     await wrapper.vm.$nextTick()
     await flushPromises()
-    const editor = wrapper.findComponent(MilkdownEditor)
+    const editor = wrapper.findComponent(VditorEditor)
     editor.vm.$emit('update:modelValue', '新正文', '旧正文')
     editor.vm.$emit('flush', note.id, '切走前的正文', '新正文')
 
     // 少了基线，数据层就无法发现库里正文已被远端改写
     expect(save).toHaveBeenCalledWith(note.id, '新正文', '旧正文')
     expect(save).toHaveBeenCalledWith(note.id, '切走前的正文', '新正文')
-    wrapper.unmount()
-  })
-})
-
-describe('NoteDetail 阅读模式', () => {
-  it('开启后编辑器只读、提示条出现、编辑工具收起，退出后恢复可编辑', async () => {
-    const notes = useNotesStore()
-    const ui = useUiStore()
-    const note = await notes.create()
-    await notes.saveBody(note.id, '要读的正文')
-    notes.currentId = note.id
-
-    const wrapper = mount(NoteDetail, { attachTo: document.body })
-    await wrapper.vm.$nextTick()
-    await flushPromises()
-
-    expect(wrapper.findComponent(MilkdownEditor).props('editable')).toBe(true)
-    expect(wrapper.find('.format-bar').exists()).toBe(true)
-    expect(wrapper.find('.reading-banner').exists()).toBe(false)
-
-    await op(wrapper, 'reading').trigger('click')
-    await wrapper.vm.$nextTick()
-
-    expect(ui.readingMode).toBe(true)
-    expect(wrapper.findComponent(MilkdownEditor).props('editable')).toBe(false)
-    expect(wrapper.find('.format-bar').exists()).toBe(false)
-    expect(wrapper.find('.reading-banner').exists()).toBe(true)
-    // 编辑类按钮在阅读模式下不渲染；置顶/星标这类元信息仍可用
-    for (const name of ['undo', 'redo', 'image', 'trash']) expect(op(wrapper, name).exists()).toBe(false)
-    for (const name of ['star', 'top', 'more']) expect(op(wrapper, name).exists()).toBe(true)
-
-    await wrapper.find('.reading-exit').trigger('click')
-    await wrapper.vm.$nextTick()
-
-    expect(ui.readingMode).toBe(false)
-    expect(wrapper.findComponent(MilkdownEditor).props('editable')).toBe(true)
-    expect(wrapper.find('.format-bar').exists()).toBe(true)
-    wrapper.unmount()
-  })
-
-  it('进入阅读模式前先把编辑器里待保存的内容交出去', async () => {
-    const notes = useNotesStore()
-    const note = await notes.create()
-    notes.currentId = note.id
-
-    const wrapper = mount(NoteDetail, { attachTo: document.body })
-    await wrapper.vm.$nextTick()
-    await flushPromises()
-
-    const exposed = wrapper.findComponent(MilkdownEditor).vm.$.exposed as { flush: () => void }
-    const flush = vi.spyOn(exposed, 'flush')
-
-    await op(wrapper, 'reading').trigger('click')
-
-    // 少了这一步，debounce 中的最后几个字会被随后的只读判断挡掉
-    expect(flush).toHaveBeenCalledTimes(1)
-    wrapper.unmount()
-  })
-
-  it('快捷键请求（readingRequest）走同一条路径', async () => {
-    const notes = useNotesStore()
-    const ui = useUiStore()
-    const note = await notes.create()
-    notes.currentId = note.id
-
-    const wrapper = mount(NoteDetail, { attachTo: document.body })
-    await wrapper.vm.$nextTick()
-
-    ui.readingRequest += 1
-    await wrapper.vm.$nextTick()
-    expect(ui.readingMode).toBe(true)
-
-    ui.readingRequest += 1
-    await wrapper.vm.$nextTick()
-    expect(ui.readingMode).toBe(false)
-    wrapper.unmount()
-  })
-
-  it('阅读模式下删除快捷键不再弹确认', async () => {
-    const notes = useNotesStore()
-    const ui = useUiStore()
-    const note = await notes.create()
-    notes.currentId = note.id
-
-    const wrapper = mount(NoteDetail, { attachTo: document.body })
-    await wrapper.vm.$nextTick()
-
-    ui.readingMode = true
-    await wrapper.vm.$nextTick()
-    ui.trashRequest += 1
-    await wrapper.vm.$nextTick()
-
-    expect(wrapper.find('.confirm-dialog').exists()).toBe(false)
     wrapper.unmount()
   })
 })
@@ -1037,16 +685,14 @@ describe('顶栏的加入笔记本', () => {
   const memberCount = (noteId: string) => db.knowledgeBaseTocs.toArray()
     .then(tocs => tocs.reduce((n, toc) => n + toc.nodes.filter(node => node.note_id === noteId).length, 0))
 
-  it('没加入任何笔记本时显示入口，浮层把可加入的笔记本列出来', async () => {
+  it('桌面笔记本入口直接打开浮层，列出可加入的笔记本', async () => {
     const notes = useNotesStore()
     const note = await notes.create()
     notes.currentId = note.id
     await seedBook('产品研究')
 
     const wrapper = mount(NoteDetail, { attachTo: document.body })
-    await vi.waitFor(() => expect(op(wrapper, 'notebook').text()).toContain('加入笔记本'))
-
-    await op(wrapper, 'notebook').trigger('click')
+    await chooseMore(wrapper, 'notebooks')
     // 列表要等 liveQuery 把索引数据推过来，所以等「可加入项」自己出现，再断言没有已加入项
     await vi.waitFor(() => expect(document.querySelector('.notebook-pop-addable .book-opt.addable')).not.toBeNull())
     const pop = document.querySelector('.notebook-pop')!
@@ -1064,12 +710,12 @@ describe('顶栏的加入笔记本', () => {
 
     const wrapper = mount(NoteDetail, { attachTo: document.body })
     await vi.waitFor(() => expect(document.querySelector('.book-opt')).toBeNull())
-    await op(wrapper, 'notebook').trigger('click')
+    await chooseMore(wrapper, 'notebooks')
     await vi.waitFor(() => expect(document.querySelector('.notebook-pop-addable .book-opt.addable')).not.toBeNull())
     ;(document.querySelector('.notebook-pop-addable .book-opt.addable') as HTMLButtonElement).click()
 
     await vi.waitFor(async () => expect(await memberCount(note.id)).toBe(1))
-    await vi.waitFor(() => expect(op(wrapper, 'notebook').text()).toContain('产品研究'))
+    await vi.waitFor(() => expect(op(wrapper, 'notebooks').attributes('title')).toContain('已加入 1 本'))
     await vi.waitFor(async () => {
       const toc = await db.knowledgeBaseTocs.get(book.id)
       expect(toc!.nodes.filter(n => n.note_id === note.id)).toHaveLength(1)
@@ -1078,7 +724,7 @@ describe('顶栏的加入笔记本', () => {
     expect(useUiStore().view).toBe('knowledge-bases')
     expect(useUiStore().activeKnowledgeBaseId).toBe(book.id)
     expect(notes.currentId).toBe(note.id)
-    await op(wrapper, 'notebook').trigger('click')
+    await chooseMore(wrapper, 'notebooks')
     await vi.waitFor(() => expect(document.querySelector('.notebook-pop-members')).not.toBeNull())
     expect(document.querySelector('.notebook-pop-addable')).toBeNull()
     expect(document.querySelector('[data-book-id="__new"]')).toBeNull()
@@ -1093,9 +739,8 @@ describe('顶栏的加入笔记本', () => {
     await addKnowledgeBaseNode(book.id, { kind: 'note', note_id: note.id, title: null })
 
     const wrapper = mount(NoteDetail, { attachTo: document.body })
-    await vi.waitFor(() => expect(op(wrapper, 'notebook').text()).toContain('产品研究'))
-
-    await op(wrapper, 'notebook').trigger('click')
+    await vi.waitFor(() => expect(op(wrapper, 'notebooks').attributes('title')).toContain('已加入 1 本'))
+    await chooseMore(wrapper, 'notebooks')
     await flushPromises()
     const member = document.querySelector<HTMLButtonElement>('.notebook-pop-members .book-opt')!
     expect(member.textContent).toContain('产品研究')
@@ -1137,8 +782,7 @@ describe('顶栏的加入笔记本', () => {
     notes.currentId = note.id
 
     const wrapper = mount(NoteDetail, { attachTo: document.body })
-    await vi.waitFor(() => expect(op(wrapper, 'notebook').text()).toContain('加入笔记本'))
-    await op(wrapper, 'notebook').trigger('click')
+    await chooseMore(wrapper, 'notebooks')
     await flushPromises()
     ;(document.querySelector('[data-book-id="__new"]') as HTMLButtonElement).click()
     await flushPromises()

@@ -13,7 +13,7 @@ function choose(value: string) { emit('update:modelValue', value); open.value = 
 
 <template>
   <button ref="trigger" class="sort-trigger" :aria-label="`${label}：${selected}`" :title="label" aria-haspopup="menu" :aria-expanded="open" @click="open = !open" @keydown.down.prevent="open = true" @keydown.up.prevent="open = true">
-    <AppIcon name="sort" :size="14" /><span>{{ selected }}</span><AppIcon name="chevron" :size="12" class="sort-chevron" :class="{ expanded: open }" />
+    <span>{{ selected }}</span>
   </button>
   <ActionMenu :open="open" :anchor="trigger" :label="label" menu-class="sort-menu" focus-checked @close="open = false">
     <button v-for="option in options" :key="option.value" class="menu-item" role="menuitemradio" :aria-checked="modelValue === option.value" @click="choose(option.value)">

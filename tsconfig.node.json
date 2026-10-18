@@ -13,5 +13,5 @@
     "lib": ["ES2022", "DOM", "DOM.Iterable"],
     "types": ["node"]
   },
-  "include": ["vite.config.ts", "vitest.config.ts", "vitest.worker.config.ts", "vitest.server.config.ts", "playwright*.config.ts", "pwa.config.ts", "tests/e2e/**/*.ts"]
+  "include": ["vite.config.ts", "vitest.config.ts", "vitest.worker.config.ts", "vitest.server.config.ts", "playwright*.config.ts", "pwa.config.ts", "scripts/vditor-assets.ts", "tests/e2e/**/*.ts"]
 }

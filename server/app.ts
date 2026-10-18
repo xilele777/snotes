@@ -38,7 +38,7 @@ export function createServerApp(assetDirectory: string, limiter = new LoginLimit
   app.use('*', async (c, next) => {
     if (c.req.path.split('/').some((part) => part.startsWith('.'))) return c.notFound()
     await next()
-    c.header('Cache-Control', c.res.status === 200 && c.req.path.startsWith('/assets/')
+    c.header('Cache-Control', c.res.status === 200 && (c.req.path.startsWith('/assets/') || c.req.path.startsWith('/vendor/vditor/'))
       ? 'public, max-age=31536000, immutable' : 'no-cache')
   })
   app.use('*', serveStatic({ root }))

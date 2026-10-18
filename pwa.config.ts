@@ -30,6 +30,8 @@ interface PwaOptions {
   }
   workbox: {
     globPatterns: string[]
+    ignoreURLParametersMatching: RegExp[]
+    maximumFileSizeToCacheInBytes: number
     runtimeCaching: RuntimeCacheEntry[]
   }
 }
@@ -63,7 +65,11 @@ export const pwaOptions: PwaOptions = {
     },
   },
   workbox: {
-    globPatterns: ['**/*.{js,css,html,ico,png,svg,woff2}'],
+    // Include Vditor's local parser/renderers and their fonts for offline use.
+    globPatterns: ['**/*.{js,css,html,ico,png,svg,gif,jpg,jpeg,webp,woff,woff2,ttf}'],
+    // Vditor appends ?v= to its local parser, renderer and theme URLs.
+    ignoreURLParametersMatching: [/^utm_/, /^fbclid$/, /^v$/],
+    maximumFileSizeToCacheInBytes: 5 * 1024 * 1024,
     runtimeCaching: [
       {
         // 必须排在通用 API 规则之前

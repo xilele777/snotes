@@ -3,7 +3,7 @@ import { computed, defineAsyncComponent, nextTick, onMounted, onUnmounted, ref, 
 import { countWords } from '../../shared/derive'
 import type { KnowledgeBaseMeta } from '../../shared/knowledge-base'
 import { homeHiddenGroupIds, isHiddenFromHome } from '../../shared/home-feed'
-import type MilkdownEditorComponent from '../editor/MilkdownEditor.vue'
+import type VditorEditorComponent from '../editor/VditorEditor.vue'
 import { useGroupsStore } from '../stores/groups'
 import { useNotesStore } from '../stores/notes'
 import ConfirmDialog from './ConfirmDialog.vue'
@@ -13,12 +13,8 @@ import NoteMenu, { type NoteMenuAction } from './NoteMenu.vue'
 import WordCountDialog from './WordCountDialog.vue'
 import AppIcon from './AppIcon.vue'
 import EditorLoading from './EditorLoading.vue'
-import FormatToolbar, { type ToolbarAction } from './FormatToolbar.vue'
-import LinkDialog from './LinkDialog.vue'
-import TableDialog from './TableDialog.vue'
 import ImageLightbox from './ImageLightbox.vue'
 import { SKIN_COLORS } from './palette'
-import { EMPTY_FORMAT_STATE, type FormatState } from '../editor/format'
 import { copyMarkdown, downloadMarkdown, shareMarkdown } from '../export/share'
 import { importBackup } from '../export/backup'
 import { notify } from '../notify'
@@ -31,8 +27,8 @@ import { useWorkspaceScroll } from './useWorkspaceScroll'
 import { pushNav, isMobile, showKnowledgeBases } from '../navigation'
 import { workspacePreferences as preferences, updateWorkspacePreferences } from '../workspace-preferences'
 
-const MilkdownEditor = defineAsyncComponent({
-  loader: () => import('../editor/MilkdownEditor.vue'),
+const VditorEditor = defineAsyncComponent({
+  loader: () => import('../editor/VditorEditor.vue'),
   loadingComponent: EditorLoading,
   delay: 120,
 })
@@ -44,6 +40,15 @@ const notes = useNotesStore()
 const groups = useGroupsStore()
 const ui = useUiStore()
 const editorBody = ref<HTMLElement | null>(null)
+const editorPane = ref<HTMLElement | null>(null)
+const paneWidth = ref(window.innerWidth)
+let paneObserver: ResizeObserver | undefined
+onMounted(() => {
+  if (typeof ResizeObserver === 'undefined') return
+  paneObserver = new ResizeObserver(entries => { paneWidth.value = entries[0]?.contentRect.width ?? window.innerWidth })
+  if (editorPane.value) paneObserver.observe(editorPane.value)
+})
+onUnmounted(() => paneObserver?.disconnect())
 const editorReady = ref(false)
 watch(() => notes.current, note => { if (!note) editorReady.value = false })
 
@@ -112,31 +117,13 @@ const homeOverridden = computed(() => notes.current?.home_hidden === 0 || notes.
 /** 所属分组是否默认不上首页；有默认值时才谈得上「恢复跟随分组」 */
 const groupHidesHome = computed(() => groups.groups.find(g => g.group_id === notes.current?.group_id)?.hide_from_home === 1)
 
-/** 窄屏将字数、阅读与笔记本入口收进更多菜单。 */
 const compact = useMediaQuery('(max-width: 720px)')
+const directActions = computed(() => !compact.value && paneWidth.value >= 620)
 
 /**
- * 能改正文的条件：不是回收站详情，也不在阅读模式里。
- * 阅读模式只是「这条笔记现在只读」，退出后照常编辑；回收站的只读是数据状态。
+ * 能改正文的条件：不是回收站详情。
  */
-const canEdit = computed(() => !props.readonly && !ui.readingMode)
-
-/**
- * 阅读模式开关。进只读态之前先把编辑器里 debounce 中还没交出去的内容落库——
- * 否则刚敲的最后几个字会被后面的只读判断挡掉，直接丢掉。
- */
-async function toggleReading() {
-  if (props.readonly) return
-  if (!ui.readingMode) editorRef.value?.flush?.()
-  ui.readingMode = !ui.readingMode
-  if (!ui.readingMode) {
-    await nextTick()
-    editorBody.value?.querySelector<HTMLElement>('.ProseMirror')?.focus()
-  }
-}
-
-/** 快捷键走 store 里的请求计数（和删除同一个套路），最终仍然由这里统一处理落盘顺序 */
-watch(() => ui.readingRequest, () => { void toggleReading() })
+const canEdit = computed(() => !props.readonly)
 
 /**
  * 切换当前笔记的首页信息流可见性。分组设置只是默认值，这里是单条笔记的覆盖：
@@ -224,7 +211,6 @@ async function onMenuAction(action: NoteMenuAction) {
     case 'notebooks': if (!props.readonly) openPop.value = 'notebook'; return
     case 'history': showHistory.value = true; return
     case 'wordcount': showWordCount.value = true; return
-    case 'reading': await toggleReading(); return
     case 'home-feed': await toggleHomeFeed(); return
     case 'home-follow': await resetHomeFeed(); return
     case 'copy': await runCopy(); return
@@ -236,65 +222,14 @@ async function onMenuAction(action: NoteMenuAction) {
   }
 }
 
-/** 光标处的格式，由编辑器在选区或文档变化时上报，驱动工具栏点亮 */
-const formatState = ref<FormatState>(EMPTY_FORMAT_STATE)
-
-/** 链接弹窗：工具栏的「链接」按钮与正文气泡共用，editing 决定文案与预填内容 */
-const linkDialog = ref(false)
-const linkDraft = ref({ href: '', text: '', editing: false })
-
-/** 表格弹窗：先收行列数，再交给编辑器的表格命令 */
-const tableDialog = ref(false)
-
-function submitTable(payload: { rows: number; cols: number }) {
-  tableDialog.value = false
-  editorRef.value?.insertTable?.(payload.rows, payload.cols)
-}
-
 watch(() => notes.currentId, () => {
   openPop.value = null
   menuOpen.value = false
-  formatState.value = EMPTY_FORMAT_STATE
   if (editorBody.value) editorBody.value.scrollTop = 0
 }, { flush: 'post' })
 useWorkspaceScroll(editorBody, 'editor', () => editorReady.value)
 
-function onFormat(action: ToolbarAction) {
-  if (action === 'undo') { editorRef.value?.undo?.(); return }
-  if (action === 'redo') { editorRef.value?.redo?.(); return }
-  if (action === 'image') { imageInput.value?.click(); return }
-  if (action === 'table') {
-    tableDialog.value = true
-    return
-  }
-  if (action === 'link') {
-    const existing = editorRef.value?.currentLink?.() ?? null
-    linkDraft.value = {
-      href: existing?.href ?? '',
-      text: existing?.text ?? editorRef.value?.selectedText?.() ?? '',
-      editing: existing !== null,
-    }
-    linkDialog.value = true
-    return
-  }
-  editorRef.value?.format?.(action)
-}
-
-function submitLink(payload: { href: string; text: string }) {
-  linkDialog.value = false
-  editorRef.value?.setLinkAt?.(payload.href, payload.text)
-}
-
-/** 正文气泡里的「编辑」：带着这条链接的地址与文字打开弹窗 */
-function onEditLink(href: string) {
-  const current = editorRef.value?.currentLink?.() ?? null
-  linkDraft.value = { href, text: current?.text ?? '', editing: true }
-  linkDialog.value = true
-}
-
 function onBody(md: string, base: string) {
-  // 注意这里只看回收站只读：切进阅读模式时编辑器里可能还有一次 debounce 中的编辑，
-  // 那是用户刚敲的字，必须照常落库，不能因为模式变了就丢掉。
   if (props.readonly) return
   if (notes.current) notes.saveBody(notes.current.id, md, base)
 }
@@ -304,24 +239,12 @@ function onFlush(id: string, md: string, base: string) {
   notes.saveBody(id, md, base)
 }
 
-/** 触发编辑器里的撤销/重做（history 插件）；只读态顶栏不渲染这两个钮，为空安全 */
-const editorRef = ref<InstanceType<typeof MilkdownEditorComponent> | null>(null)
+const editorRef = ref<InstanceType<typeof VditorEditorComponent> | null>(null)
 
 async function toggleFocus() {
   ui.focusMode = !ui.focusMode
   await nextTick()
-  editorBody.value?.querySelector<HTMLElement>('.ProseMirror')?.focus()
-}
-
-/** 隐藏的图片文件选择器：手机端没有可靠的粘贴图片途径，顶栏按钮触发它 */
-const imageInput = ref<HTMLInputElement | null>(null)
-
-function onImagePicked(event: Event) {
-  const input = event.target as HTMLInputElement
-  const files = Array.from(input.files ?? [])
-  // 先清空再插入：不清空的话再次选同一张图不会触发 change
-  input.value = ''
-  if (files.length > 0) editorRef.value?.insertImages?.(files)
+  editorRef.value?.focus()
 }
 
 /** 每次导入一个 Markdown 文件，新建笔记后打开，沿用设置里的导入逻辑。 */
@@ -383,7 +306,7 @@ async function detachNotebook() {
 /** 永久删除仍需确认。 */
 const confirmAction = ref<'purge' | null>(null)
 
-/** 快捷键 Mod Shift D 走 store 里的计数，不依赖顶栏有没有渲染删除按钮 */
+/** 快捷键 Mod Alt D 走 store 里的计数，不依赖顶栏有没有渲染删除按钮 */
 watch(() => ui.trashRequest, () => {
   if (canEdit.value && notes.current) void trashCurrent()
 })
@@ -458,7 +381,7 @@ async function runShare() {
 </script>
 
 <template>
-  <main class="editor-pane">
+  <main ref="editorPane" class="editor-pane">
     <div v-if="notes.current" class="editor-top-bar">
       <button v-if="!ui.focusMode" type="button" class="icon-button list-visibility-toggle" :title="preferences.listCollapsed ? '展开笔记列表' : '收起笔记列表'" :aria-label="preferences.listCollapsed ? '展开笔记列表' : '收起笔记列表'" :aria-expanded="!preferences.listCollapsed" aria-controls="workspace-list" @click="updateWorkspacePreferences({ listCollapsed: !preferences.listCollapsed })"><AppIcon name="listPanel" :size="18" /></button>
       <!-- 移动端返回按钮，仅 <720px 显示 -->
@@ -505,71 +428,6 @@ async function runShare() {
         </div>
       </div>
 
-      <!-- 所属笔记本路径与管理入口。 -->
-      <!-- 320px 顶栏排不下，窄屏走「⋯」菜单，和文档信息、删除同一个道理 -->
-      <div v-if="!readonly && !compact" class="op-wrap">
-        <button
-          class="editor-location"
-          data-op="notebook"
-          :class="{ open: openPop === 'notebook' }"
-          :title="memberBooks.length ? `已加入 ${memberBooks.length} 本笔记本` : '加入笔记本'"
-          aria-label="加入笔记本"
-          aria-haspopup="true"
-          :aria-expanded="openPop === 'notebook'"
-          @click="toggle('notebook')"
-        >
-          <AppIcon name="book" :size="16" />
-          <span>{{ memberBooks.length ? memberBooks[0]?.name : '加入笔记本' }}</span>
-          <AppIcon name="chevron" :size="12" class="group-chevron" />
-        </button>
-      </div>
-
-      <!--
-        窄屏的入口在「⋯」菜单里，但这块容器没有跟着一起被 !compact 收掉：
-        浮层需要它做定位锚点，收掉就再也渲染不出来了。
-      -->
-      <div v-if="!readonly" class="op-wrap notebook-wrap">
-        <div v-if="openPop === 'notebook'" class="op-popover groups-pop notebook-pop" role="group" aria-label="加入笔记本">
-          <span class="popover-heading">加入笔记本</span>
-          <p class="notebook-pop-hint">移出后成为独立笔记；删除会移入回收站，恢复后回到原位置。</p>
-          <div v-if="memberBooks.length" class="notebook-pop-members">
-            <button
-              v-for="b in memberBooks"
-              :key="b.id"
-              type="button"
-              class="book-opt member"
-              :data-book-id="b.id"
-              :disabled="notebookBusy"
-              :aria-pressed="true"
-              title="从笔记本删除这条笔记"
-              @click="toggleNotebook(b.id, false)"
-            >
-              <AppIcon name="check" :size="14" /><span>{{ b.name }}</span><small>移入回收站</small>
-            </button>
-          </div>
-          <button v-if="memberBooks.length" class="book-opt" :disabled="notebookBusy" @click="detachNotebook"><AppIcon name="back" :size="14" /><span>移出笔记本，转为独立笔记</span></button>
-          <p v-if="!memberBooks.length" class="notebook-pop-empty">还没加入任何笔记本</p>
-          <div v-if="!memberBooks.length" class="notebook-pop-addable">
-            <span v-if="addableBooks.length" class="popover-heading notebook-pop-heading">加入其它笔记本</span>
-            <button
-              v-for="b in addableBooks"
-              :key="b.id"
-              type="button"
-              class="book-opt addable"
-              :data-book-id="b.id"
-              :disabled="notebookBusy"
-              :aria-pressed="false"
-              @click="toggleNotebook(b.id, true)"
-            >
-              <AppIcon name="plus" :size="14" /><span>{{ b.name }}</span>
-            </button>
-            <button type="button" class="book-opt" data-book-id="__new" :disabled="notebookBusy" @click="notebookForm = true; openPop = null">
-              <AppIcon name="plus" :size="14" /><span>新建笔记本并加入</span>
-            </button>
-          </div>
-        </div>
-      </div>
-
       <!-- 回收站详情：只读，只剩恢复 / 彻底删除两个动作，顶栏说明还有几天被自动删除 -->
       <template v-if="readonly">
         <span v-if="notes.current" class="trash-notice">{{ trashNotice }}</span>
@@ -605,7 +463,23 @@ async function runShare() {
           <AppIcon name="star" />
         </button>
 
-        <div class="op-wrap">
+        <button v-if="directActions" class="op-btn desktop-direct-op" data-op="notebooks" :title="`笔记本${memberBooks.length ? `（已加入 ${memberBooks.length} 本）` : ''}`" aria-label="笔记本" aria-haspopup="true" :aria-expanded="openPop === 'notebook'" @click.stop="toggle('notebook')">
+          <AppIcon name="book" />
+        </button>
+        <button v-if="directActions" class="op-btn desktop-direct-op" data-op="history" title="历史版本" aria-label="历史版本" @click="showHistory = true">
+          <AppIcon name="clock" />
+        </button>
+        <button v-if="directActions" class="op-btn desktop-direct-op" data-op="wordcount" title="字数统计" aria-label="字数统计" @click="showWordCount = true">
+          <AppIcon name="sort" />
+        </button>
+
+        <span class="op-separator" aria-hidden="true"></span>
+        <button class="op-btn focus-toggle" data-op="focus" :class="{ selected: ui.focusMode }" :aria-pressed="ui.focusMode" :title="ui.focusMode ? '退出专注模式 (Esc)' : '专注模式'" :aria-label="ui.focusMode ? '退出专注模式' : '专注模式'" @click="toggleFocus">
+          <AppIcon :name="ui.focusMode ? 'collapse' : 'focus'" />
+        </button>
+
+        <!-- 管理浮层靠右对齐，窄编辑区从更多菜单进入。 -->
+        <div class="op-wrap notebook-wrap">
           <div v-if="openPop === 'color'" class="op-popover colors" role="group" aria-label="选择标记颜色">
             <button
               v-for="color in SKIN_COLORS"
@@ -619,56 +493,58 @@ async function runShare() {
               @click="notes.current && notes.setProps(notes.current.id, { skin_color: color }); openPop = null"
             />
           </div>
+          <button ref="moreButton" class="op-btn" data-op="more" :class="{ open: menuOpen }" title="更多操作" aria-label="更多操作" aria-haspopup="menu" :aria-expanded="menuOpen" @click="toggleMenu">
+            <AppIcon name="more" />
+          </button>
+          <div v-if="openPop === 'notebook'" class="op-popover groups-pop notebook-pop" role="group" aria-label="加入笔记本">
+            <span class="popover-heading">加入笔记本</span>
+            <p class="notebook-pop-hint">移出后成为独立笔记；删除会移入回收站，恢复后回到原位置。</p>
+            <div v-if="memberBooks.length" class="notebook-pop-members">
+              <button
+                v-for="b in memberBooks"
+                :key="b.id"
+                type="button"
+                class="book-opt member"
+                :data-book-id="b.id"
+                :disabled="notebookBusy"
+                :aria-pressed="true"
+                title="从笔记本删除这条笔记"
+                @click="toggleNotebook(b.id, false)"
+              >
+                <AppIcon name="check" :size="14" /><span>{{ b.name }}</span><small>移入回收站</small>
+              </button>
+            </div>
+            <button v-if="memberBooks.length" class="book-opt" :disabled="notebookBusy" @click="detachNotebook"><AppIcon name="back" :size="14" /><span>移出笔记本，转为独立笔记</span></button>
+            <p v-if="!memberBooks.length" class="notebook-pop-empty">还没加入任何笔记本</p>
+            <div v-if="!memberBooks.length" class="notebook-pop-addable">
+              <span v-if="addableBooks.length" class="popover-heading notebook-pop-heading">加入其它笔记本</span>
+              <button
+                v-for="b in addableBooks"
+                :key="b.id"
+                type="button"
+                class="book-opt addable"
+                :data-book-id="b.id"
+                :disabled="notebookBusy"
+                :aria-pressed="false"
+                @click="toggleNotebook(b.id, true)"
+              >
+                <AppIcon name="plus" :size="14" /><span>{{ b.name }}</span>
+              </button>
+              <button type="button" class="book-opt" data-book-id="__new" :disabled="notebookBusy" @click="notebookForm = true; openPop = null">
+                <AppIcon name="plus" :size="14" /><span>新建笔记本并加入</span>
+              </button>
+            </div>
+          </div>
         </div>
-
-        <template v-if="!compact">
-          <span class="op-separator words-separator" aria-hidden="true"></span>
-          <button class="op-btn op-words" data-op="wordcount" title="字数统计" aria-label="字数统计" @click="showWordCount = true">{{ wordCount.words }} 字</button>
-        </template>
-
-        <span class="op-separator" aria-hidden="true"></span>
-        <button class="op-btn focus-toggle" data-op="focus" :class="{ selected: ui.focusMode }" :aria-pressed="ui.focusMode" :title="ui.focusMode ? '退出专注模式 (Esc)' : '专注模式'" :aria-label="ui.focusMode ? '退出专注模式' : '专注模式'" @click="toggleFocus">
-          <AppIcon :name="ui.focusMode ? 'collapse' : 'focus'" />
-        </button>
-
-        <!-- 阅读模式：正文只读，读文章时怎么点怎么划都改不坏内容。
-             ≤720px 顶栏没有余量，这颗按钮和删除一样让位给「⋯」菜单。 -->
-        <button
-          v-if="!compact"
-          class="op-btn reading-toggle"
-          data-op="reading"
-          :class="{ selected: ui.readingMode }"
-          :aria-pressed="ui.readingMode"
-          :title="ui.readingMode ? '退出阅读模式 (Esc)' : '阅读模式：正文只读 (Ctrl/⌘ Shift E)'"
-          :aria-label="ui.readingMode ? '退出阅读模式' : '阅读模式'"
-          @click="toggleReading"
-        >
-          <AppIcon :name="ui.readingMode ? 'edit' : 'book'" />
-        </button>
-
-        <button ref="moreButton" class="op-btn" data-op="more" :class="{ open: menuOpen }" title="更多操作" aria-label="更多操作" aria-haspopup="menu" :aria-expanded="menuOpen" @click="toggleMenu">
-          <AppIcon name="more" />
-        </button>
       </div>
     </div>
 
-    <!-- 编辑工具栏独立一行：顶栏在 320px 已经排满，塞不下十几个格式按钮 -->
-    <FormatToolbar v-if="canEdit && notes.current" :state="formatState" @action="onFormat" />
-    <input v-if="canEdit" ref="imageInput" class="image-input" type="file" accept="image/*" multiple tabindex="-1" aria-hidden="true" @change="onImagePicked" />
-
-    <!-- 阅读模式提示条：占位不高但足够显眼，点一下或按 Esc 就退出 -->
-    <div v-if="!readonly && ui.readingMode && notes.current" class="reading-banner" role="status">
-      <AppIcon name="book" :size="15" />
-      <span>阅读模式 · 正文只读，不会误改</span>
-      <button type="button" class="reading-exit" @click="toggleReading">退出 (Esc)</button>
-    </div>
-
-    <div ref="editorBody" class="editor-body" :class="{ 'is-reading': !readonly && ui.readingMode }">
+    <div ref="editorBody" class="editor-body">
       <div v-if="!notes.current && !readonly" class="editor-welcome">
         <AppIcon name="note" :size="40" class="empty-art" />
         <h1>选择一条笔记</h1>
       </div>
-      <MilkdownEditor
+      <VditorEditor
         v-else-if="notes.current"
         ref="editorRef"
         :note-id="notes.current.id"
@@ -676,8 +552,6 @@ async function runShare() {
         :editable="canEdit"
         @update:model-value="onBody"
         @flush="onFlush"
-        @format-state="formatState = $event"
-        @edit-link="onEditLink"
         @open-lightbox="openLightbox"
         @notice="notify"
         @ready="editorReady = true"
@@ -691,13 +565,13 @@ async function runShare() {
       :can-share="canShare"
       :show-delete="canEdit"
       :show-doc-items="true"
-      :show-notebooks="compact"
+      :show-notebooks="!directActions"
+      :show-history="!directActions"
+      :show-wordcount="!directActions"
       :notebook-count="memberBooks.length"
       :importing="importing"
       :home-hidden="homeHidden"
       :can-follow-group="homeOverridden && groupHidesHome"
-      :show-reading="compact"
-      :reading="ui.readingMode"
       @action="onMenuAction"
       @close="menuOpen = false"
     />
@@ -719,15 +593,6 @@ async function runShare() {
     <KnowledgeBaseForm :open="notebookForm" :busy="notebookBusy" @save="saveNotebookForm" @close="notebookForm = false" />
     <HistoryDialog :open="showHistory" :note="notes.current" :readonly="!canEdit" @close="showHistory = false" @restore="onRestoreHistory" />
     <WordCountDialog :open="showWordCount" :count="wordCount" @close="showWordCount = false" />
-    <TableDialog :open="tableDialog" @submit="submitTable" @close="tableDialog = false" />
-    <LinkDialog
-      :open="linkDialog"
-      :href="linkDraft.href"
-      :text="linkDraft.text"
-      :editing="linkDraft.editing"
-      @submit="submitLink"
-      @close="linkDialog = false"
-    />
     <ImageLightbox
       :open="lightboxOpen"
       :images="lightboxImages"
@@ -743,13 +608,7 @@ async function runShare() {
  * 这里只写 .book-opt / .notebook-pop，不动全局的 .group-opt，避免影响分组浮层。
  */
 .notebook-pop { width: min(240px, calc(100vw - 48px)); }
-/*
- * 窄屏时这颗按钮不渲染，.notebook-wrap 只剩一个零宽的锚点、又贴在顶栏右侧；
- * 默认的 right: 0 会把浮层整块推到屏幕左边。改成以锚点左缘为起点、整体右移一点。
- * 锚点必须保留定位（position: relative 来自 .op-wrap）：改成 static 会让浮层
- * 转而相对文档定位，直接掉到首屏之外。
- */
-.notebook-wrap .notebook-pop { right: auto; left: 0; transform: translateX(6px); }
+.notebook-wrap .notebook-pop { right: 0; left: auto; }
 .notebook-pop-hint { margin: 0 0 4px; padding: 0 10px 8px; border-bottom: 1px solid var(--border-light); color: var(--text-tertiary); font-size: 11px; line-height: 1.6; }
 .notebook-pop-heading { margin-top: 4px; padding-top: 10px; border-top: 1px solid var(--border-light); }
 .notebook-pop-empty { margin: 0; padding: 6px 10px; color: var(--text-tertiary); font-size: 12px; }
