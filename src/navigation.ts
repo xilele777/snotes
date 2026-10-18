@@ -7,6 +7,7 @@ import { nextTick, watch, type WatchStopHandle } from 'vue'
 import { db } from './db/schema'
 import { notify } from './notify'
 import { isSettingsTab, isUiView, parseRoute, routeUrl } from './routes'
+import { updateWorkspacePreferences } from './workspace-preferences'
 
 /**
  * History API 导航：URL 保存页面地址，快照保存工作区与滚动位置。
@@ -67,6 +68,7 @@ function replaceSnapshot(state = snapshot()) {
 }
 
 export async function switchListView(view: ListView, groupId: string | null = null) {
+  updateWorkspacePreferences({ listCollapsed: false })
   navigationGeneration++
   const ui = useUiStore()
   ui.focusMode = false
@@ -90,6 +92,7 @@ export async function switchListView(view: ListView, groupId: string | null = nu
 
 /** 图标栏回到离开前的笔记位置；在笔记页内点击不会重置分组。 */
 export async function showNotes() {
+  updateWorkspacePreferences({ listCollapsed: false })
   navigationGeneration++
   const ui = useUiStore()
   if (isNotesView(ui.view)) {
@@ -108,6 +111,7 @@ export async function showNotes() {
 }
 
 export async function showKnowledgeBases(id: string | null = null) {
+  updateWorkspacePreferences({ listCollapsed: false })
   navigationGeneration++
   const ui = useUiStore()
   if (!ui.workspacePage && ui.view === 'knowledge-bases' && ui.activeKnowledgeBaseId === id && ui.knowledgeBaseFilter === 'active') { ui.drawerOpen = false; return }

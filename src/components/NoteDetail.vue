@@ -29,6 +29,7 @@ import KnowledgeBaseForm from './KnowledgeBaseForm.vue'
 import { useMediaQuery } from './useMediaQuery'
 import { useWorkspaceScroll } from './useWorkspaceScroll'
 import { pushNav, isMobile, showKnowledgeBases } from '../navigation'
+import { workspacePreferences as preferences, updateWorkspacePreferences } from '../workspace-preferences'
 
 const MilkdownEditor = defineAsyncComponent({
   loader: () => import('../editor/MilkdownEditor.vue'),
@@ -459,6 +460,7 @@ async function runShare() {
 <template>
   <main class="editor-pane">
     <div v-if="notes.current" class="editor-top-bar">
+      <button v-if="!ui.focusMode" type="button" class="icon-button list-visibility-toggle" :title="preferences.listCollapsed ? '展开笔记列表' : '收起笔记列表'" :aria-label="preferences.listCollapsed ? '展开笔记列表' : '收起笔记列表'" :aria-expanded="!preferences.listCollapsed" aria-controls="workspace-list" @click="updateWorkspacePreferences({ listCollapsed: !preferences.listCollapsed })"><AppIcon name="listPanel" :size="18" /></button>
       <!-- 移动端返回按钮，仅 <720px 显示 -->
       <button class="back-btn" title="返回列表" aria-label="返回列表" @click="$emit('back')">
         <AppIcon name="back" :size="20" />
@@ -620,7 +622,7 @@ async function runShare() {
         </div>
 
         <template v-if="!compact">
-          <span class="op-separator" aria-hidden="true"></span>
+          <span class="op-separator words-separator" aria-hidden="true"></span>
           <button class="op-btn op-words" data-op="wordcount" title="字数统计" aria-label="字数统计" @click="showWordCount = true">{{ wordCount.words }} 字</button>
         </template>
 

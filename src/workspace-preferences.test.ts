@@ -15,6 +15,20 @@ beforeEach(async () => {
 })
 
 describe('工作区偏好', () => {
+  it('旧版布局使用默认宽度，异常宽度限制在可用范围，隐藏状态必须是布尔值', () => {
+    const defaults = parseWorkspacePreferences(null)
+    expect(defaults.sidebarWidth).toBe(232)
+    expect(defaults.listWidth).toBe(336)
+    expect(defaults.listCollapsed).toBe(false)
+    const invalid = parseWorkspacePreferences('{"sidebarWidth":9000,"listWidth":-10,"listCollapsed":"true"}')
+    expect(invalid.sidebarWidth).toBe(340)
+    expect(invalid.listWidth).toBe(260)
+    expect(invalid.listCollapsed).toBe(false)
+    expect(parseWorkspacePreferences('{"sidebarWidth":"280","listWidth":1e999}')).toMatchObject({ sidebarWidth: 232, listWidth: 336 })
+    updateWorkspacePreferences({ sidebarWidth: 280, listWidth: 400, listCollapsed: true })
+    expect(parseWorkspacePreferences(localStorage.getItem(WORKSPACE_PREFERENCES_KEY))).toMatchObject({ sidebarWidth: 280, listWidth: 400, listCollapsed: true })
+  })
+
   it('损坏或旧设置不会隐藏导航，非法排序回退，固定库 ID 去重', () => {
     expect(parseWorkspacePreferences('{bad')).toEqual(parseWorkspacePreferences(null))
     const result = parseWorkspacePreferences('{"sidebarCollapsed":"false","noteSort":"invalid","pinnedKnowledgeBaseIds":["a",null,"a","b",12]}')
