@@ -4,6 +4,7 @@ import { nextTick } from 'vue'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { version as appVersion } from '../../package.json'
 import { db } from '../db/schema'
+import { createKnowledgeBase } from '../db/knowledge-base-repo'
 import { useGroupsStore } from '../stores/groups'
 import { useNotesStore } from '../stores/notes'
 import { useUiStore } from '../stores/ui'
@@ -46,6 +47,36 @@ async function typeName(name: string) {
 }
 
 describe('GroupSidebar', () => {
+  it('从设置快速新建会进入可编辑工作区，并关闭抽屉与列表隐藏', async () => {
+    const ui = useUiStore()
+    ui.workspacePage = 'settings'
+    ui.drawerOpen = true
+    workspacePreferences.value.listCollapsed = true
+    const wrapper = mount(GroupSidebar)
+    await wrapper.get('[aria-label="快速新建笔记"]').trigger('click')
+    await vi.waitFor(() => expect(useNotesStore().current).not.toBeNull())
+    expect(ui.workspacePage).toBeNull()
+    expect(ui.drawerOpen).toBe(false)
+    expect(workspacePreferences.value.listCollapsed).toBe(false)
+    wrapper.unmount()
+  })
+
+  it('常用笔记本优先固定项，隐藏已删除项并可直接进入目录', async () => {
+    const common = { description: '', icon: '', ord: 0, invalid: 0 as const }
+    const pinned = await createKnowledgeBase({ ...common, name: '固定资料' })
+    await createKnowledgeBase({ ...common, name: '最近资料' })
+    const removed = await createKnowledgeBase({ ...common, name: '已删除资料' })
+    await db.knowledgeBases.update(removed.id, { invalid: 1 })
+    workspacePreferences.value.pinnedKnowledgeBaseIds = [pinned.id]
+    const wrapper = mount(GroupSidebar)
+    await vi.waitFor(() => expect(wrapper.findAll('.notebook-shortcuts li')).toHaveLength(2))
+    expect(wrapper.findAll('.notebook-shortcuts li')[0].text()).toBe('固定资料')
+    expect(wrapper.find('.sidebar-notebooks').text()).not.toContain('已删除资料')
+    await wrapper.get(`[aria-label="打开笔记本：固定资料"]`).trigger('click')
+    await vi.waitFor(() => expect(useUiStore().activeKnowledgeBaseId).toBe(pinned.id))
+    wrapper.unmount()
+  })
+
   it('侧栏底部有「设置」入口，点开走 workspacePage 并落在外观页', async () => {
     const ui = useUiStore()
     ui.drawerOpen = true

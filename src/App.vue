@@ -174,7 +174,7 @@ onUnmounted(() => {
   <div v-else class="layout" :class="{ 'is-focused': ui.focusMode, 'is-sidebar-collapsed': preferences.sidebarCollapsed, 'is-list-collapsed': listCollapsed, 'is-library-list': ui.view === 'knowledge-bases' && !ui.activeKnowledgeBaseId, 'is-utility-page': !!ui.workspacePage }" :style="{ '--preferred-sidebar-width': `${preferences.sidebarWidth}px`, '--preferred-list-width': `${listWidth}px` }" :data-mobile-pane="ui.mobilePane" :data-view="ui.workspacePage ?? ui.view">
     <!-- 窄屏将分组导航收进抽屉，搜索仍留在笔记列表上方。 -->
     <aside id="workspace-sidebar" class="sidebar-pane" :class="{ 'is-open': ui.drawerOpen }" :inert="compact && !ui.drawerOpen">
-      <GroupSidebar />
+      <GroupSidebar @search="focusSearch" />
     </aside>
     <Transition name="veil"><div v-if="ui.drawerOpen" class="drawer-mask" @click="ui.drawerOpen = false"></div></Transition>
 
