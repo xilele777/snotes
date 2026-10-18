@@ -29,7 +29,7 @@ Notes are saved in the browser first, then synced with your own backend. Run the
 ## Features
 
 - **Offline-first** — Read and edit notes already synced to the device, then sync automatically when reconnected.
-- **Markdown writing** — Headings, lists, tasks, tables, code blocks, images, and highlights, with undo, redo, and image insertion in the formatting toolbar, a quieter management menu, reading mode, and focus mode.
+- **Markdown writing** — Headings, lists, tasks, tables, code blocks, images, and highlights, with undo, redo, and image insertion in Vditor's formatting toolbar, a quieter management menu, and native editor fullscreen.
 - **Two ways to organize** — Groups, stars, pins, and search for everyday notes, with list menus for quick organization. Notebooks provide recent-note links and chapter trees. Move a note out of its notebook to keep it as an independent note.
 - **Device sync** — Bodies and properties sync separately. Concurrent edits retain conflict copies for manual merging.
 - **History and recovery** — Automatic body history, five-second undo for soft deletion, trash previews, and recovery to the original notebook location after deleting a directory note.
