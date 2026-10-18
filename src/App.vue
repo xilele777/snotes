@@ -97,6 +97,7 @@ watch(
 function onKeydown(e: KeyboardEvent) {
   // 弹窗和菜单打开时把键盘交给它们：Esc 该关的是浮层，不是抽屉或搜索词
   if (!hasToken.value || e.defaultPrevented || e.isComposing || document.querySelector('[aria-modal="true"], [role="menu"]')) return
+  if (e.key === 'Escape' && e.target instanceof HTMLElement && e.target.closest('.document-outline')) return
   if (e.key === 'Escape' && (ui.drawerOpen || (!ui.workspacePage && (ui.focusMode || ui.readingMode)))) {
     e.preventDefault()
     e.stopPropagation()

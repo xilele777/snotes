@@ -30,6 +30,7 @@ import { useMediaQuery } from './useMediaQuery'
 import { useWorkspaceScroll } from './useWorkspaceScroll'
 import { pushNav, isMobile, showKnowledgeBases } from '../navigation'
 import { workspacePreferences as preferences, updateWorkspacePreferences } from '../workspace-preferences'
+import DocumentOutline from './DocumentOutline.vue'
 
 const MilkdownEditor = defineAsyncComponent({
   loader: () => import('../editor/MilkdownEditor.vue'),
@@ -45,6 +46,9 @@ const groups = useGroupsStore()
 const ui = useUiStore()
 const editorBody = ref<HTMLElement | null>(null)
 const editorReady = ref(false)
+const outlineOpen = ref(false)
+const outlineButton = ref<HTMLButtonElement | null>(null)
+function closeOutline() { outlineOpen.value = false; void nextTick(() => outlineButton.value?.focus({ preventScroll: true })) }
 watch(() => notes.current, note => { if (!note) editorReady.value = false })
 
 const currentGroup = computed(() => groups.groups.find(group => group.group_id === notes.current?.group_id)?.name ?? '未分组')
@@ -646,6 +650,7 @@ async function runShare() {
           <AppIcon :name="ui.readingMode ? 'edit' : 'book'" />
         </button>
 
+        <button ref="outlineButton" type="button" class="op-btn" data-op="outline" :class="{ selected: outlineOpen }" title="笔记大纲" aria-label="笔记大纲" aria-controls="document-outline" :aria-expanded="outlineOpen" @click="outlineOpen ? closeOutline() : outlineOpen = true"><AppIcon name="outline" /></button>
         <button ref="moreButton" class="op-btn" data-op="more" :class="{ open: menuOpen }" title="更多操作" aria-label="更多操作" aria-haspopup="menu" :aria-expanded="menuOpen" @click="toggleMenu">
           <AppIcon name="more" />
         </button>
@@ -663,10 +668,15 @@ async function runShare() {
       <button type="button" class="reading-exit" @click="toggleReading">退出 (Esc)</button>
     </div>
 
+    <div class="editor-stage">
     <div ref="editorBody" class="editor-body" :class="{ 'is-reading': !readonly && ui.readingMode }">
       <div v-if="!notes.current && !readonly" class="editor-welcome">
-        <AppIcon name="note" :size="40" class="empty-art" />
-        <h1>选择一条笔记</h1>
+        <div class="welcome-pages" aria-hidden="true"><AppIcon name="note" :size="46" /></div>
+        <span class="welcome-eyebrow">你的想法，值得被记下</span>
+        <h1>留一点空间给思考</h1>
+        <p>选择左侧的笔记继续，或从一页空白开始。</p>
+        <button type="button" class="welcome-create" @click="notes.create()"><AppIcon name="plus" :size="16" />写下第一行</button>
+        <span class="welcome-shortcut"><kbd>Alt N</kbd> 新建笔记 <span>·</span> <kbd>Ctrl / ⌘ K</kbd> 搜索</span>
       </div>
       <MilkdownEditor
         v-else-if="notes.current"
@@ -683,6 +693,8 @@ async function runShare() {
         @ready="editorReady = true"
       />
     </div>
+    <DocumentOutline v-if="outlineOpen && notes.current" :root="editorBody" @close="closeOutline" />
+    </div>
 
     <NoteMenu
       v-if="!readonly"
@@ -691,7 +703,7 @@ async function runShare() {
       :can-share="canShare"
       :show-delete="canEdit"
       :show-doc-items="true"
-      :show-notebooks="compact"
+      :show-notebooks="true"
       :notebook-count="memberBooks.length"
       :importing="importing"
       :home-hidden="homeHidden"
