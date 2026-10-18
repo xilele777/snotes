@@ -73,7 +73,7 @@ async function openResult(result: SearchDestination) {
   finally { opening.value = false }
 }
 async function keydown(event: KeyboardEvent) {
-  if (event.isComposing) return
+  if (event.isComposing || !(event.target instanceof HTMLInputElement)) return
   if (event.key === 'Enter') { event.preventDefault(); if (results.value[selected.value]) await openResult(results.value[selected.value]); return }
   if (event.key !== 'ArrowDown' && event.key !== 'ArrowUp') return
   event.preventDefault()

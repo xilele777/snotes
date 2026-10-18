@@ -25,6 +25,17 @@ test('卡片与列表切换记忆偏好，并保留选择、搜索和排序', as
   await page.getByRole('button', { name: '卡片视图', exact: true }).click()
   await expect(page.locator('.note-item')).toHaveCount(1)
   await expect(page.getByRole('searchbox', { name: '搜索笔记', exact: true })).toHaveValue('Beta')
+  await page.getByRole('button', { name: '全局搜索', exact: true }).click()
+  const search = page.getByRole('combobox', { name: '全局搜索笔记', exact: true })
+  await search.fill('Beta')
+  await expect(page.getByRole('option')).toHaveCount(1)
+  await search.press('Tab')
+  const close = page.getByRole('button', { name: '关闭全局搜索', exact: true })
+  await expect(close).toBeFocused()
+  await close.press('Enter')
+  await expect(search).toHaveCount(0)
+  await expect(page.getByRole('button', { name: '全局搜索', exact: true })).toBeFocused()
+  await expect(page.locator('.ProseMirror')).toContainText('Alpha idea')
 })
 
 test('大纲读取真实标题、跳过代码块，跳转与关闭不会重建正文', async ({ page }) => {
