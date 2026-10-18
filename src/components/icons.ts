@@ -29,6 +29,8 @@ export const iconPaths = {
   menu: ['M4 6h16M4 12h16M4 18h16'],
   sidebar: ['M4 4h16v16H4Z', 'M9 4v16'],
   listPanel: ['M4 4h16v16H4Z', 'M11 4v16M6.5 8h2M6.5 12h2M6.5 16h2'],
+  grid: ['M4 4h6v6H4ZM14 4h6v6h-6ZM4 14h6v6H4ZM14 14h6v6h-6Z'],
+  outline: ['M9 6h11M9 12h11M9 18h7', 'M4 6h.01M4 12h.01M4 18h.01'],
   more: ['M5 12h.01M12 12h.01M19 12h.01'],
   keyboard: ['M4 5h16a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2Z', 'M6 9h.01M10 9h.01M14 9h.01M18 9h.01M6 13h.01M10 13h.01M14 13h.01M18 13h.01M8 16h8'],
   sort: ['M4 6h16M4 12h11M4 18h6'],

@@ -53,6 +53,7 @@ function fmtDate(ts: number): string {
 
       <div class="note-text">
         <div class="note-title">
+          <AppIcon name="note" :size="15" class="note-document-icon" />
           <template v-if="note.title">
             <span v-for="(seg, i) in highlight(note.title, query)" :key="i" :class="{ hit: seg.hit }">{{
               seg.text
