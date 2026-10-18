@@ -23,21 +23,6 @@ const notes = useNotesStore()
 const groups = useGroupsStore()
 const ui = useUiStore()
 const groupNames = computed(() => new Map(groups.groups.map(g => [g.group_id, g.name])))
-const sectionLabels = computed(() => {
-  const labels = new Map<string, string>()
-  if (ui.query || preferences.value.noteSort !== 'updated') return labels
-  const today = new Date()
-  today.setHours(0, 0, 0, 0)
-  const week = new Date(today)
-  week.setDate(week.getDate() - 6)
-  let previous = ''
-  for (const note of notes.visible) {
-    const label = note.top ? '置顶' : note.update_time >= today.getTime() ? '今天' : note.update_time >= week.getTime() ? '最近七天' : '更早的记录'
-    if (label !== previous) labels.set(note.id, label)
-    previous = label
-  }
-  return labels
-})
 const list = ref<HTMLElement | null>(null)
 useWorkspaceScroll(list, 'list')
 
@@ -218,9 +203,20 @@ watch(
         <AppIcon name="menu" />
       </button>
 
-      <h1 class="header-title" tabindex="-1" :title="viewTitle">{{ viewTitle }}</h1>
+      <span class="header-title" tabindex="-1" :title="viewTitle">{{ viewTitle }}</span>
       <span v-if="!notes.stale" class="header-count">{{ notes.visible.length }}</span>
 
+      <button
+        type="button"
+        class="header-refresh"
+        :title="refreshBusy ? '正在刷新' : '刷新笔记'"
+        aria-label="刷新笔记"
+        :aria-busy="refreshBusy"
+        :disabled="refreshBusy"
+        @click="refreshNotes"
+      >
+        <AppIcon name="refresh" :size="16" :class="{ 'sync-spinner': refreshBusy }" />
+      </button>
       <button class="header-create" title="新建笔记" aria-label="新建笔记" @click="notes.create()">
         <AppIcon name="plus" :size="15" />
         <span>新建</span>
@@ -229,14 +225,7 @@ watch(
 
     <div class="list-search-tools">
       <NoteSearch @first="focusFirst" />
-    </div>
-    <div class="list-display-tools">
       <SortMenu label="笔记排序" :model-value="preferences.noteSort" :options="[{ value: 'updated', label: '最近更新' }, { value: 'created', label: '最近创建' }, { value: 'title', label: '标题顺序' }]" @update:model-value="updateWorkspacePreferences({ noteSort: $event as NoteSort })" />
-      <div class="list-layout-switch" role="group" aria-label="列表显示方式">
-        <button type="button" aria-label="卡片视图" :aria-pressed="preferences.noteLayout === 'cards'" title="卡片视图" @click="updateWorkspacePreferences({ noteLayout: 'cards' })"><AppIcon name="grid" :size="15" /></button>
-        <button type="button" aria-label="列表视图" :aria-pressed="preferences.noteLayout === 'list'" title="列表视图" @click="updateWorkspacePreferences({ noteLayout: 'list' })"><AppIcon name="outline" :size="16" /></button>
-      </div>
-      <button type="button" class="header-refresh" :title="refreshBusy ? '正在刷新' : '刷新笔记'" aria-label="刷新笔记" :aria-busy="refreshBusy" :disabled="refreshBusy" @click="refreshNotes"><AppIcon name="refresh" :size="16" :class="{ 'sync-spinner': refreshBusy }" /></button>
     </div>
     <div v-if="ui.query.trim()" class="list-caption" aria-live="polite">
       <span>找到 {{ notes.visible.length }} 条笔记</span><button @click="ui.query = ''">清除筛选</button>
@@ -252,10 +241,10 @@ watch(
       @action="onEmptyAction"
     />
 
-    <ul v-else ref="list" class="note-list" :class="{ 'is-cards': preferences.noteLayout === 'cards' }" aria-label="笔记列表" @keydown="onListKeydown">
-      <template v-for="note in notes.visible" :key="note.id">
-      <li v-if="sectionLabels.has(note.id)" class="note-section-heading" aria-hidden="true">{{ sectionLabels.get(note.id) }}</li>
+    <ul v-else ref="list" class="note-list" aria-label="笔记列表" @keydown="onListKeydown">
       <NoteListItem
+        v-for="note in notes.visible"
+        :key="note.id"
         :note="note"
         :active="note.id === notes.currentId"
         :swiped="swipedId === note.id"
@@ -276,7 +265,6 @@ watch(
           </button>
         </template>
       </NoteListItem>
-      </template>
     </ul>
 
     <ActionMenu :open="!!menuNote" :anchor="menuAnchor" label="笔记操作" @close="menuNote = null">

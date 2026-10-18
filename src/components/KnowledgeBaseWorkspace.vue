@@ -30,11 +30,6 @@ const book = computed(() => libraries.books.find(b => b.id === ui.activeKnowledg
 const nodes = computed(() => libraries.tocs.find(t => t.knowledge_base_id === book.value?.id)?.nodes ?? [])
 const books = computed(() => libraries.books.filter(b => !b.invalid && matchesAll(`${b.name}\n${b.description}`, splitTerms(ui.query))).sort((a, b) => Number(preferences.value.pinnedKnowledgeBaseIds.includes(b.id)) - Number(preferences.value.pinnedKnowledgeBaseIds.includes(a.id)) || (preferences.value.librarySort === 'name' ? a.name.localeCompare(b.name, 'zh-CN') : b.update_time - a.update_time) || a.id.localeCompare(b.id)))
 const noteMap = computed(() => new Map(libraries.notes.map(n => [n.id, n])))
-const notebookCount = computed(() => libraries.books.filter(b => !b.invalid && !b.deleted).length)
-const pinnedCount = computed(() => libraries.books.filter(b => !b.invalid && !b.deleted && preferences.value.pinnedKnowledgeBaseIds.includes(b.id)).length)
-function coverHue(id: string) {
-  return [148, 32, 205, 274][[...id].reduce((sum, char) => sum + char.charCodeAt(0), 0) % 4]
-}
 const createParent = ref('')
 const creationFolders = computed(() => flattenToc(nodes.value).filter(({ node }) => node.kind === 'folder'))
 const currentTasks = computed(() => libraries.tasks.filter(t => !book.value || t.book_id === book.value.id))
@@ -331,20 +326,16 @@ watch(() => ui.restorePosition, async position => { if (position?.view === 'know
     <p v-if="error || libraries.error" class="kb-error" role="alert">{{ error || libraries.error }}</p>
     <div v-if="conflicts.length" class="kb-sync-warning" role="status">笔记本有同步冲突，两份修改已保留。<button @click="dialog = 'conflict'">查看并选择</button></div>
     <template v-if="!book">
-      <div class="kb-gallery-intro">
-        <div><span class="kb-gallery-eyebrow">个人书架</span><h1>让想法，慢慢成册。</h1><p>按主题整理笔记，把值得留下的内容放在一起。</p></div>
-        <span class="kb-gallery-count"><strong>{{ notebookCount }}</strong> 本笔记本<span v-if="pinnedCount"> · {{ pinnedCount }} 本已固定</span></span>
-      </div>
       <div class="kb-overview-tools">
         <label class="kb-search"><AppIcon name="search" :size="16" /><input v-model="ui.query" type="search" aria-label="搜索笔记本" placeholder="搜索笔记本名称或简介" /><button v-if="ui.query" class="search-clear" aria-label="清除笔记本搜索" @click="ui.query = ''"><AppIcon name="close" :size="14" /></button></label>
         <SortMenu label="笔记本排序" :model-value="preferences.librarySort" :options="[{ value: 'updated', label: '最近更新' }, { value: 'name', label: '名称顺序' }]" @update:model-value="updateWorkspacePreferences({ librarySort: $event as LibrarySort })" />
       </div>
       <div class="kb-card-grid">
-        <article v-for="b in books" :key="b.id" class="kb-card" :data-book-id="b.id" :style="{ '--cover-hue': coverHue(b.id) }">
-          <button class="kb-card-link" :disabled="!!b.invalid" @click="showKnowledgeBases(b.id)"><span class="kb-book-cover" aria-hidden="true"><span class="kb-cover-rule"></span><span class="kb-card-icon"><AppIcon v-if="!b.icon || b.icon === '📚'" name="book" :size="28" /><span v-else>{{ b.icon }}</span></span><span class="kb-cover-label">{{ b.name }}</span><AppIcon v-if="preferences.pinnedKnowledgeBaseIds.includes(b.id)" class="kb-cover-pin" name="pin" :size="15" /></span><span class="kb-card-body"><h3>{{ b.name }}</h3><p>{{ b.description || '在这里，写下属于这个主题的思考。' }}</p><small>{{ count(b.id) }} 篇笔记</small></span></button>
+        <article v-for="b in books" :key="b.id" class="kb-card" :data-book-id="b.id">
+          <button class="kb-card-link" :disabled="!!b.invalid" @click="showKnowledgeBases(b.id)"><span class="kb-card-icon" aria-hidden="true">{{ b.icon || '📚' }}</span><span class="kb-card-body"><h3>{{ b.name }}</h3><p v-if="b.description">{{ b.description }}</p><small>{{ count(b.id) }} 篇笔记</small></span></button>
           <div class="kb-card-actions"><span class="kb-card-updated">{{ preferences.pinnedKnowledgeBaseIds.includes(b.id) ? '已固定 · ' : '' }}{{ new Date(b.update_time).toLocaleDateString() }} 更新</span><button v-if="!b.invalid" class="icon-button" :aria-label="`笔记本「${b.name}」操作`" aria-haspopup="menu" @click="openMenu($event, 'book', b)"><AppIcon name="more" :size="18" /></button></div>
         </article>
-        <button v-if="!ui.query" class="kb-card kb-new-card" @click="create"><span class="kb-new-icon"><AppIcon name="plus" :size="24" /></span><span>{{ books.length ? '再开一本，记录新主题' : '创建第一本笔记本' }}</span><small>阅读、工作，或一个新的想法</small></button>
+        <button v-if="!ui.query && !books.length" class="kb-card kb-new-card" @click="create"><AppIcon name="plus" :size="24" /><span>创建第一本笔记本</span></button>
       </div>
       <div v-if="ui.query && !books.length" class="kb-empty"><p>没有找到匹配的笔记本</p><button class="dialog-btn cancel" @click="ui.query = ''">清除搜索</button></div>
     </template>

@@ -87,7 +87,7 @@ describe('App 侧栏抽屉', () => {
 })
 
 describe('App 新建入口', () => {
-  it('Ctrl+F 退出专注模式并直接聚焦列表搜索', async () => {
+  it('Ctrl+K 退出专注模式并直接聚焦列表搜索', async () => {
     const notes = useNotesStore()
     await notes.create()
     const ui = useUiStore()
@@ -95,7 +95,7 @@ describe('App 新建入口', () => {
     await flushPromises()
     ui.focusMode = true
 
-    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'f', ctrlKey: true, cancelable: true }))
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'k', ctrlKey: true, cancelable: true }))
     await flushPromises()
 
     expect(ui.focusMode).toBe(false)

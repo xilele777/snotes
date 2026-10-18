@@ -20,23 +20,10 @@ const groups = useGroupsStore()
 const notes = useNotesStore()
 const ui = useUiStore()
 const libraries = useKnowledgeBasesStore()
-defineEmits<{ search: [] }>()
-const searchShortcut = /Mac|iPhone|iPad/.test(navigator.platform) ? '⌘ K' : 'Ctrl K'
 const brandIconUrl = `${import.meta.env.BASE_URL}snotes.svg`
 const groupList = ref<HTMLElement | null>(null)
 useWorkspaceScroll(groupList, 'groups')
 const books = computed(() => libraries.books.filter(b => !b.invalid))
-const quickBooks = computed(() => [...books.value].sort((a, b) => Number(preferences.value.pinnedKnowledgeBaseIds.includes(b.id)) - Number(preferences.value.pinnedKnowledgeBaseIds.includes(a.id)) || b.update_time - a.update_time || a.id.localeCompare(b.id)).slice(0, 5))
-async function quickCreate() {
-  try {
-    if (ui.workspacePage) await showNotes()
-    if (ui.view === 'knowledge-bases' && !ui.activeKnowledgeBaseId) await switchListView('all')
-    ui.drawerOpen = false
-    ui.focusMode = false
-    updateWorkspacePreferences({ listCollapsed: false })
-    await notes.create()
-  } catch (error) { notify(error instanceof Error ? error.message : String(error)) }
-}
 let catalog: ReturnType<typeof libraries.subscribeCatalog> | undefined
 onMounted(() => { catalog = libraries.subscribeCatalog() })
 onUnmounted(() => catalog?.unsubscribe())
@@ -182,11 +169,7 @@ watch(() => ui.drawerOpen, (open) => { if (!open) menuGroup.value = null })
         <button class="sidebar-close icon-button" aria-label="关闭侧栏" title="关闭侧栏" @click="ui.drawerOpen = false"><AppIcon name="close" /></button>
       </div>
 
-      <div class="sidebar-actions">
-        <button type="button" class="sidebar-create" aria-label="快速新建笔记" title="在当前工作区新建笔记 (Alt N)" @click="quickCreate"><AppIcon name="plus" :size="18" /><span>新建笔记</span><kbd>Alt N</kbd></button>
-        <button type="button" class="sidebar-search" aria-label="全局搜索" title="搜索全部笔记与笔记本" @click="$emit('search')"><AppIcon name="search" :size="17" /><span>搜索全部内容</span><kbd>{{ searchShortcut }}</kbd></button>
-      </div>
-      <div class="nav-section-label">我的笔记</div>
+      <div class="nav-section-label">随手记</div>
       <ul class="views">
         <li data-view="all" :class="{ active: !ui.workspacePage && ui.view === 'all' }" @click="switchListView('all')">
           <button type="button" aria-label="全部笔记" title="全部笔记" :aria-current="!ui.workspacePage && ui.view === 'all' ? 'page' : undefined"><AppIcon name="notes" /><span>全部笔记</span><span v-if="ui.view === 'all' && !notes.stale" class="nav-count">{{ notes.notes.length }}</span></button>
@@ -197,13 +180,16 @@ watch(() => ui.drawerOpen, (open) => { if (!open) menuGroup.value = null })
         <li data-view="hidden" :class="{ active: !ui.workspacePage && ui.view === 'hidden' }" @click="switchListView('hidden')">
           <button type="button" aria-label="已隐藏笔记" title="已隐藏笔记" :aria-current="!ui.workspacePage && ui.view === 'hidden' ? 'page' : undefined"><AppIcon name="eyeOff" /><span>已隐藏笔记</span></button>
         </li>
-        <li class="notebook-entry" data-view="knowledge-bases" :class="{ active: !ui.workspacePage && ui.view === 'knowledge-bases' }" @click="showKnowledgeBases()">
+      </ul>
+      <div class="nav-section-label">知识库</div>
+      <ul class="views notebook-views">
+        <li data-view="knowledge-bases" :class="{ active: !ui.workspacePage && ui.view === 'knowledge-bases' }" @click="showKnowledgeBases()">
           <button type="button" aria-label="笔记本" title="笔记本" :aria-current="!ui.workspacePage && ui.view === 'knowledge-bases' ? 'page' : undefined"><AppIcon name="book" /><span>笔记本</span><span v-if="books.length" class="nav-count">{{ books.length }}</span></button>
         </li>
       </ul>
       <div ref="groupList" class="sidebar-scroll">
       <div class="group-header">
-        <button class="section-toggle" title="按分组筛选笔记" :aria-expanded="!preferences.groupsCollapsed" aria-controls="sidebar-groups" :aria-label="preferences.groupsCollapsed ? '展开分组' : '折叠分组'" @click="updateWorkspacePreferences({ groupsCollapsed: !preferences.groupsCollapsed })"><AppIcon name="chevron" :size="12" :class="{ expanded: !preferences.groupsCollapsed }" /><span>分组</span><span class="section-count">{{ groups.groups.length }}</span></button>
+        <button class="section-toggle" :aria-expanded="!preferences.groupsCollapsed" aria-controls="sidebar-groups" :aria-label="preferences.groupsCollapsed ? '展开分组' : '折叠分组'" @click="updateWorkspacePreferences({ groupsCollapsed: !preferences.groupsCollapsed })"><span>分组</span><span class="section-count">{{ groups.groups.length }}</span><AppIcon name="chevron" :size="12" :class="{ expanded: !preferences.groupsCollapsed }" /></button>
         <button class="group-add" title="新建分组" aria-label="新建分组" @click="openCreate">
           <AppIcon name="plus" :size="15" />
         </button>
@@ -234,14 +220,6 @@ watch(() => ui.drawerOpen, (open) => { if (!open) menuGroup.value = null })
           </button>
         </li>
       </ul>
-      <section v-if="books.length" class="sidebar-notebooks" aria-label="常用笔记本">
-        <div class="library-header"><button class="section-toggle" :aria-expanded="!preferences.librariesCollapsed" aria-controls="sidebar-books" :aria-label="preferences.librariesCollapsed ? '展开常用笔记本' : '折叠常用笔记本'" @click="updateWorkspacePreferences({ librariesCollapsed: !preferences.librariesCollapsed })"><AppIcon name="chevron" :size="12" :class="{ expanded: !preferences.librariesCollapsed }" /><span>常用笔记本</span></button></div>
-        <ul v-show="!preferences.librariesCollapsed || preferences.sidebarCollapsed" id="sidebar-books" class="groups notebook-shortcuts">
-          <li v-for="b in quickBooks" :key="b.id" :class="{ active: !ui.workspacePage && ui.view === 'knowledge-bases' && ui.activeKnowledgeBaseId === b.id }">
-            <button type="button" class="group-link" :title="b.name" :aria-label="`打开笔记本：${b.name}`" :aria-current="!ui.workspacePage && ui.view === 'knowledge-bases' && ui.activeKnowledgeBaseId === b.id ? 'page' : undefined" @click="showKnowledgeBases(b.id)"><AppIcon :name="preferences.pinnedKnowledgeBaseIds.includes(b.id) ? 'pin' : 'book'" :size="17" class="group-icon" /><span class="group-name">{{ b.name }}</span></button>
-          </li>
-        </ul>
-      </section>
       </div>
       <div class="sidebar-footer">
         <div class="sidebar-tools">

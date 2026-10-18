@@ -70,11 +70,11 @@ for (const width of [1440, 720, 390, 320]) {
     await page.getByRole('button', { name: '笔记本', exact: true }).click()
     await expect(page.locator('.kb-card-updated')).toContainText('已固定')
     await page.getByRole('searchbox', { name: '搜索笔记本', exact: true }).fill('实践记录')
-    await expect(page.locator('.kb-card[data-book-id]')).toHaveCount(1)
+    await expect(page.locator('.kb-card')).toHaveCount(1)
     await page.getByRole('searchbox', { name: '搜索笔记本', exact: true }).fill('没有这个笔记本')
     await expect(page.getByText('没有找到匹配的笔记本', { exact: true })).toBeVisible()
     await page.getByRole('button', { name: '清除搜索', exact: true }).click()
-    await expect(page.locator('.kb-card[data-book-id]')).toHaveCount(1)
+    await expect(page.locator('.kb-card')).toHaveCount(1)
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
     await page.screenshot({ path: testInfo.outputPath(`workspace-${width}.png`), fullPage: true })
     await dataSettings(page)
@@ -123,7 +123,7 @@ test('桌面侧栏收起后保留入口、记住偏好，切到手机仍能打�
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
 })
 
-test('搜索独占一行，排序与显示选项位于下一行，菜单支持键盘和刷新记忆', async ({ page }) => {
+test('排序与搜索同行，菜单支持键盘选择、焦点返回和刷新记忆', async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 900 })
   await page.goto('/')
   await page.evaluate(() => localStorage.setItem('snotes_token', 'dev-token'))
@@ -133,8 +133,8 @@ test('搜索独占一行，排序与显示选项位于下一行，菜单支持�
     await page.setViewportSize({ width, height: 900 })
     const searchBox = (await page.locator('.note-search').boundingBox())!
     const sortBox = (await sort.boundingBox())!
-    expect(sortBox.y).toBeGreaterThanOrEqual(searchBox.y + searchBox.height)
-    expect(searchBox.width).toBeGreaterThan(sortBox.width)
+    expect(Math.abs(searchBox.y - sortBox.y)).toBeLessThanOrEqual(2)
+    expect(searchBox.x + searchBox.width).toBeLessThan(sortBox.x)
     expect(sortBox.x + sortBox.width).toBeLessThanOrEqual(width)
   }
   await sort.focus()

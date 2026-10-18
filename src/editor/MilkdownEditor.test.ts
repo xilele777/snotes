@@ -310,19 +310,6 @@ describe('MilkdownEditor 上传的文档生命周期', () => {
   const file = () => new File(['image'], 'photo.png', { type: 'image/png' })
   function markdown() { return editor.action(ctx => ctx.get(serializerCtx)(ctx.get(editorViewCtx).state.doc)) }
 
-  it('updates read-only immediately without replacing the document or editor state', async () => {
-    await wrapper!.setProps({ editable: true })
-    const view = editor.action(ctx => ctx.get(editorViewCtx))
-    const state = view.state
-    await wrapper!.setProps({ editable: false })
-    expect(view.dom.getAttribute('contenteditable')).toBe('false')
-    expect(view.editable).toBe(false)
-    expect(view.state).toBe(state)
-    await wrapper!.setProps({ editable: true })
-    expect(view.dom.getAttribute('contenteditable')).toBe('true')
-    expect(view.state).toBe(state)
-  })
-
   it('flushes ordinary typing before the Markdown listener runs when switching notes', async () => {
     editor.action(replaceAll('last keystrokes without an upload'))
     await wrapper!.setProps({ noteId: 'B', modelValue: 'B text' })

@@ -336,7 +336,7 @@ describe('NoteDetail 顶栏操作条', () => {
     for (const name of ['color', 'info', 'history', 'wordcount', 'trash']) expect(menuAction(name)).not.toBeNull()
     // jsdom 没有 navigator.share，不给分享入口
     expect(menuAction('share')).toBeNull()
-    expect(document.activeElement).toBe(menuAction('notebooks'))
+    expect(document.activeElement).toBe(menuAction('color'))
 
     // Esc 关闭并把焦点还给 ⋯
     window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }))

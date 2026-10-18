@@ -6,23 +6,11 @@ export interface WorkspacePreferences {
   groupsCollapsed: boolean
   librariesCollapsed: boolean
   sidebarCollapsed: boolean
-  listCollapsed: boolean
-  sidebarWidth: number
-  listWidth: number
-  noteLayout: 'cards' | 'list'
   pinnedKnowledgeBaseIds: string[]
   noteSort: NoteSort
   librarySort: LibrarySort
 }
 export const WORKSPACE_PREFERENCES_KEY = 'snotes_workspace_preferences'
-export const WORKSPACE_WIDTHS = {
-  sidebar: { min: 200, max: 340, default: 232 },
-  list: { min: 260, max: 520, default: 336 },
-} as const
-function parseWidth(value: unknown, range: { min: number; max: number; default: number }) {
-  return typeof value === 'number' && Number.isFinite(value)
-    ? Math.round(Math.min(range.max, Math.max(range.min, value))) : range.default
-}
 export function parseWorkspacePreferences(raw: string | null): WorkspacePreferences {
   let value: Partial<WorkspacePreferences> = {}
   try { value = JSON.parse(raw ?? '{}') ?? {} } catch { /* Corrupt preferences never block opening notes. */ }
@@ -30,10 +18,6 @@ export function parseWorkspacePreferences(raw: string | null): WorkspacePreferen
     groupsCollapsed: value.groupsCollapsed === true,
     librariesCollapsed: value.librariesCollapsed === true,
     sidebarCollapsed: value.sidebarCollapsed === true,
-    listCollapsed: value.listCollapsed === true,
-    sidebarWidth: parseWidth(value.sidebarWidth, WORKSPACE_WIDTHS.sidebar),
-    listWidth: parseWidth(value.listWidth, WORKSPACE_WIDTHS.list),
-    noteLayout: value.noteLayout === 'list' ? 'list' : 'cards',
     pinnedKnowledgeBaseIds: Array.isArray(value.pinnedKnowledgeBaseIds) ? [...new Set(value.pinnedKnowledgeBaseIds.filter((id): id is string => typeof id === 'string'))].slice(0, 500) : [],
     noteSort: value.noteSort === 'created' || value.noteSort === 'title' ? value.noteSort : 'updated',
     librarySort: value.librarySort === 'name' ? 'name' : 'updated',

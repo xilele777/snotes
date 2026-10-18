@@ -662,14 +662,6 @@ const inner = ref<ComponentPublicInstance<{
   redo: () => void
 }> | null>(null)
 
-// ProseMirror re-evaluates editable when its view updates. A Vue prop change
-// alone leaves contenteditable stale until the next editor transaction.
-watch(() => props.editable, () => {
-  inner.value?.getEditor()?.action(ctx => {
-    ctx.get(editorViewCtx).setProps({ editable: () => props.editable !== false })
-  })
-})
-
 watch(
   () => [props.noteId, props.modelValue] as const,
   ([noteId, markdown], [previousId]) => {
