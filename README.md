@@ -1,12 +1,9 @@
 <div align="center">
+  
+<img src="https://socialify.git.ci/xilele777/snotes/image?custom_description=%E4%BD%A0%E7%9A%84%E7%AC%94%E8%AE%B0%EF%BC%8C%E4%BD%A0%E7%9A%84%E6%9C%8D%E5%8A%A1%E5%99%A8%E3%80%82%E5%A4%9A%E7%AB%AF%E5%90%8C%E6%AD%A5%EF%BC%8C%E7%A6%BB%E7%BA%BF%E4%B9%9F%E8%83%BD%E5%86%99%E3%80%82&description=1&font=JetBrains+Mono&language=1&name=1&owner=1&pattern=Plus&theme=Light" alt="snotes" width="520" height="260" />
 
-<img src="https://github.com/user-attachments/assets/f70b7292-c7ef-4918-8efb-b835007639e6" width="600" alt="snotes" />
 
-# snotes
-
-**你的笔记，你的服务器。多端同步，离线也能写。**
-
-轻量的个人 Markdown 笔记应用，支持部署到 Cloudflare 或自己的服务器。
+**轻量的个人 Markdown 笔记应用，支持部署到 Cloudflare 或自己的服务器。**
 
 [![Release](https://img.shields.io/github/v/release/xilele777/snotes)](https://github.com/xilele777/snotes/releases/latest)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
