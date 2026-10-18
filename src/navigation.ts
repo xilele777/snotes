@@ -119,7 +119,6 @@ export async function showKnowledgeBases(id: string | null = null) {
   pushNav()
   ui.workspacePage = null
   ui.focusMode = false
-  ui.readingMode = false
   ui.view = 'knowledge-bases'
   ui.activeKnowledgeBaseId = id
   ui.activeGroupId = null
@@ -158,7 +157,6 @@ export async function openManagedView(target: 'hidden' | 'trash') {
   if (!ui.workspacePage) pushNav()
   ui.workspacePage = null
   ui.focusMode = false
-  ui.readingMode = false
   ui.drawerOpen = false
   ui.restorePosition = null
   ui.query = ''

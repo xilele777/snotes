@@ -31,6 +31,16 @@ describe('resolveShortcut', () => {
     expect(resolveShortcut(ctrl('k'), { hasQuery: false })).toEqual({ type: 'focusSearch' })
   })
 
+  it('编辑器内保留 Vditor 链接、插入块和表格快捷键，应用操作使用独立键位', () => {
+    const ctx = { hasQuery: false, inEditor: true }
+    expect(resolveShortcut(ctrl('k'), ctx)).toBeNull()
+    for (const key of ['e', 'd', 'u', 'f']) {
+      expect(resolveShortcut({ ...ctrl(key), shiftKey: true }, ctx)).toBeNull()
+    }
+    expect(resolveShortcut({ ...ctrl('e'), altKey: true }, ctx)).toBeNull()
+    expect(resolveShortcut(ctrl('f'), ctx)).toEqual({ type: 'focusSearch' })
+  })
+
   it('Esc 在有查询时 → clearQuery', () => {
     expect(resolveShortcut({ metaKey: false, ctrlKey: false, key: 'Escape' }, { hasQuery: true }))
       .toEqual({ type: 'clearQuery' })
@@ -61,18 +71,18 @@ describe('resolveShortcut 扩展键位', () => {
   const shift = (key: string, code?: string) => ({ metaKey: false, ctrlKey: true, shiftKey: true, key, code })
   const alt = (key: string) => ({ metaKey: false, ctrlKey: true, altKey: true, key })
 
-  it('Mod+Shift+S/P/D → 星标、置顶、删除', () => {
+  it('Mod+Shift+S/P → 星标、置顶；Mod+Alt+D → 删除', () => {
     expect(resolveShortcut(shift('S'), ctx)).toEqual({ type: 'toggleStar' })
     expect(resolveShortcut(shift('p'), ctx)).toEqual({ type: 'togglePin' })
-    expect(resolveShortcut(shift('D'), ctx)).toEqual({ type: 'trash' })
+    expect(resolveShortcut(alt('D'), ctx)).toEqual({ type: 'trash' })
   })
 
-  it('Mod+Shift+F 是专注模式而不是搜索', () => {
-    expect(resolveShortcut(shift('F'), ctx)).toEqual({ type: 'toggleFocus' })
+  it('Mod+Alt+F 是专注模式而不是搜索', () => {
+    expect(resolveShortcut(alt('F'), ctx)).toEqual({ type: 'toggleFocus' })
   })
 
-  it('Mod+Shift+U → 立即同步', () => {
-    expect(resolveShortcut(shift('U'), ctx)).toEqual({ type: 'syncNow' })
+  it('Mod+Alt+U → 立即同步', () => {
+    expect(resolveShortcut(alt('U'), ctx)).toEqual({ type: 'syncNow' })
   })
 
   it('Mod+Alt+↑/↓ → 上一条 / 下一条', () => {

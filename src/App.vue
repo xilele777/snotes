@@ -55,10 +55,8 @@ watch(() => ui.drawerOpen, async (open) => {
 })
 
 watch(() => [notes.currentId, ui.view], () => {
-  // 阅读模式是「正在读的这篇」的状态：没有正文可读（无选中 / 回收站 / 监控页）就退出
   if (!notes.currentId || ui.view === 'metrics' || ui.view === 'trash') {
     ui.focusMode = false
-    ui.readingMode = false
   }
 })
 
@@ -97,12 +95,11 @@ watch(
 function onKeydown(e: KeyboardEvent) {
   // 弹窗和菜单打开时把键盘交给它们：Esc 该关的是浮层，不是抽屉或搜索词
   if (!hasToken.value || e.defaultPrevented || e.isComposing || document.querySelector('[aria-modal="true"], [role="menu"]')) return
-  if (e.key === 'Escape' && (ui.drawerOpen || (!ui.workspacePage && (ui.focusMode || ui.readingMode)))) {
+  if (e.key === 'Escape' && (ui.drawerOpen || (!ui.workspacePage && ui.focusMode))) {
     e.preventDefault()
     e.stopPropagation()
-    // 由外到内：抽屉 -> 阅读模式 -> 专注模式
+    // 由外到内：抽屉 -> 专注模式
     if (ui.drawerOpen) ui.drawerOpen = false
-    else if (ui.readingMode) ui.readingMode = false
     else ui.focusMode = false
     return
   }
@@ -114,7 +111,10 @@ function onKeydown(e: KeyboardEvent) {
     else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first?.focus() }
     return
   }
-  const action = resolveShortcut(e, { hasQuery: ui.query.trim().length > 0 })
+  const action = resolveShortcut(e, {
+    hasQuery: ui.query.trim().length > 0,
+    inEditor: e.target instanceof Element && !!e.target.closest('.snotes-vditor'),
+  })
   if (!action) return
   if (ui.workspacePage && action.type !== 'openSettings' && action.type !== 'focusSearch') return
   e.preventDefault()
@@ -143,8 +143,6 @@ async function runShortcut(action: ShortcutAction) {
     case 'clearQuery': ui.query = ''; return
     case 'toggleStar': if (editable) await notes.setProps(current.id, { star: current.star === 1 ? 0 : 1 }); return
     case 'togglePin': if (editable) await notes.setProps(current.id, { top: current.top === 1 ? 0 : 1 }); return
-    // 阅读模式是纯界面状态；只加请求计数，由 NoteDetail 负责「先落盘再只读」
-    case 'toggleReading': if (editable) ui.readingRequest += 1; return
     // 删除仍要走确认弹窗：计数加一，NoteDetail 监听到就弹出与鼠标路径相同的确认框
     case 'trash': if (editable) ui.trashRequest += 1; return
     case 'nextNote': stepNote(1); return
@@ -156,7 +154,7 @@ async function runShortcut(action: ShortcutAction) {
 }
 
 onMounted(() => {
-  // 先处理界面快捷键，避免编辑器的 Escape / Mod-K 抢走专注与搜索操作。
+  // 应用快捷键先处理；与 Vditor 冲突的键位由 resolveShortcut 留给编辑器。
   window.addEventListener('keydown', onKeydown, true)
   window.addEventListener('resize', updateViewport)
   // main.ts 已在取数前恢复导航；独立挂载 App 时也初始化，重复调用不会覆盖状态。

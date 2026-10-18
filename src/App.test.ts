@@ -9,12 +9,8 @@ import { useUiStore } from './stores/ui'
 import App from './App.vue'
 import { useGroupsStore } from './stores/groups'
 
-// Milkdown 起真实 ProseMirror，单测里换成空壳
-vi.mock('@milkdown/vue', () => ({
-  Milkdown: { template: '<div class="milkdown-mock" />' },
-  MilkdownProvider: { template: '<div><slot /></div>' },
-  useEditor: () => ({ loading: { value: false }, get: () => undefined }),
-}))
+// Vditor 的真实 DOM 与解析器由浏览器测试覆盖。
+vi.mock('vditor', async () => ({ default: (await import('../tests/unit/mock-vditor')).MockVditor }))
 // 令牌态默认放行，进 layout 分支
 vi.mock('./api/token', async () => {
   const { ref } = await import('vue')
@@ -278,14 +274,14 @@ describe('App 扩展快捷键', () => {
     wrapper.unmount()
   })
 
-  it('Ctrl+Shift+D 经 ui.trashRequest 软删除并显示撤销', async () => {
+  it('Ctrl+Alt+D 经 ui.trashRequest 软删除并显示撤销', async () => {
     const notes = useNotesStore()
     const ui = useUiStore()
     await notes.create()
     const wrapper = mount(App, { attachTo: document.body })
     await flushPromises()
 
-    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'D', ctrlKey: true, shiftKey: true, cancelable: true }))
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'd', ctrlKey: true, altKey: true, cancelable: true }))
     expect(ui.trashRequest).toBe(1)
     await vi.waitFor(() => expect(document.body.textContent).toContain('笔记已移入回收站'))
     expect(document.body.textContent).toContain('撤销')
