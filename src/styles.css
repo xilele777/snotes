@@ -1,26 +1,31 @@
 :root {
   color-scheme: light;
-  --text-primary: #25262b;
-  --text-secondary: #50545e;
-  --text-tertiary: #666b76;
-  --text-disabled: #adb0b8;
-  --bg-app: #f7f7f7;
-  --bg-surface: #ffffff;
-  --bg-rail: #f5f6f8;
-  --bg-list: #ffffff;
-  --bg-hover: #ededf0;
-  --bg-press: #e5e7eb;
-  --bg-divider: #e8e9ec;
-  --border-default: #dfe1e6;
-  --border-light: #e9eaee;
-  --border-input: #bdc3cf;
-  --accent: #4668e8;
+  --text-primary: #25372f;
+  --text-secondary: #53645b;
+  --text-tertiary: #728077;
+  --text-disabled: #a9b3ab;
+  --bg-app: #f4f5f0;
+  --bg-surface: #fefefb;
+  --bg-rail: #edf0e8;
+  --bg-list: #f6f7f2;
+  --bg-hover: #e5eae1;
+  --bg-press: #dce4d8;
+  --bg-divider: #e4e8de;
+  --border-default: #d8dfd3;
+  --border-light: #e5e9df;
+  --border-input: #a2b4a7;
+  --accent: #28745b;
   --on-accent: #ffffff;
-  --accent-press: #3d5ed7;
-  --accent-soft: #edf1ff;
-  --selected-bg: #edf1ff;
-  --selected-text: #2d4fc7;
-  --focus-ring: #dce4ff;
+  --accent-press: #1e5c47;
+  --accent-soft: #dfeddf;
+  --selected-bg: #e6f0e2;
+  --selected-text: #225b43;
+  --focus-ring: #c8ddc6;
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 16px;
+  --shadow-card: 0 2px 6px rgb(30 50 35 / 3%);
+  --shadow-floating: 0 12px 36px rgb(30 50 35 / 12%);
   --success: #5c8472;
   --danger: #ca5353;
   --danger-bg: #fff3f3;
@@ -42,28 +47,30 @@
 /* 深色：由 index.html 首帧脚本与 src/settings.ts 写到 <html data-theme>，跟随系统时也解析成 light/dark。 */
 [data-theme="dark"] {
   color-scheme: dark;
-  --text-primary: #edf2fa;
-  --text-secondary: #b9c4d4;
-  --text-tertiary: #95a4b9;
-  --text-disabled: #5e616a;
-  --bg-app: #1e1f24;
-  --bg-surface: #27282f;
-  --bg-rail: #1b1c20;
-  --bg-list: #212228;
-  --bg-hover: #303139;
+  --text-primary: #e6eee6;
+  --text-secondary: #b3c3b6;
+  --text-tertiary: #91a595;
+  --text-disabled: #617266;
+  --bg-app: #171e1a;
+  --bg-surface: #202a23;
+  --bg-rail: #18221c;
+  --bg-list: #1c261f;
+  --bg-hover: #2b382d;
   --highlight-bg: #6b5a00;
-  --bg-press: #393b45;
-  --bg-divider: #30323a;
-  --border-default: #42444e;
-  --border-light: #363842;
-  --border-input: #606370;
-  --accent: #7f97f0;
-  --on-accent: #14213d;
-  --accent-press: #96abf4;
-  --accent-soft: #2a3352;
-  --selected-bg: #2a3352;
-  --selected-text: #c4d2ff;
-  --focus-ring: #3c4b82;
+  --bg-press: #35463a;
+  --bg-divider: #303d33;
+  --border-default: #3b4d40;
+  --border-light: #2e3c31;
+  --border-input: #657d6b;
+  --accent: #a3d4b0;
+  --on-accent: #153823;
+  --accent-press: #bce4c4;
+  --accent-soft: #2b4433;
+  --selected-bg: #2d4635;
+  --selected-text: #d3ecd5;
+  --focus-ring: #43644b;
+  --shadow-card: 0 2px 6px rgb(0 0 0 / 8%);
+  --shadow-floating: 0 12px 36px rgb(0 0 0 / 30%);
   --success: #82b09a;
   --danger: #e37c7c;
   --danger-bg: #3a2727;
@@ -133,7 +140,7 @@ kbd { font-family: inherit; font-size: 10px; line-height: 20px; white-space: now
 .groups li:hover .group-menu-btn, .groups li:focus-within .group-menu-btn, .groups li.menu-open .group-menu-btn { opacity: 1; }
 .groups .group-menu-btn:hover, .groups li.menu-open .group-menu-btn { background: var(--border-default); }
 /* Menus open in a fixed-position layer so scrolling lists, the drawer transform and the top bar cannot clip them. */
-.action-menu { position: fixed; z-index: 60; max-width: calc(100vw - 16px); padding: 6px; display: flex; flex-direction: column; gap: 2px; background: var(--bg-surface); border: 1px solid var(--border-light); border-radius: 8px; box-shadow: 0 6px 24px rgb(0 0 0 / 10%); }
+.action-menu { position: fixed; z-index: 60; max-width: calc(100vw - 16px); padding: 6px; display: flex; flex-direction: column; gap: 2px; background: var(--bg-surface); border: 1px solid var(--border-default); border-radius: var(--radius-md); box-shadow: var(--shadow-floating); }
 .group-menu { min-width: 184px; }
 .note-menu { min-width: 200px; }
 .menu-item { display: flex; align-items: center; gap: 9px; width: 100%; padding: 8px 10px; border: 0; border-radius: 5px; background: transparent; color: var(--text-primary); font-size: 13px; text-align: left; }

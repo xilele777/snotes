@@ -43,8 +43,8 @@ export const pwaOptions: PwaOptions = {
     description: '本地优先的 Markdown 便签',
     display: 'standalone',
     start_url: '/',
-    background_color: '#ffffff',
-    theme_color: '#ffffff',
+    background_color: '#fefefb',
+    theme_color: '#fefefb',
     icons: [
       { src: '/snotes-192.png', sizes: '192x192', type: 'image/png', purpose: 'any' },
       { src: '/snotes-512.png', sizes: '512x512', type: 'image/png', purpose: 'any' },

@@ -24,7 +24,7 @@ export const SETTINGS_KEY = 'snotes_settings'
 export const DEFAULT_SETTINGS: Settings = { theme: 'system', fontSize: 'medium', editorWidth: 'medium', tableDensity: 'medium', noteDensity: 'comfortable', showNotePreview: true, lineSpacing: 'standard' }
 
 /** 地址栏与系统状态栏的底色，随主题切换；与 styles.css 的 --bg-surface 保持一致。 */
-export const THEME_COLORS: Record<'light' | 'dark', string> = { light: '#ffffff', dark: '#27282f' }
+export const THEME_COLORS: Record<'light' | 'dark', string> = { light: '#fefefb', dark: '#202a23' }
 
 const THEMES: readonly Theme[] = ['system', 'light', 'dark']
 const FONT_SIZES: readonly FontSize[] = ['small', 'medium', 'large']
