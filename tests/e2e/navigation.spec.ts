@@ -29,7 +29,7 @@ for (const width of [1440, 390]) {
     await expect(page).toHaveURL(new RegExp(`/star\\?note=${ids[0]}$`))
     await page.reload()
     await expect(page.locator('.layout')).toHaveAttribute('data-view', 'star')
-    await expect(page.locator('.snotes-vditor [role="textbox"]:visible')).toHaveText('路由笔记 0')
+    await expect(page.locator('.snotes-vditor [role="textbox"]:visible')).toContainText('路由笔记 0')
     if (width <= 720) await expect(page.locator('.layout')).toHaveAttribute('data-mobile-pane', 'editor')
 
     await page.keyboard.press('Control+,')
@@ -41,11 +41,11 @@ for (const width of [1440, 390]) {
     await page.goBack()
     await expect(settings).toHaveCount(0)
     await expect(page.locator('.layout')).toHaveAttribute('data-view', 'star')
-    await expect(page.locator('.snotes-vditor [role="textbox"]:visible')).toHaveText('路由笔记 0')
+    await expect(page.locator('.snotes-vditor [role="textbox"]:visible')).toContainText('路由笔记 0')
     await page.goForward()
     await expect(settings.getByRole('tab', { name: 'Agent 接入', exact: true })).toHaveAttribute('aria-selected', 'true')
     await settings.getByRole('button', { name: '返回工作区', exact: true }).click()
-    await expect(page.locator('.snotes-vditor [role="textbox"]:visible')).toHaveText('路由笔记 0')
+    await expect(page.locator('.snotes-vditor [role="textbox"]:visible')).toContainText('路由笔记 0')
   })
 }
 
@@ -61,12 +61,12 @@ test('空缓存直接打开笔记本地址、刷新和旧分享链接均定位�
   const path = `/notebooks/${bookId}?note=${noteId}&node=note-ref`
   await page.goto(path)
   await expect(page.locator('.kb-header h2')).toHaveText('路由手册')
-  await expect(page.locator('.snotes-vditor [role="textbox"]:visible')).toHaveText('地址直达')
+  await expect(page.locator('.snotes-vditor [role="textbox"]:visible')).toContainText('地址直达')
   await expect(page).toHaveURL(new RegExp(`/notebooks/${bookId}\\?note=${noteId}&node=note-ref$`))
   await page.reload()
-  await expect(page.locator('.snotes-vditor [role="textbox"]:visible')).toHaveText('地址直达')
+  await expect(page.locator('.snotes-vditor [role="textbox"]:visible')).toContainText('地址直达')
   await page.goto(`/?notebook=${bookId}&note=${noteId}`)
-  await expect(page.locator('.snotes-vditor [role="textbox"]:visible')).toHaveText('地址直达')
+  await expect(page.locator('.snotes-vditor [role="textbox"]:visible')).toContainText('地址直达')
   await expect(page).toHaveURL(new RegExp(`/notebooks/${bookId}\\?note=${noteId}&node=note-ref$`))
 })
 

@@ -11,6 +11,7 @@ import { useGroupsStore } from './stores/groups'
 
 // Vditor 的真实 DOM 与解析器由浏览器测试覆盖。
 vi.mock('vditor', async () => ({ default: (await import('../tests/unit/mock-vditor')).MockVditor }))
+vi.mock('./editor/vditor-assets', () => ({ loadVditorAssets: vi.fn().mockResolvedValue(undefined) }))
 // 令牌态默认放行，进 layout 分支
 vi.mock('./api/token', async () => {
   const { ref } = await import('vue')

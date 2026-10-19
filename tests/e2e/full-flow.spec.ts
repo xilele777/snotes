@@ -374,7 +374,10 @@ test('原生表格支持加行加列，并在表格后继续输入', async ({ pa
   await expect(table.locator('tr')).toHaveCount(4)
   await page.keyboard.press('Control+Shift+Equal')
   await expect(table.locator('th')).toHaveCount(4)
-  await page.keyboard.press('Control+Shift+e')
+  // Exit from the last cell using the native table navigation. The low-use
+  // insert-after toolbar command (and its shortcut) is intentionally removed.
+  await table.locator('td').last().click()
+  await page.keyboard.press('ArrowDown')
   await page.keyboard.type('表格后面的文字')
   await expect(editor.locator('p').last()).toHaveText('表格后面的文字')
   await expect.poll(() => savedBody(page)).toContain('表格后面的文字')
@@ -451,10 +454,12 @@ test('双击图片打开灯箱：缩放、左右切换、下载与关闭', async
   await createNote(page)
   await page.locator('.snotes-vditor [role="textbox"]:visible').click()
 
-  // 粘贴两张图片
-  await pasteImage(page)
+  // Use visible photo-sized fixtures: adjacent 1px images share rounded hit
+  // coordinates and cannot reliably be double-clicked independently.
+  await pasteImage(page, true)
+  await expect(page.locator('.snotes-vditor [role="textbox"]:visible img[src^="/api/images/"]')).toHaveCount(1)
   await page.keyboard.press('Enter')
-  await pasteImage(page)
+  await pasteImage(page, true)
 
   // 等待图片上传完成
   await expect(page.locator('.snotes-vditor [role="textbox"]:visible img[src^="/api/images/"]')).toHaveCount(2, {
@@ -506,7 +511,7 @@ test('双击图片打开灯箱：缩放、左右切换、下载与关闭', async
   await createNote(page)
   await expect(page.locator('.snotes-vditor [role="textbox"]:visible img')).toHaveCount(0)
   await page.locator('.snotes-vditor [role="textbox"]:visible').click()
-  await pasteImage(page)
+  await pasteImage(page, true)
   await expect(page.locator('.snotes-vditor [role="textbox"]:visible img[src^="/api/images/"]')).toHaveCount(1, { timeout: 15_000 })
   await page.locator('.snotes-vditor [role="textbox"]:visible img').first().dblclick()
   await expect(page.locator('.lightbox-stage img')).toBeVisible()

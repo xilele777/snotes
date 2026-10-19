@@ -49,6 +49,46 @@ describe('notes store', () => {
     expect(store.notes.find((n) => n.id === note.id)!.title).toBe('新标题')
   })
 
+  it('连续保存只更新当前行，不重复读取整份笔记列表', async () => {
+    const store = useNotesStore()
+    const first = await store.create()
+    const second = await store.create()
+    const list = vi.spyOn(repo, 'listNotes')
+    try {
+      await store.saveBody(first.id, '# 第一遍')
+      await store.saveBody(first.id, '# 第二遍', '# 第一遍')
+      expect(list).not.toHaveBeenCalled()
+      expect(store.notes.find(note => note.id === first.id)?.body).toBe('# 第二遍')
+      expect(store.notes.some(note => note.id === second.id)).toBe(true)
+    } finally { list.mockRestore() }
+  })
+
+  it('保存时发生并发冲突仍把新建的冲突副本加入列表', async () => {
+    const store = useNotesStore()
+    const note = await store.create()
+    await store.saveBody(note.id, '另一台设备的新正文')
+    await store.saveBody(note.id, '本机编辑', '旧基线')
+    expect(store.notes).toHaveLength(2)
+    expect(store.notes.find(row => row.id !== note.id)?.body).toContain('另一台设备的新正文')
+    expect(store.current?.body).toBe('本机编辑')
+  })
+
+  it('保存正文后笔记本目录保持手动顺序', async () => {
+    const store = useNotesStore()
+    const first = await store.create()
+    const second = await store.create()
+    await db.knowledgeBaseTocs.put({
+      knowledge_base_id: 'book', version: 1, update_time: 1,
+      nodes: [first.id, second.id].map((id, ord) => ({ id: `node-${ord}`, parent_id: null, kind: 'note', ord, note_id: id, title: null })),
+    })
+    const ui = useUiStore()
+    ui.view = 'knowledge-bases'
+    ui.activeKnowledgeBaseId = 'book'
+    await store.load()
+    await store.saveBody(second.id, '# 更新第二篇')
+    expect(store.visible.map(note => note.id)).toEqual([first.id, second.id])
+  })
+
   it('setProps 更新星标并重排序', async () => {
     const store = useNotesStore()
     const a = await store.create()

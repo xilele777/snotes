@@ -147,14 +147,16 @@ export async function createConflictCopy(
  * PATCH 基线看起来是最新的。按 §8.5 后写者胜，但被覆盖的一版先另存为冲突副本。
  * 不传 base 时不做校验（副本生成、测试等直接写库的调用方）。
  */
-export async function updateBody(id: string, content: string, base?: string): Promise<void> {
+// Returns true when a conflict copy was inserted and list membership changed.
+export async function updateBody(id: string, content: string, base?: string): Promise<boolean> {
   const { title, summary, thumbnail } = derive(content)
 
-  await db.transaction('rw', db.notes, db.outbox, db.history, async () => {
+  const conflictCreated = await db.transaction('rw', db.notes, db.outbox, db.history, async () => {
     const note = await db.notes.get(id)
-    if (!note) return
+    if (!note) return false
 
-    if (base !== undefined && note.body !== base && note.body !== content) {
+    const conflict = base !== undefined && note.body !== base && note.body !== content
+    if (conflict) {
       await insertNoteIn(buildNote(conflictContent(note.body), { group_id: note.group_id }))
     }
 
@@ -180,9 +182,11 @@ export async function updateBody(id: string, content: string, base?: string): Pr
         payload: { content, title, summary, thumbnail, base_version: note.version },
       })
     )
+    return conflict
   })
 
   emitLocalWrite()
+  return conflictCreated
 }
 
 export async function updateProps(id: string, props: NoteProps): Promise<void> {

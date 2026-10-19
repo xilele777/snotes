@@ -12,6 +12,7 @@ import NoteDetail from './NoteDetail.vue'
 
 // Vditor 的真实 DOM 与解析器由浏览器测试覆盖。
 vi.mock('vditor', async () => ({ default: (await import('../../tests/unit/mock-vditor')).MockVditor }))
+vi.mock('../editor/vditor-assets', () => ({ loadVditorAssets: vi.fn().mockResolvedValue(undefined) }))
 
 beforeEach(async () => {
   setActivePinia(createPinia())

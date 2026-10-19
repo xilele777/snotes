@@ -47,16 +47,13 @@ async function pendingBodyIds(): Promise<Set<string>> {
   return new Set(tasks.filter((t) => isBodyTask(t.kind)).map((t) => t.note_id))
 }
 
-/** 单条笔记此刻是否仍有未失败的正文类任务；必须在落库的同一事务里查 */
-async function hasPendingBody(noteId: string): Promise<boolean> {
-  const tasks = await db.outbox.where('note_id').equals(noteId).toArray()
-  return tasks.some((t) => t.failed === 0 && isBodyTask(t.kind))
-}
-
-async function localStates(): Promise<Map<string, LocalNoteState>> {
-  const [all, pending] = await Promise.all([db.notes.toArray(), pendingBodyIds()])
+async function localStates(ids: string[]): Promise<Map<string, LocalNoteState>> {
+  // Pull pages contain metadata only. Fetch just the rows in the current page;
+  // cloning every local body for every page was the main cold-start cost after
+  // IndexedDB was cleared.
+  const [all, pending] = await Promise.all([db.notes.bulkGet(ids), pendingBodyIds()])
   return new Map(
-    all.map((n) => [
+    all.filter((n): n is LocalNote => !!n).map((n) => [
       n.id,
       {
         id: n.id,
@@ -75,31 +72,28 @@ async function applyGroups(groups: Group[]) {
 }
 
 /**
- * 把一条远端正文落库。返回是否真的写了。
+ * 把一批远端正文落库，返回实际写入的数量。
  * 检查与写入放在同一个事务里：planPull 那会儿没有待推送正文，不代表现在也没有——
  * 拉正文这段时间用户可能又保存了一次。此时若照常落库，本地看到的就变成远端旧正文，
  * 而 outbox 里那条任务随后照常推上去，本地正文和将要上传的内容就不是同一份了。
  */
-function applyBody(body: BodiesResponse['bodies'][number]): Promise<boolean> {
-  return db.transaction('rw', db.notes, db.outbox, db.history, async () => {
-    const local = await db.notes.get(body.note_id)
-    if (!local) return false
-
-    // 版本低于本地说明本地这份正文已经是更新版本了，覆盖下去会丢字。
-    // 用 < 而非 <=：body.version 与 body_version 相等时仍允许写入——
-    // 此时本地正文来自一条已失败的 push 任务（failed=1），它再也不会把本地内容
-    // 推上去，本地与远端就再也不会自然收敛，必须靠这里强制对齐到远端。
-    if (body.version < local.body_version) return false
-    if (await hasPendingBody(body.note_id)) return false
-
-    await db.notes.update(body.note_id, {
-      body: body.content,
-      body_version: body.version,
-      version: body.version,
-      // 列表展示的是派生字段，正文换了标题摘要也得跟着换，否则列表一直是旧标题旧摘要
-      ...derive(body.content),
-    })
-    return true
+function applyBodies(bodies: BodiesResponse['bodies']): Promise<number> {
+  return db.transaction('rw', db.notes, db.outbox, async () => {
+    const [rows, pending] = await Promise.all([
+      db.notes.bulkGet(bodies.map(body => body.note_id)), pendingBodyIds(),
+    ])
+    const updates: LocalNote[] = []
+    for (const [index, body] of bodies.entries()) {
+      const local = rows[index]
+      // Equal versions still repair a body left by a permanently failed push.
+      if (!local || body.version < local.body_version || pending.has(body.note_id)) continue
+      updates.push({
+        ...local, body: body.content, body_version: body.version, version: body.version,
+        ...derive(body.content),
+      })
+    }
+    if (updates.length) await db.notes.bulkPut(updates)
+    return updates.length
   })
 }
 
@@ -129,7 +123,7 @@ export async function pullOnce(): Promise<PullResult> {
     await applyGroups(response.groups)
     groups += response.groups.length
 
-    const plan = planPull(response.notes, await localStates())
+    const plan = planPull(response.notes, await localStates(response.notes.map(note => note.id)))
 
     if (plan.insert.length > 0) {
       // 必须是 bulkPut：since 用的是 >=，同一条笔记本就可能在一页里重复出现，
@@ -168,18 +162,38 @@ export async function pullOnce(): Promise<PullResult> {
     if (!cursor) break
   }
 
+  // A new device can show titles immediately instead of waiting for every
+  // full body. NoteDetail keeps an undownloaded body read-only/loading.
+  if (since === 0 && applied > 0) emitRemoteApplied()
+
   // 正文按批拉取。同样，失败即冒泡，游标不推进。
   let bodies = 0
-  for (let i = 0; i < pendingBodies.length; i += BODY_BATCH) {
-    const ids = pendingBodies.slice(i, i + BODY_BATCH)
-
-    const response = await apiFetch<BodiesResponse>('/api/sync/bodies', {
-      method: 'POST',
-      body: JSON.stringify({ ids }),
-    })
-
-    for (const body of response.bodies) {
-      if (await applyBody(body)) bodies++
+  // Metadata is ordered oldest first; download the newest (visible) notes
+  // first so a user can open them while older notes continue in the background.
+  const bodyIds = [...new Set(pendingBodies)].reverse()
+  const batches = Array.from({ length: Math.ceil(bodyIds.length / BODY_BATCH) }, (_, index) =>
+    bodyIds.slice(index * BODY_BATCH, (index + 1) * BODY_BATCH)
+  )
+  // Independent requests share at most three connections. Apply each completed
+  // batch immediately so one slow request cannot hold the first editor hostage.
+  let firstBodiesShown = false
+  for (let offset = 0; offset < batches.length; offset += 3) {
+    // Bound concurrency/memory on devices with thousands of notes, and settle
+    // all requests before surfacing a failure so retries cannot overlap them.
+    const results = await Promise.allSettled(batches.slice(offset, offset + 3).map(async ids => {
+      const response = await apiFetch<BodiesResponse>('/api/sync/bodies', {
+        method: 'POST', body: JSON.stringify({ ids }),
+      })
+      const count = await applyBodies(response.bodies)
+      if (since === 0 && !firstBodiesShown && count > 0) {
+        firstBodiesShown = true
+        emitRemoteApplied()
+      }
+      return count
+    }))
+    for (const result of results) {
+      if (result.status === 'rejected') throw result.reason
+      bodies += result.value
     }
   }
 

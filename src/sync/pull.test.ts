@@ -323,6 +323,60 @@ describe('pullOnce', () => {
 })
 
 describe('pullOnce 落库前重新检查本地状态', () => {
+  it('空缓存先显示元数据，快批次立即可读，慢批次期间保存的本地正文不会被覆盖', async () => {
+    const notes = Array.from({ length: 120 }, (_, index) => meta({ id: `n${index}` }))
+    let release!: () => void
+    const slow = new Promise<void>(resolve => { release = resolve })
+    let requests = 0
+    const listener = vi.fn()
+    const off = onRemoteApplied(listener)
+    apiFetch.mockImplementation(async (path: string, options: RequestInit) => {
+      if (path !== '/api/sync/bodies') return page({ notes })
+      const { ids } = JSON.parse(options.body as string) as { ids: string[] }
+      requests++
+      if (ids.includes('n119')) await slow
+      return { bodies: ids.map(id => ({ note_id: id, content: `远端 ${id}`, version: 1 })) }
+    })
+    const sync = pullOnce()
+    try {
+      await vi.waitFor(() => expect(requests).toBe(3))
+      await vi.waitFor(async () => expect((await db.notes.get('n0'))?.body).toBe('远端 n0'))
+      expect((await db.notes.get('n119'))?.body_version).toBe(0)
+      expect(listener.mock.calls.length).toBeGreaterThanOrEqual(2)
+      expect(await getMeta(SYNC_CURSOR_KEY)).toBeUndefined()
+      await updateBody('n119', '下载期间新写的正文')
+    } finally {
+      release()
+      await sync
+      off()
+    }
+    expect((await db.notes.get('n119'))?.body).toBe('下载期间新写的正文')
+    expect(await getMeta(SYNC_CURSOR_KEY)).toBe(5000)
+  })
+
+  it('某批失败后等待其他在途批次结束才允许重试，不推进游标', async () => {
+    let release!: () => void
+    const slow = new Promise<void>(resolve => { release = resolve })
+    let requests = 0
+    let settled = false
+    apiFetch.mockImplementation(async (path: string, options: RequestInit) => {
+      if (path !== '/api/sync/bodies') return page({ notes: Array.from({ length: 51 }, (_, i) => meta({ id: `n${i}` })) })
+      requests++
+      const { ids } = JSON.parse(options.body as string) as { ids: string[] }
+      if (ids.includes('n50')) throw new Error('一批失败')
+      await slow
+      return { bodies: ids.map(id => ({ note_id: id, content: '已下载正文', version: 1 })) }
+    })
+    const sync = pullOnce().catch(error => { settled = true; return error })
+    try {
+      await vi.waitFor(() => expect(requests).toBe(2))
+      expect(settled).toBe(false)
+    } finally { release() }
+    expect(await sync).toBeInstanceOf(Error)
+    expect((await db.notes.get('n0'))?.body).toBe('已下载正文')
+    expect(await getMeta(SYNC_CURSOR_KEY)).toBeUndefined()
+  })
+
   it('拉正文期间用户又保存了一次，远端正文不覆盖新编辑', async () => {
     await db.notes.add({ ...meta(), body: '旧正文', body_version: 1, dirty: 'none' })
     apiFetch.mockImplementation(async (path: string) => {

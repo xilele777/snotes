@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
+import { useMediaQuery } from './useMediaQuery'
 import { isMobile, openDrawer, pushNav, switchListView } from '../navigation'
 import EmptyState from './EmptyState.vue'
 import ListSkeleton from './ListSkeleton.vue'
@@ -18,6 +19,7 @@ import { retrySyncNow } from '../sync/engine'
 import { hasToken } from '../api/token'
 import { notify } from '../notify'
 import { workspacePreferences as preferences, updateWorkspacePreferences, type NoteSort } from '../workspace-preferences'
+import { settings } from '../settings'
 
 const notes = useNotesStore()
 const groups = useGroupsStore()
@@ -25,6 +27,36 @@ const ui = useUiStore()
 const groupNames = computed(() => new Map(groups.groups.map(g => [g.group_id, g.name])))
 const list = ref<HTMLElement | null>(null)
 useWorkspaceScroll(list, 'list')
+// Rows have a fixed CSS height. Keep only the viewport plus a small buffer in
+// the DOM: mounting hundreds of dates, icons and buttons dominated startup on
+// mobile even when IndexedDB and the network were already fast.
+const mobile = useMediaQuery('(max-width: 720px)')
+const rowHeight = computed(() => settings.value.noteDensity === 'compact' ? 86 : mobile.value ? 106 : 98)
+const scrollTop = ref(0)
+const viewportHeight = ref(window.innerHeight)
+const virtual = computed(() => notes.visible.length > 80)
+const start = computed(() => virtual.value ? Math.min(notes.visible.length - 1, Math.max(0, Math.floor(scrollTop.value / rowHeight.value) - 5)) : 0)
+const end = computed(() => virtual.value ? Math.min(notes.visible.length, start.value + Math.ceil(viewportHeight.value / rowHeight.value) + 12) : notes.visible.length)
+const renderedNotes = computed(() => notes.visible.slice(start.value, end.value))
+let listObserver: ResizeObserver | undefined
+watch(list, element => {
+  listObserver?.disconnect()
+  if (!element) return
+  scrollTop.value = element.scrollTop
+  if (typeof ResizeObserver !== 'undefined') {
+    listObserver = new ResizeObserver(entries => { viewportHeight.value = entries[0]?.contentRect.height || window.innerHeight })
+    listObserver.observe(element)
+  }
+}, { flush: 'post' })
+onUnmounted(() => listObserver?.disconnect())
+function onScroll() { scrollTop.value = list.value?.scrollTop ?? 0 }
+watch(() => [ui.view, ui.activeGroupId, ui.query], () => {
+  // A new query starts at its first match. History restoration is applied
+  // once, after rendering, by useWorkspaceScroll; reusing its old snapshot
+  // here jumped back to the bottom whenever a search was cleared.
+  scrollTop.value = 0
+  if (list.value) list.value.scrollTop = 0
+})
 
 const refreshing = ref(false)
 const refreshBusy = computed(() => refreshing.value || ui.syncing)
@@ -108,23 +140,36 @@ function selectNote(id: string) {
   if (isMobile()) ui.mobilePane = 'editor'
 }
 
-function focusFirst() {
+async function focusFirst() {
   const first = notes.visible[0]
   if (!first) return
+  if (list.value) list.value.scrollTop = 0
+  onScroll()
+  await nextTick()
   selectNote(first.id)
   if (!isMobile()) document.querySelector<HTMLButtonElement>('.note-select')?.focus()
 }
 
-function onListKeydown(event: KeyboardEvent) {
+async function onListKeydown(event: KeyboardEvent) {
   if (event.key !== 'ArrowDown' && event.key !== 'ArrowUp') return
   const target = event.target as HTMLElement
   if (!target.matches('.note-select')) return
-  const buttons = Array.from(target.closest('.note-list')!.querySelectorAll<HTMLButtonElement>('.note-select'))
-  const index = buttons.indexOf(target as HTMLButtonElement)
-  const next = buttons[index + (event.key === 'ArrowDown' ? 1 : -1)]
   event.preventDefault()
-  next?.focus()
-  next?.click()
+  const id = target.closest<HTMLElement>('[data-note-id]')?.dataset.noteId
+  const index = notes.visible.findIndex(note => note.id === id)
+  const nextIndex = index + (event.key === 'ArrowDown' ? 1 : -1)
+  const next = notes.visible[nextIndex]
+  if (!next) return
+  if (virtual.value && list.value) {
+    const top = nextIndex * rowHeight.value
+    if (top < list.value.scrollTop) list.value.scrollTop = top
+    else if (top + rowHeight.value > list.value.scrollTop + list.value.clientHeight) list.value.scrollTop = top + rowHeight.value - list.value.clientHeight
+    onScroll()
+    await nextTick()
+  }
+  const button = list.value?.querySelector<HTMLButtonElement>(`[data-note-id="${CSS.escape(next.id)}"] .note-select`)
+  button?.focus()
+  button?.click()
 }
 
 // 列表 header 视图标题：全部笔记 / 星标 / 分组名
@@ -231,10 +276,13 @@ watch(
       @action="onEmptyAction"
     />
 
-    <ul v-else ref="list" class="note-list" aria-label="笔记列表" @keydown="onListKeydown">
+    <ul v-else ref="list" class="note-list" aria-label="笔记列表" @scroll.passive="onScroll" @keydown="onListKeydown">
+      <li v-if="start" role="presentation" aria-hidden="true" :style="{ height: `${start * rowHeight}px` }" />
       <NoteListItem
-        v-for="note in notes.visible"
+        v-for="(note, index) in renderedNotes"
         :key="note.id"
+        :aria-posinset="start + index + 1"
+        :aria-setsize="notes.visible.length"
         :note="note"
         :active="note.id === notes.currentId"
         :swiped="swipedId === note.id"
@@ -255,6 +303,7 @@ watch(
           </button>
         </template>
       </NoteListItem>
+      <li v-if="end < notes.visible.length" role="presentation" aria-hidden="true" :style="{ height: `${(notes.visible.length - end) * rowHeight}px` }" />
     </ul>
 
     <ActionMenu :open="!!menuNote" :anchor="menuAnchor" label="笔记操作" @close="menuNote = null">

@@ -75,6 +75,29 @@ test('快速切换笔记保留最后按键，撤销不跨文档', async ({ page 
   await expect(body(page)).toContainText('第一篇最后按键')
 })
 
+test('大纲有右边界，长标题省略且悬停可读全文，更新后提示同步变化', async ({ page }) => {
+  const title = '这是一个包含很多文字的完整章节标题，用来确认大纲宽度保持规整并且悬停时能够查看所有内容'
+  await switchMode(page, 'sv')
+  await body(page).fill(`# ${title}\n\n正文`)
+  await switchMode(page, 'wysiwyg')
+  const outline = page.locator('.vditor-outline')
+  const item = outline.locator('[data-target-id]').filter({ hasText: title })
+  await expect(item).toBeVisible()
+  await expect(outline).toHaveCSS('border-right-width', '1px')
+  await expect(outline).toHaveCSS('border-right-style', 'solid')
+  expect((await outline.boundingBox())!.width).toBe(200)
+  const label = item.locator(':scope > span')
+  expect(await label.evaluate(element => element.scrollWidth > element.clientWidth)).toBe(true)
+  await item.hover()
+  await expect(item).toHaveAttribute('title', title)
+  await switchMode(page, 'sv')
+  await body(page).fill('# 修改后的章节标题\n\n正文')
+  await switchMode(page, 'ir')
+  const updated = outline.locator('[data-target-id]').filter({ hasText: '修改后的章节标题' })
+  await updated.hover()
+  await expect(updated).toHaveAttribute('title', '修改后的章节标题')
+})
+
 test('表格按钮先收行数与列数，再按指定尺寸插入', async ({ page }) => {
   await switchMode(page, 'wysiwyg')
   await tool(page, 'table').click()
@@ -180,12 +203,6 @@ for (const mode of ['ir', 'wysiwyg', 'sv']) {
     await tool(page, 'headings').click()
     await page.locator('.vditor-toolbar [data-tag="h2"]').click()
     await expect.poll(() => saved(page)).toContain('## 检查文字')
-    await seed()
-    await tool(page, 'emoji').click()
-    const emoji = page.locator('.vditor-emojis button[data-value]').first()
-    const value = (await emoji.getAttribute('data-value'))!.trim()
-    await emoji.click()
-    await expect.poll(() => saved(page)).toContain(value)
     if (mode !== 'sv') {
       await seed('- 第一项\n- 第二项')
       await body(page).locator('li').last().click()
@@ -194,45 +211,17 @@ for (const mode of ['ir', 'wysiwyg', 'sv']) {
       await expect(body(page).locator('li li')).toHaveCount(1)
       await tool(page, 'outdent').click()
       await expect(body(page).locator('li li')).toHaveCount(0)
-      await seed()
-      await page.keyboard.press('ArrowRight')
-      await tool(page, 'insert-before').click()
-      await page.keyboard.insertText('前插入')
-      await expect.poll(() => saved(page)).toMatch(/前插入[\s\S]*检查文字/)
-      await tool(page, 'insert-after').click()
-      await page.keyboard.insertText('后插入')
-      await expect.poll(() => saved(page)).toContain('后插入')
     }
     expect(errors).toEqual([])
   })
 }
 
-test('预览切换与主题二级菜单可以实际点击', async ({ page }) => {
-  await switchMode(page, 'sv')
-  await body(page).fill('# 预览检查\n\n```js\nconst n = 1\n```')
-  await tool(page, 'more').click()
-  await tool(page, 'both').click()
-  await expect(page.locator('.vditor-preview')).toBeHidden()
-  await tool(page, 'more').click()
-  await tool(page, 'both').click()
-  await expect(page.locator('.vditor-preview')).toBeVisible()
-  await tool(page, 'more').click()
-  await tool(page, 'preview').click()
-  await expect(body(page)).toHaveCount(0)
-  await expect(page.locator('.vditor-preview')).toContainText('预览检查')
-  await tool(page, 'more').click()
-  await tool(page, 'preview').click()
-  await expect(body(page)).toBeVisible()
-  for (const width of [1440, 390]) {
-    await page.setViewportSize({ width, height: 900 })
-    await tool(page, 'more').click()
-    await tool(page, 'content-theme').click()
-    await page.locator('.vditor-toolbar [data-type="wechat"]').click()
-    await expect(page.locator('#vditorContentTheme')).toHaveAttribute('href', /wechat\.css/)
-    await tool(page, 'more').click()
-    await tool(page, 'code-theme').click()
-    await page.locator('.vditor-toolbar .vditor-hint button').filter({ hasText: /^github$/ }).click()
-    await expect(page.locator('#vditorHljsStyle')).toHaveAttribute('href', /github\.min\.css/)
+test('移除低频工具与主题菜单，保留日常编辑入口', async ({ page }) => {
+  for (const name of ['emoji', 'insert-before', 'insert-after', 'more', 'preview', 'code-theme', 'content-theme']) {
+    await expect(tool(page, name)).toHaveCount(0)
+  }
+  for (const name of ['bold', 'table', 'upload', 'undo', 'edit-mode', 'fullscreen']) {
+    await expect(tool(page, name)).toBeVisible()
   }
 })
 
@@ -314,7 +303,7 @@ test('原生图片选择器沿用上传鉴权，双击使用项目灯箱', async
   expect(Math.abs(actions.center - actions.viewport)).toBeLessThan(2)
 })
 
-test('公式、流程图与编辑器资源离线可用，未加载可选渲染器也能首次使用', async ({ page, context }) => {
+test('公式与流程图在线按需加载，已用过的渲染器离线仍可用', async ({ page, context }) => {
   await page.evaluate(async () => {
     await navigator.serviceWorker.ready
     await new Promise<void>(resolve => {
@@ -322,6 +311,12 @@ test('公式、流程图与编辑器资源离线可用，未加载可选渲染�
       else navigator.serviceWorker.addEventListener('controllerchange', () => resolve(), { once: true })
     })
   })
+  await switchMode(page, 'sv')
+  await body(page).fill(content)
+  await expect(page.locator('.vditor-preview .katex')).toBeVisible({ timeout: 20_000 })
+  await expect(page.locator('.vditor-preview svg[id^="mermaid"]')).toBeVisible({ timeout: 20_000 })
+  await expect.poll(() => saved(page)).toContain('兼容性笔记')
+  await expect.poll(() => page.evaluate(async () => (await (await caches.open('snotes-vditor')).keys()).length)).toBeGreaterThan(2)
   await context.setOffline(true)
   await page.reload()
   await expect(body(page)).toBeVisible()

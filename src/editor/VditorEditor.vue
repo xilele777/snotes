@@ -5,6 +5,8 @@ import 'vditor/dist/index.css'
 import './vditor.css'
 import { escapeRawHtml, migrateLegacyBr } from '../../shared/sanitize'
 import TableDialog from '../components/TableDialog.vue'
+import EditorLoading from '../components/EditorLoading.vue'
+import { loadVditorAssets } from './vditor-assets'
 import { isAllowedImage, MAX_BYTES, uploadImage } from './image-upload'
 import { VDITOR_CDN, editorMode, rememberEditorMode } from './vditor-options'
 import { markdownFromClipboard } from './markdown-clipboard'
@@ -21,6 +23,8 @@ const emit = defineEmits<{
 const root = ref<HTMLElement | null>(null)
 let editor: Vditor | undefined
 let ready = false
+const initialized = ref(false)
+const loadError = ref('')
 let disposed = false
 let replacing = false
 let documentId = props.noteId
@@ -33,6 +37,8 @@ let pending: string | undefined
 let timer: ReturnType<typeof setTimeout> | undefined
 let observer: MutationObserver | undefined
 let contentObserver: MutationObserver | undefined
+let controlsFrame: number | undefined
+let controlsNeedUpdate = false
 let observedMode: string | undefined
 let historyValue = ''
 let forwardingPaste = false
@@ -127,8 +133,10 @@ watch(() => props.editable, applyEditable)
 
 function onInput(event: Event) {
   if (event instanceof InputEvent && event.isComposing) return
-  capture()
-  if (ready && editor && props.editable !== false && editor.getValue() !== historyValue) {
+  // Serializing the entire rich-text DOM on every keystroke is expensive.
+  // Vditor's debounced callback captures Markdown; flush() still reads the live
+  // DOM for immediate navigation/pagehide, so the last keystroke stays safe.
+  if (ready && editor && props.editable !== false) {
     root.value?.querySelector('[data-type="undo"]')?.classList.remove('vditor-menu--disabled')
     root.value?.querySelector('[data-type="redo"]')?.classList.add('vditor-menu--disabled')
   }
@@ -534,6 +542,16 @@ function normalizeHref(raw: string) {
   return /^(\/|#|\.{1,2}\/)/.test(value) ? value : `https://${value}`
 }
 
+function onOutlineHover(event: MouseEvent) {
+  const item = event.target instanceof Element
+    ? event.target.closest<HTMLElement>('.vditor-outline [data-target-id]') : null
+  if (!item) return
+  // Set the browser tooltip only on demand, without scanning every heading
+  // after each editor mutation. Native tooltips escape the scroll container.
+  const title = item.querySelector(':scope > span')?.textContent?.trim() ?? ''
+  if (item.title !== title) item.title = title
+}
+
 function onLinkChange(event: Event) {
   const input = event.target
   if (!(input instanceof HTMLInputElement) || !input.matches('.vditor-wysiwyg .vditor-panel input[placeholder="链接"]')) return
@@ -546,7 +564,15 @@ function onLinkChange(event: Event) {
   // Keep the native link popover responsible for updating the document.
   input.dispatchEvent(new Event('input', { bubbles: true }))
 }
-onMounted(() => {
+async function initialize() {
+  loadError.value = ''
+  try { await loadVditorAssets() }
+  catch (error) {
+    if (!disposed) loadError.value = error instanceof Error ? error.message : String(error)
+    return
+  }
+  if (disposed) return
+  const initialValue = props.modelValue
   editor = new Vditor(root.value!, {
     cdn: VDITOR_CDN,
     cache: { enable: false },
@@ -559,14 +585,11 @@ onMounted(() => {
     toolbarConfig: { pin: true },
     // Keep native writing tools; document management stays in the app menu.
     toolbar: [
-      'emoji', 'headings', 'bold', 'italic', 'strike',
+      'headings', 'bold', 'italic', 'strike',
       { name: 'highlight', tip: '高亮', hotkey: '⌥⌘H', click: highlight, icon: '<svg viewBox="0 0 24 24"><path d="M5 3h3v7h8V3h3v18h-3v-8H8v8H5z"/></svg>' },
       'link', '|', 'list', 'ordered-list', 'check', 'outdent', 'indent', '|',
-      'quote', 'line', 'code', 'inline-code', 'insert-before', 'insert-after', '|',
+      'quote', 'line', 'code', 'inline-code', '|',
       'upload', 'table', '|', 'undo', 'redo', '|', 'outline', 'fullscreen', 'edit-mode',
-      // Keep document tools and mode/theme controls that belong in this app.
-      // Vditor's product links and diagnostics are intentionally omitted.
-      { name: 'more', tip: '主题与预览设置', toolbar: ['both', 'preview', 'code-theme', 'content-theme'] },
     ],
     hint: { emojiPath: `${VDITOR_CDN}/dist/images/emoji` },
     preview: {
@@ -596,6 +619,7 @@ onMounted(() => {
     after: () => {
       if (disposed) { editor?.destroy(); return }
       ready = true
+      initialized.value = true
       const instance = editor?.vditor
       if (instance?.undo) {
         const record = instance.undo.addToUndoStack.bind(instance.undo)
@@ -605,7 +629,13 @@ onMounted(() => {
         }
       }
       // props may have changed while Lute and language assets were loading.
-      replace(props.modelValue, true)
+      if (props.modelValue !== initialValue) replace(props.modelValue, true)
+      else {
+        // The constructor already parsed the initial Markdown. Replacing it
+        // here used to parse/render the entire note a second time.
+        observed = editor!.getValue()
+        historyValue = observed
+      }
       applyTheme()
       applyEditable()
       rememberMode()
@@ -615,11 +645,27 @@ onMounted(() => {
   })
   observer = new MutationObserver(applyTheme)
   observer.observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] })
-  contentObserver = new MutationObserver(() => { updateContentControls(); positionImagePanel() })
+  contentObserver = new MutationObserver(records => {
+    // Ordinary text mutations need no accessibility/checkbox rescan. Coalesce
+    // block changes into one scan per frame instead of one per DOM mutation.
+    const added = records.some(record => Array.from(record.addedNodes).some(node => node.nodeType === Node.ELEMENT_NODE))
+    const imagePanelChanged = !!lastImageClick && records.some(record => record.type === 'attributes'
+      && record.target instanceof Element && record.target.matches('.vditor-wysiwyg > .vditor-panel'))
+    if (!added && !imagePanelChanged) return
+    controlsNeedUpdate ||= added
+    if (controlsFrame !== undefined) return
+    controlsFrame = requestAnimationFrame(() => {
+      controlsFrame = undefined
+      if (controlsNeedUpdate) updateContentControls()
+      controlsNeedUpdate = false
+      if (lastImageClick) positionImagePanel()
+    })
+  })
   contentObserver.observe(root.value!, { childList: true, subtree: true, attributes: true, attributeFilter: ['style'] })
   window.addEventListener('pagehide', flush)
   document.addEventListener('visibilitychange', onVisibility)
-})
+}
+onMounted(() => { void initialize() })
 
 onBeforeUnmount(() => {
   flush()
@@ -630,6 +676,7 @@ onBeforeUnmount(() => {
   cancelLongPress()
   observer?.disconnect()
   contentObserver?.disconnect()
+  if (controlsFrame !== undefined) cancelAnimationFrame(controlsFrame)
   window.removeEventListener('pagehide', flush)
   document.removeEventListener('visibilitychange', onVisibility)
   // Vditor 4 guards its asynchronous initialization after destroy().
@@ -640,7 +687,10 @@ defineExpose({ flush, focus, insertImages })
 </script>
 
 <template>
+  <div v-if="loadError" class="editor-loading" role="alert">{{ loadError }}<button type="button" @click="initialize">重试</button></div>
+  <EditorLoading v-else-if="!initialized" />
   <div ref="root" class="snotes-vditor" :class="{ 'is-readonly': editable === false }"
+    @mouseover="onOutlineHover"
     @input="onInput" @keydown.capture="onHistoryKeydown" @paste.capture="onPaste" @click.capture="onClick" @touchstart.capture="onToolbarTouch" @change.capture="onLinkChange" @keyup="rememberMode" @dblclick.capture="onDoubleClick" @pointerdown.capture="onPointerDown"
     @pointerup="cancelLongPress" @pointercancel="cancelLongPress" @pointermove="cancelLongPress" />
   <TableDialog :open="tableOpen" @submit="insertTable" @close="tableOpen = false" />

@@ -1,4 +1,5 @@
 import type { VitePWAOptions } from 'vite-plugin-pwa'
+import { version as vditorVersion } from 'vditor/package.json'
 
 /** 运行时缓存条目——workbox-build 没在 vite-plugin-pwa 里再导出一次 */
 interface RuntimeCacheEntry {
@@ -15,6 +16,7 @@ interface RuntimeCacheEntry {
  */
 interface PwaOptions {
   registerType?: 'prompt' | 'autoUpdate'
+  injectRegister: null
   includeAssets?: string[]
   manifest: {
     name: string
@@ -30,6 +32,8 @@ interface PwaOptions {
   }
   workbox: {
     globPatterns: string[]
+    globIgnores: string[]
+    additionalManifestEntries: { url: string; revision: null }[]
     ignoreURLParametersMatching: RegExp[]
     maximumFileSizeToCacheInBytes: number
     runtimeCaching: RuntimeCacheEntry[]
@@ -38,6 +42,7 @@ interface PwaOptions {
 
 export const pwaOptions: PwaOptions = {
   registerType: 'autoUpdate',
+  injectRegister: null,
   includeAssets: ['snotes.svg', 'favicon-32.png', 'apple-touch-icon.png', 'snotes-192.png', 'snotes-512.png', 'snotes-maskable-512.png'],
   manifest: {
     name: 'snotes',
@@ -65,12 +70,27 @@ export const pwaOptions: PwaOptions = {
     },
   },
   workbox: {
-    // Include Vditor's local parser/renderers and their fonts for offline use.
+    // Only pre-cache the parser, Chinese locale and default icons. Optional
+    // diagrams, math renderers, emoji and fonts are cached when requested.
     globPatterns: ['**/*.{js,css,html,ico,png,svg,gif,jpg,jpeg,webp,woff,woff2,ttf}'],
+    globIgnores: ['vendor/**'],
+    additionalManifestEntries: [
+      'js/lute/lute.min.js', 'js/i18n/zh_CN.js', 'js/icons/ant.js',
+      'css/content-theme/light.css', 'css/content-theme/dark.css',
+      'js/highlight.js/styles/github.min.css', 'js/highlight.js/styles/github-dark.min.css',
+    ].map(path => ({ url: `/vendor/vditor/${vditorVersion}/dist/${path}`, revision: null })),
     // Vditor appends ?v= to its local parser, renderer and theme URLs.
     ignoreURLParametersMatching: [/^utm_/, /^fbclid$/, /^v$/],
     maximumFileSizeToCacheInBytes: 5 * 1024 * 1024,
     runtimeCaching: [
+      {
+        urlPattern: /^https?:\/\/[^/]+\/vendor\/vditor\/[^/]+\/dist\//,
+        handler: 'CacheFirst',
+        options: {
+          cacheName: 'snotes-vditor',
+          expiration: { maxEntries: 100, maxAgeSeconds: 60 * 60 * 24 * 365 },
+        },
+      },
       {
         // 必须排在通用 API 规则之前
         urlPattern: /^.*\/api\/images\/.*$/,

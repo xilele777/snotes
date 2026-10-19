@@ -78,6 +78,7 @@ async function pull(): Promise<void> {
   let since = full ? 0 : (await db.meta.get(KNOWLEDGE_BASE_CURSOR))?.value as number ?? 0
   let after = since
   let until: number | undefined
+  let changed = false
   for (;;) {
     let page: { books: KnowledgeBase[]; until: number; next_after: number | null }
     try {
@@ -94,6 +95,7 @@ async function pull(): Promise<void> {
       const remote = await apiFetch<KnowledgeBaseRemote>(`/api/knowledge-bases/${book.id}/toc`)
       validateToc(remote.toc.nodes)
       await applyKnowledgeBaseRemote(remote)
+      changed = true
     }
     if (page.next_after === null) break
     after = page.next_after
@@ -101,7 +103,7 @@ async function pull(): Promise<void> {
   // Only commit the independent cursor after every page and TOC has been saved.
   await db.meta.put({ key: KNOWLEDGE_BASE_CURSOR, value: until ?? since })
   if (full) await db.meta.put({ key: KNOWLEDGE_BASE_RECONCILED, value: Date.now() })
-  emitRemoteApplied()
+  if (changed) emitRemoteApplied()
 }
 
 export async function syncKnowledgeBases(): Promise<{ error: string | null; failed: number }> {

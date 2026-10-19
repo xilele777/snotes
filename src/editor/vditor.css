@@ -12,11 +12,12 @@
 .snotes-vditor :is(.vditor-ir, .vditor-wysiwyg) > .vditor-reset { margin: 0 auto; overflow: visible; min-height: 65vh; }
 .snotes-vditor .vditor-sv { resize: none; min-height: 65vh; white-space: pre-wrap; }
 .snotes-vditor .vditor-preview { padding: 0; }
-.snotes-vditor .vditor-outline { position: sticky; top: 80px; align-self: flex-start; flex: 0 0 200px; width: 200px; max-height: 75vh; overflow: auto; font-size: 12px; line-height: 1.5; color: var(--text-secondary); }
+.snotes-vditor .vditor-outline { position: sticky; top: 80px; align-self: flex-start; box-sizing: border-box; flex: 0 0 200px; width: 200px; max-height: 75vh; overflow-x: hidden; overflow-y: auto; border-right: 1px solid var(--border-light); font-size: 12px; line-height: 1.5; color: var(--text-secondary); }
 .snotes-vditor .vditor-outline__title { padding: 4px 8px; font-size: 11px; }
 .snotes-vditor .vditor-outline ul { padding-left: 12px; }
 .snotes-vditor .vditor-outline__content > ul { padding-left: 0; }
 .snotes-vditor .vditor-outline li > span { padding: 3px 8px; color: inherit; }
+.snotes-vditor .vditor-outline li > span > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .snotes-vditor .vditor-outline li > span > svg { width: 8px; height: 8px; }
 .snotes-vditor .vditor-outline__action { margin-right: 4px; }
 .snotes-vditor .vditor-reset :is(th, td) { padding: var(--table-cell-padding); }

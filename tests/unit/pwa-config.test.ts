@@ -2,6 +2,16 @@ import { describe, expect, it } from 'vitest'
 import { pwaOptions } from '../../pwa.config'
 
 describe('PWA 配置', () => {
+  it('仅预缓存编辑器核心，复杂渲染器按需缓存', () => {
+    expect(pwaOptions.workbox.globIgnores).toContain('vendor/**')
+    const core = pwaOptions.workbox.additionalManifestEntries.map(entry => entry.url)
+    expect(core.some(url => url.endsWith('/js/lute/lute.min.js'))).toBe(true)
+    expect(core.some(url => /mermaid|graphviz|mathjax|echarts/.test(url))).toBe(false)
+    const runtime = pwaOptions.workbox.runtimeCaching.find(rule =>
+      rule.urlPattern.test('https://example.test/vendor/vditor/4.0.0/dist/js/mermaid/mermaid.min.js')
+    )
+    expect(runtime?.handler).toBe('CacheFirst')
+  })
   it('manifest 为 standalone 且 start_url 为根', () => {
     expect(pwaOptions.manifest).toMatchObject({
       display: 'standalone',

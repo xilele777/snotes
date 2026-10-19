@@ -195,8 +195,18 @@ ${note.body}`, terms)
 
   /** content 改自 base（编辑器认为库里此刻的正文）；库中被别处改写过时由 repo 另存冲突副本 */
   async function saveBody(id: string, content: string, base?: string) {
-    await repo.updateBody(id, content, base)
-    await load()
+    const conflictCreated = await repo.updateBody(id, content, base)
+    if (conflictCreated) { await load(); return }
+    // Saving is debounced while typing. Re-reading every note (including every
+    // full body) from IndexedDB after each save made a long note list painfully
+    // slow on mobile. The repository already wrote the canonical row; patch the
+    // one row held by the store instead.
+    const updated = await repo.getNote(id)
+    if (!updated) return
+    const index = notes.value.findIndex(note => note.id === id)
+    if (index >= 0) notes.value[index] = updated
+    if (retained.value?.id === id) retained.value = updated
+    // visible applies the selected list sort; keep notebook TOC order intact.
   }
 
   async function setProps(id: string, props: NoteProps) {

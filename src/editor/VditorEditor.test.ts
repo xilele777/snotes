@@ -3,8 +3,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { MockVditor } from '../../tests/unit/mock-vditor'
 import VditorEditor from './VditorEditor.vue'
 import { uploadImage } from './image-upload'
+import { loadVditorAssets } from './vditor-assets'
 
 vi.mock('vditor', async () => ({ default: (await import('../../tests/unit/mock-vditor')).MockVditor }))
+vi.mock('./vditor-assets', () => ({ loadVditorAssets: vi.fn().mockResolvedValue(undefined) }))
 vi.mock('./image-upload', async original => ({ ...await original<typeof import('./image-upload')>(), uploadImage: vi.fn() }))
 
 const mounted: ReturnType<typeof mount>[] = []
@@ -19,6 +21,31 @@ beforeEach(() => { MockVditor.instances = []; vi.useFakeTimers({ toFake: ['setTi
 afterEach(() => { mounted.splice(0).forEach(wrapper => wrapper.unmount()); vi.useRealTimers(); vi.clearAllMocks() })
 
 describe('Vditor 保存与同步边界', () => {
+  it('资源下载期间显示加载提示，切换后的最新正文在就绪后打开', async () => {
+    let resolve!: () => void
+    vi.mocked(loadVditorAssets).mockReturnValueOnce(new Promise<void>(done => { resolve = done }))
+    const wrapper = mount(VditorEditor, { props: { noteId: 'a', modelValue: 'A' } })
+    mounted.push(wrapper)
+    expect(wrapper.find('[role="status"]').exists()).toBe(true)
+    expect(MockVditor.instances).toHaveLength(0)
+    await wrapper.setProps({ noteId: 'b', modelValue: '最新正文' })
+    resolve()
+    await flushPromises()
+    expect(MockVditor.instances.at(-1)?.value).toBe('最新正文')
+    expect(wrapper.find('[role="status"]').exists()).toBe(false)
+  })
+
+  it('资源加载失败可重试，不把正文留在不可恢复的空白页', async () => {
+    vi.mocked(loadVditorAssets).mockRejectedValueOnce(new Error('资源加载失败'))
+    const wrapper = mount(VditorEditor, { props: { noteId: 'a', modelValue: '原文' } })
+    mounted.push(wrapper)
+    await flushPromises()
+    expect(wrapper.get('[role="alert"]').text()).toContain('资源加载失败')
+    await wrapper.get('[role="alert"] button').trigger('click')
+    await flushPromises()
+    expect(wrapper.emitted('ready')).toHaveLength(1)
+    expect(MockVditor.instances.at(-1)?.value).toBe('原文')
+  })
   it('打开和序列化规范化不写回，真实输入 800ms 后携带原始基线保存', async () => {
     const { wrapper, editor } = await create()
     vi.advanceTimersByTime(1000)
@@ -29,7 +56,7 @@ describe('Vditor 保存与同步边界', () => {
     vi.advanceTimersByTime(1)
     expect(wrapper.emitted('update:modelValue')).toEqual([['新正文', '原文']])
     await wrapper.setProps({ modelValue: '新正文' })
-    expect(editor.setValue).toHaveBeenCalledTimes(1)
+    expect(editor.setValue).not.toHaveBeenCalled()
   })
 
   it('切笔记读取最后一个按键，flush 带旧 id，并清空新文档撤销历史', async () => {
@@ -89,7 +116,7 @@ describe('Vditor 保存与同步边界', () => {
     const wrapper = mount(VditorEditor, { props: { noteId: 'a', modelValue: 'A' } })
     wrapper.unmount()
     await flushPromises()
-    expect(MockVditor.instances.at(-1)!.destroy).toHaveBeenCalledOnce()
+    expect(MockVditor.instances).toHaveLength(0)
   })
 })
 

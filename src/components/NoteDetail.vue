@@ -30,7 +30,9 @@ import { workspacePreferences as preferences, updateWorkspacePreferences } from 
 const VditorEditor = defineAsyncComponent({
   loader: () => import('../editor/VditorEditor.vue'),
   loadingComponent: EditorLoading,
-  delay: 120,
+  // Show the editor skeleton immediately while the Vditor chunk/Lute parser
+  // initializes. The previous delay left a blank white editor on phones.
+  delay: 0,
 })
 
 const props = withDefaults(defineProps<{ readonly?: boolean }>(), { readonly: false })
@@ -534,7 +536,7 @@ async function runShare() {
         <h1>选择一条笔记</h1>
       </div>
       <VditorEditor
-        v-else-if="notes.current"
+        v-else-if="notes.current && (notes.current.body_version > 0 || notes.current.dirty === 'body' || notes.current.dirty === 'both')"
         ref="editorRef"
         :note-id="notes.current.id"
         :model-value="notes.current.body"
@@ -545,6 +547,7 @@ async function runShare() {
         @notice="notify"
         @ready="editorReady = true"
       />
+      <EditorLoading v-else-if="notes.current" />
     </div>
 
     <NoteMenu
