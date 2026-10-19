@@ -50,13 +50,13 @@ describe('shareMarkdown', () => {
     expect(share).toHaveBeenCalledWith({ title: '标题', text: '正文' })
   })
 
-  it('用户取消分享后退回复制，不会什么都不做', async () => {
+  it('用户取消分享后保留原剪贴板', async () => {
     const share = vi.fn().mockRejectedValue(Object.assign(new Error('cancel'), { name: 'AbortError' }))
     const writeText = vi.fn().mockResolvedValue(undefined)
     vi.stubGlobal('navigator', { share, clipboard: { writeText } })
 
-    await expect(shareMarkdown('标题', '正文')).resolves.toBe('copied')
-    expect(writeText).toHaveBeenCalledWith('正文')
+    await expect(shareMarkdown('标题', '正文')).resolves.toBe('cancelled')
+    expect(writeText).not.toHaveBeenCalled()
   })
 })
 

@@ -3,7 +3,7 @@ export const TABLE_MIN = 1
 export const TABLE_MAX = 20
 
 /**
- * 生成 GFM 表格。行数含表头行，与旧版表格弹窗及 Milkdown 的语义一致。
+ * 生成 GFM 表格。行数含表头行，与表格弹窗的尺寸约定一致。
  * 单元格留空，插入后由用户直接填写。
  */
 export function tableMarkdown(rows: number, cols: number): string {

@@ -12,25 +12,20 @@ export async function compressImage(file: File): Promise<Blob> {
   if (file.type === 'image/gif') return file
 
   const bitmap = await createImageBitmap(file)
-  const scale = Math.min(1, MAX_EDGE / Math.max(bitmap.width, bitmap.height))
+  try {
+    const scale = Math.min(1, MAX_EDGE / Math.max(bitmap.width, bitmap.height))
+    if (scale === 1 && file.size < 512 * 1024) return file
 
-  if (scale === 1 && file.size < 512 * 1024) return file
-
-  const canvas = document.createElement('canvas')
-  canvas.width = Math.round(bitmap.width * scale)
-  canvas.height = Math.round(bitmap.height * scale)
-
-  const ctx = canvas.getContext('2d')
-  if (!ctx) return file
-
-  ctx.drawImage(bitmap, 0, 0, canvas.width, canvas.height)
-  bitmap.close()
-
-  const outputType = file.type === 'image/png' ? 'image/png' : 'image/jpeg'
-
-  const blob = await new Promise<Blob | null>((resolve) =>
-    canvas.toBlob(resolve, outputType, JPEG_QUALITY)
-  )
-
-  return blob && blob.size < file.size ? blob : file
+    const canvas = document.createElement('canvas')
+    canvas.width = Math.round(bitmap.width * scale)
+    canvas.height = Math.round(bitmap.height * scale)
+    const ctx = canvas.getContext('2d')
+    if (!ctx) return file
+    ctx.drawImage(bitmap, 0, 0, canvas.width, canvas.height)
+    const outputType = file.type === 'image/png' ? 'image/png' : 'image/jpeg'
+    const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, outputType, JPEG_QUALITY))
+    return blob && blob.size < file.size ? blob : file
+  } finally {
+    bitmap.close()
+  }
 }

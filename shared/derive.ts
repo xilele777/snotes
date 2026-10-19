@@ -4,7 +4,7 @@ export const TITLE_MAX = 64
 export const SUMMARY_MAX = 120
 export const IMAGE_URL_PREFIX = '/api/images/'
 
-const IMAGE_RE = /!\[[^\]]*\]\(([^)\s]+)[^)]*\)/g
+const IMAGE_RE = /!\[[^\]]*\]\(\s*(?:<\s*([^>]+?)\s*>|([^)\s]+))[^)]*\)/g
 const LINK_RE = /\[([^\]]*)\]\([^)]*\)/g
 /** 行首 ATX 标题标记。七个及以上井号不是标题，`#{1,6}` 后必须跟空白才算 */
 const ATX_RE = /^\s{0,3}#{1,6}\s+/
@@ -92,7 +92,7 @@ export function extractSearchExcerpt(md: string, query: string, limit = SUMMARY_
 
 export function extractThumbnail(md: string): string | null {
   for (const match of md.matchAll(IMAGE_RE)) {
-    const url = match[1]
+    const url = (match[1] ?? match[2] ?? '').trim()
     if (url.startsWith(IMAGE_URL_PREFIX)) {
       return url.slice(IMAGE_URL_PREFIX.length)
     }

@@ -21,7 +21,7 @@ beforeEach(() => {
 })
 
 const file = (type: string, size = 10, name = 'a') =>
-  new File([new Uint8Array(size)], name, { type })
+  new File([new Uint8Array(size)], name, { type, lastModified: 1 })
 
 describe('isAllowedImage', () => {
   it('接受白名单内的四种格式', () => {

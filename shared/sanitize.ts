@@ -13,7 +13,7 @@ const INLINE_CODE_RE = /`+[^`]*`+/g
 // 其余只转义「像标签起始」的小于号，数学写法 `a < b`、`3<5` 不受影响。
 const AUTOLINK_OR_TAG_OPEN_RE = /(<[a-zA-Z][a-zA-Z0-9+.-]{1,31}:[^\u0000-\u0020<>]*>|<[a-zA-Z0-9.!#$%&'*+/=?^_`{|}~-]+@[a-zA-Z0-9](?:[a-zA-Z0-9.-]*[a-zA-Z0-9])?>)|<(?=[!/?a-zA-Z])/g
 
-// 与 milkdown remarkPreserveEmptyLinePlugin 认定的 br 变体保持一致：
+// 兼容历史编辑器保存的空行 br 变体：
 // ``<br />`` ``<br>`` ``<br >`` ``<br/>``。旧版编辑器把空段落序列化成这些
 // 字面 HTML 写进 markdown，加载时会被 escapeRawHtml 转成 ``&lt;br />`` 字面
 // 文本。迁移只把「整行只有 br 变体」的历史行还原成零宽空格空段落，让旧笔记

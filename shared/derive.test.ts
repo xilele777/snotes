@@ -1,6 +1,13 @@
 import { describe, expect, it } from 'vitest'
 import { countWords, derive, extractSearchExcerpt, extractSummary, extractThumbnail, extractTitle } from './derive'
 
+it('Vditor angle destination 保留缩略图，标题不泄露图片 URL', () => {
+  const body = '![](< /api/images/a/photo.jpg >)\n\n正文标题'
+  expect(extractThumbnail(body)).toBe('a/photo.jpg')
+  expect(extractTitle(body)).toBe('正文标题')
+  expect(extractThumbnail('![](< /api/images/a/image with spaces.jpg >)')).toBe('a/image with spaces.jpg')
+})
+
 describe('countWords', () => {
   it('空正文返回 0', () => {
     expect(countWords('')).toEqual({ words: 0, lines: 0, chars: 0 })

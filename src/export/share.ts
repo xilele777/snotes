@@ -58,19 +58,18 @@ export function copyMarkdown(body: string): Promise<boolean> {
   return copyText(body)
 }
 
-export type ShareOutcome = 'shared' | 'copied' | 'failed'
+export type ShareOutcome = 'shared' | 'copied' | 'cancelled' | 'failed'
 
 /**
- * 分享正文：手机端优先交给系统分享面板，不支持（或用户取消）时退回复制。
- * 取消分享按 copied 之外的结果处理即可——用户已经表达了不分享，不该再弹一次「已复制」。
+ * 分享正文：手机端优先系统面板；取消时结束，不意外改写剪贴板。
  */
 export async function shareMarkdown(title: string, body: string): Promise<ShareOutcome> {
   if (typeof navigator !== 'undefined' && typeof navigator.share === 'function') {
     try {
       await navigator.share({ title, text: body })
       return 'shared'
-    } catch {
-      // AbortError（用户取消）与 NotAllowedError 都落在复制兜底上
+    } catch (error) {
+      if (error instanceof Error && error.name === 'AbortError') return 'cancelled'
     }
   }
   return (await copyMarkdown(body)) ? 'copied' : 'failed'
