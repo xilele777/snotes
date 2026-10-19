@@ -81,7 +81,7 @@ async function collectFresh(ctx: MetricsContext): Promise<MetricsData> {
       const { query, variables } = buildD1Query(ctx.accountId, d1DatabaseId, monthDays)
       return gql(creds, query, variables).then((data) => {
         const usage = extractD1Usage(data, monthDays)
-        return usage ? { ...usage, trend: usage.trend.slice(-trendDays.length) } : null
+        return usage
       })
     }),
     safe(() => {
@@ -90,7 +90,7 @@ async function collectFresh(ctx: MetricsContext): Promise<MetricsData> {
       return gql(creds, query, variables).then((data) => {
         const usage = extractR2Operations(data, monthDays)
         if (!usage) return null
-        return { ...usage, trend: usage.trend.slice(-trendDays.length) }
+        return usage
       })
     }),
     safe(() => {
@@ -103,7 +103,7 @@ async function collectFresh(ctx: MetricsContext): Promise<MetricsData> {
       const { query, variables } = buildWorkersQuery(ctx.accountId, monthDays)
       return gql(creds, query, variables).then((data) => {
         const usage = extractWorkersUsage(data, monthDays)
-        return { ...usage, trend: usage.trend.slice(-trendDays.length) }
+        return usage
       })
     }),
   ])
@@ -116,7 +116,12 @@ async function collectFresh(ctx: MetricsContext): Promise<MetricsData> {
     workers,
   })
 
-  return { d1, r2: combineR2(r2Operations, r2Storage), workers, quota }
+  return {
+    d1: d1 ? { ...d1, trend: d1.trend.slice(-trendDays.length) } : null,
+    r2: combineR2(r2Operations ? { ...r2Operations, trend: r2Operations.trend.slice(-trendDays.length) } : null, r2Storage),
+    workers: workers ? { ...workers, trend: workers.trend.slice(-trendDays.length) } : null,
+    quota,
+  }
 }
 
 async function safe<T>(run: () => Promise<T>): Promise<T | null> {
