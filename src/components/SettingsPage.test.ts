@@ -160,7 +160,7 @@ describe('SettingsPage 数据页', () => {
 
     document.querySelector<HTMLButtonElement>('[data-action="export"]')!.click()
     await vi.waitFor(() => expect(downloadBlob).toHaveBeenCalledTimes(1))
-    expect(buildBackup).toHaveBeenCalledWith(expect.any(Function), 2)
+    expect(buildBackup).toHaveBeenCalledWith(expect.any(Function), 3)
     expect(String(downloadBlob.mock.calls[0]![1])).toMatch(/^snotes-backup-\d{8}\.zip$/)
     await vi.waitFor(() => expect(document.querySelector('.backup-progress')!.textContent).toContain('已导出 3 条笔记、1 个分组、2 张图片'))
     expect(document.querySelector('.backup-progress')!.classList.contains('failed')).toBe(false)

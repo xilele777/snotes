@@ -39,6 +39,11 @@ beforeEach(async () => {
 })
 
 describe('safeName', () => {
+  it('Windows 设备保留名使用可导出的普通文件名', () => {
+    expect(safeName('CON')).toBe('_CON')
+    expect(safeName('LPT1.txt')).toBe('_LPT1.txt')
+    expect(safeName('console')).toBe('console')
+  })
   it('去掉路径分隔符与 Windows 禁用字符，保留中文', () => {
     expect(safeName('工作/汇报:2024?')).toBe('工作_汇报_2024_')
     expect(safeName('周报 <最终>')).toBe('周报 _最终_')
@@ -63,6 +68,24 @@ describe('mimeOfFile', () => {
 })
 
 describe('导出', () => {
+  it('format 3 round-trips trash and historical images, and imports history idempotently', async () => {
+    const note = await createNote('# 当前正文')
+    const { trashNote } = await import('../db/repo')
+    await trashNote(note.id)
+    await db.history.add({ note_id: note.id, time: 5, body: '旧正文 ![图](/api/images/old/image.png)' })
+    apiBlobMock.mockResolvedValue(new Blob([new Uint8Array([1, 2, 3])]))
+    uploadMock.mockResolvedValue({ url: '/api/images/new/image.png', file_key: 'new/image.png' })
+    const bundle = await buildBackup()
+    const files = await unzip(bundle.blob)
+    expect(files['history/0.txt']).toContain('../images/image.png')
+    const file = new File([bundle.blob], 'backup.zip')
+    await db.delete(); await db.open()
+    await importBackup([file])
+    await importBackup([file])
+    expect((await db.notes.get(note.id))?.invalid).toBe(1)
+    expect(await db.history.count()).toBe(1)
+    expect((await db.history.toArray())[0].body).toContain('/api/images/new/image.png')
+  })
   it('每个分组一个文件夹、每条笔记一个 .md，index.json 记录属性', async () => {
     const groups = useGroupsStore()
     const work = await groups.create('工作')
@@ -95,13 +118,16 @@ describe('导出', () => {
     expect(Object.keys(files).filter((p) => p.endsWith('.md'))).toEqual(['未分组/周报.md', '未分组/周报-2.md'])
   })
 
-  it('回收站里的笔记不进备份包', async () => {
+  it('默认备份保留未被笔记本引用的回收站笔记', async () => {
     const note = await createNote('# 要删的')
     const { trashNote } = await import('../db/repo')
     await trashNote(note.id)
 
     const files = await unzip((await buildBackup()).blob)
-    expect(Object.keys(files)).toEqual(['index.json'])
+    const index = JSON.parse(files['index.json'])
+    expect(index.notes).toHaveLength(1)
+    expect(index.notes[0].invalid).toBe(1)
+    expect(files[index.notes[0].file]).toBe('# 要删的')
   })
 
   it('图片下载后放进 images/，正文引用改成相对路径', async () => {
@@ -168,6 +194,28 @@ it('导入只替换相对图片路径，不破坏同名外部图片地址', asyn
   expect(uploadMock).toHaveBeenCalledTimes(1)
 })
 
+it('两篇笔记引用同一包内图片时，各自上传到自己的 owner', async () => {
+  uploadMock.mockImplementation(async (_file, noteId) => ({ file_key: `${noteId}/photo.jpg`, url: `/api/images/${noteId}/photo.jpg` }))
+  const bytes = zipSync({
+    'a.md': strToU8('# A\n\n![](../images/photo.jpg)'),
+    'b.md': strToU8('# B\n\n![](../images/photo.jpg)'),
+    'images/photo.jpg': new Uint8Array([1, 2, 3]),
+  })
+  await importBackup([new File([new Uint8Array(bytes)], 'shared-image.zip')])
+  const notes = await db.notes.toArray()
+  expect(notes).toHaveLength(2)
+  expect(uploadMock).toHaveBeenCalledTimes(2)
+  for (const note of notes) expect(note.body).toContain(`/api/images/${note.id}/photo.jpg`)
+})
+
+it('导入预检查拒绝超限正文，尚未创建任何分组或笔记', async () => {
+  const bytes = zipSync({ 'group/a.md': strToU8('# A'), 'group/b.md': strToU8('中'.repeat(350_000)) })
+  await expect(importBackup([new File([new Uint8Array(bytes)], 'oversized.zip')])).rejects.toThrow('1 MiB')
+  expect(await db.notes.count()).toBe(0)
+  expect(await db.groups.count()).toBe(0)
+  expect(uploadMock).not.toHaveBeenCalled()
+})
+
 it('导出不把外部绝对图片 URL 的路径误当作本站图片', async () => {
   const external = '![external](https://other.example/api/images/n/abc.jpg)'
   await createNote(`${external}\n![local](/api/images/n/abc.jpg)`)
@@ -180,6 +228,38 @@ it('导出不把外部绝对图片 URL 的路径误当作本站图片', async ()
 })
 
 describe('导入', () => {
+  it('a failure after the first note rolls back notes, groups and sync tasks together', async () => {
+    const files = [new File(['# 一'], 'one.md'), new File(['# 二'], 'two.md')]
+    await expect(importBackup(files, progress => {
+      if (progress.label === '正在导入笔记' && progress.done === 1) throw new Error('simulated interruption')
+    })).rejects.toThrow('simulated interruption')
+    expect(await db.notes.count()).toBe(0)
+    expect(await db.groups.count()).toBe(0)
+    expect(await db.outbox.count()).toBe(0)
+    expect((await importBackup(files)).notes).toBe(2)
+  })
+  it('different content with the same id is retained in history without overwriting or duplicate snapshots', async () => {
+    const note = await createNote('# 导入版本')
+    const bundle = await buildBackup()
+    const { updateBody } = await import('../db/repo')
+    await updateBody(note.id, '# 现有版本')
+    const file = new File([new Uint8Array(await bundle.blob.arrayBuffer())], 'backup.zip')
+    const result = await importBackup([file])
+    expect(result.noteConflicts).toBe(1)
+    expect((await db.notes.get(note.id))?.body).toBe('# 现有版本')
+    await importBackup([file])
+    expect((await db.history.where('note_id').equals(note.id).toArray()).filter(row => row.body === '# 导入版本')).toHaveLength(1)
+  })
+  it('reimporting indexed images reuses upload receipts and does not manufacture a body conflict', async () => {
+    const index = { app: 'snotes', format: 1, exported_at: 1, groups: [], notes: [{ id: 'same-image', group_id: null, title: '图片', star: 0, top: 0, skin_color: null, create_time: 1, update_time: 1, file: 'a.md' }] }
+    const zip = zipSync({ 'index.json': strToU8(JSON.stringify(index)), 'a.md': strToU8('![](images/a.png)'), 'images/a.png': new Uint8Array([1, 2]) })
+    uploadMock.mockResolvedValue({ file_key: 'same-image/photo.png', url: '/api/images/same-image/photo.png' })
+    const file = new File([new Uint8Array(zip)], 'b.zip')
+    await importBackup([file])
+    const result = await importBackup([file])
+    expect(uploadMock).toHaveBeenCalledTimes(1)
+    expect(result).toMatchObject({ skipped: 1, noteConflicts: 0 })
+  })
   it('完整备份往返保留跨库同一笔记引用，重复导入不翻倍', async () => {
     const note = await createNote('# 同一篇笔记')
     const meta = { name: '笔记本', description: '简介', icon: '📚', ord: 0, invalid: 0 as const }
@@ -191,7 +271,7 @@ describe('导入', () => {
     const bundle = await buildBackup()
     const files = await unzip(bundle.blob)
     const index = JSON.parse(files['index.json'])
-    expect(index.format).toBe(2)
+    expect(index.format).toBe(3)
     expect(index.notes).toHaveLength(1)
     expect(index.knowledge_bases).toHaveLength(2)
     const bytes = new Uint8Array(await bundle.blob.arrayBuffer())
@@ -239,6 +319,22 @@ describe('导入', () => {
     const zip = zipSync({ 'index.json': strToU8(JSON.stringify(index)) })
     await expect(importBackup([new File([new Uint8Array(zip)], 'b.zip')])).rejects.toThrow('不支持')
     expect(await db.notes.count()).toBe(0)
+  })
+  it.each(['duplicate-id', 'duplicate-file', 'invalid-time', 'invalid-props', 'missing-group', 'wrong-extension'])('拒绝损坏索引 %s，上传与本地写入均不开始', async kind => {
+    const note = { id: 'a', group_id: null as string | null, title: 'A', star: 0, top: 0, skin_color: null, create_time: 1, update_time: 1, file: 'a.md' }
+    const notes = [note]
+    if (kind === 'duplicate-id') notes.push({ ...note, file: 'b.md' })
+    if (kind === 'duplicate-file') notes.push({ ...note, id: 'b' })
+    if (kind === 'invalid-time') note.create_time = 9_000_000_000_000_000
+    if (kind === 'invalid-props') note.star = 3
+    if (kind === 'missing-group') note.group_id = 'missing'
+    if (kind === 'wrong-extension') note.file = 'a.txt'
+    const index = { app: 'snotes', format: 1, exported_at: 1, groups: [], notes }
+    const zip = zipSync({ 'index.json': strToU8(JSON.stringify(index)), 'a.md': strToU8('![](images/a.png)'), 'b.md': strToU8('B'), 'a.txt': strToU8('A') })
+    await expect(importBackup([new File([new Uint8Array(zip)], 'backup.zip')])).rejects.toThrow('索引')
+    expect(await db.notes.count()).toBe(0)
+    expect(await db.outbox.count()).toBe(0)
+    expect(uploadMock).not.toHaveBeenCalled()
   })
   const mdFile = (name: string, text: string) => new File([text], name, { type: 'text/markdown' })
 
@@ -327,17 +423,17 @@ describe('导入', () => {
     expect(note.body).toBe('# 带图\n\n![照片](/api/images/n/xyz.jpg)')
   })
 
-  it('图片上传失败时保留相对路径并计数，笔记照样导入', async () => {
+  it('图片上传失败时不提交任何笔记或分组，可以完整重试', async () => {
     uploadMock.mockRejectedValue(new Error('offline'))
     const zip = zipSync({
       '未分组/带图.md': strToU8('# 带图\n\n![照片](../images/abc.jpg)'),
       'images/abc.jpg': new Uint8Array([1, 2, 3]),
     })
 
-    const result = await importBackup([new File([new Uint8Array(zip)], 'b.zip')])
-
-    expect(result).toMatchObject({ notes: 1, images: 0, failedImages: 1 })
-    expect((await db.notes.toArray())[0].body).toContain('../images/abc.jpg')
+    await expect(importBackup([new File([new Uint8Array(zip)], 'b.zip')])).rejects.toThrow('上传失败')
+    expect(await db.notes.count()).toBe(0)
+    expect(await db.groups.count()).toBe(0)
+    expect(await db.outbox.count()).toBe(0)
   })
 
   it('导入后列表立刻能看到新笔记', async () => {

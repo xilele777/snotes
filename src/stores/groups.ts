@@ -1,5 +1,6 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
+import Dexie from 'dexie'
 import type { Group, OutboxTask } from '../../shared/types'
 import { db } from '../db/schema'
 import { enqueue } from '../db/repo'
@@ -43,11 +44,14 @@ export const useGroupsStore = defineStore('groups', () => {
       update_time: Date.now(),
     }
 
-    await db.groups.add(group)
-    await enqueue(groupTask(group.group_id, 'create', {
-      group_id: group.group_id, name, ord: group.ord, color: group.color, hide_from_home: group.hide_from_home,
-    }))
-    await load()
+    await db.transaction('rw', db.groups, db.outbox, async () => {
+      await db.groups.add(group)
+      await enqueue(groupTask(group.group_id, 'create', {
+        group_id: group.group_id, name, ord: group.ord, color: group.color, hide_from_home: group.hide_from_home,
+      }))
+    })
+    // Imports own the surrounding transaction and refresh only after commit.
+    if (!Dexie.currentTransaction) await load()
 
     return group
   }
