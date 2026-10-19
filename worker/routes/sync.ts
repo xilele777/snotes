@@ -4,11 +4,20 @@ import type { BodiesRequest, BodiesResponse, Group, NoteBody, PullRequest, PullR
 import { rowToNoteMeta } from '../db'
 import { parseTrashRetentionDays } from '../maintenance'
 import type { Env } from '../types'
+import { instanceEpoch, issueCheckpoint, validCheckpoint } from '../sync-checkpoint'
 
 const DEFAULT_LIMIT = 200
 const MAX_LIMIT = 500
 
 export const syncRoutes = new Hono<{ Bindings: Env }>()
+syncRoutes.get('/api/sync/instance', async c => c.json({ epoch: await instanceEpoch(c.env.DB, c.env.SYNC_INSTANCE_EPOCH) }))
+
+syncRoutes.post('/api/sync/checkpoint', async c => {
+  const req = await c.req.json().catch(() => null)
+  if (!req || !Number.isSafeInteger(req.since) || req.since < 0) return c.json({ error: 'invalid_since' }, 400)
+  const clock = await c.env.DB.prepare('SELECT watermark FROM note_sync_clock WHERE id = 1').first<{ watermark: number }>()
+  return c.json({ valid: !!clock && (req.require_current ? req.since === clock.watermark : req.since <= clock.watermark) && await validCheckpoint(c.env.DB, req.checkpoint, req.since, 'notes', c.env.SYNC_INSTANCE_EPOCH, !!req.require_current) })
+})
 
 syncRoutes.post('/api/sync/pull', async (c) => {
   // Read the durable watermark before querying rows. A write committing after
@@ -17,11 +26,15 @@ syncRoutes.post('/api/sync/pull', async (c) => {
   const clock = await c.env.DB.prepare('SELECT watermark FROM note_sync_clock WHERE id = 1').first<{ watermark: number }>()
   if (!clock) throw new Error('Missing note sync clock; apply database migrations')
   const serverTime = clock.watermark
+  const receipt = await issueCheckpoint(c.env.DB, serverTime, 'notes', c.env.SYNC_INSTANCE_EPOCH)
 
   const req = await c.req.json<PullRequest>().catch(() => null)
 
-  if (!req || typeof req.since !== 'number' || !Number.isFinite(req.since)) {
+  if (!req || !Number.isSafeInteger(req.since) || req.since < 0) {
     return c.json({ error: 'invalid_since' }, 400)
+  }
+  if ('checkpoint' in req && req.since > 0 && (req.since > serverTime || !await validCheckpoint(c.env.DB, req.checkpoint, req.since, 'notes', c.env.SYNC_INSTANCE_EPOCH))) {
+    return c.json({ error: 'sync_reset_required' }, 409)
   }
 
   const limit = Math.min(Math.max(1, req.limit ?? DEFAULT_LIMIT), MAX_LIMIT)
@@ -84,6 +97,7 @@ syncRoutes.post('/api/sync/pull', async (c) => {
     server_time: serverTime,
     next_cursor,
     trash_retention_days: trashRetentionDays,
+    checkpoint: receipt,
   }
 
   return c.json(response)

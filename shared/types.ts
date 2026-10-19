@@ -65,6 +65,9 @@ export interface OutboxTask {
   seq: number
   /** 1 = 不可重试的失败，移出消费队列等用户处理；新编辑合并进来时归零 */
   failed: 0 | 1
+  /** 最近一次服务端/网络错误，保留给本机恢复面板；不参与同步协议。 */
+  last_error?: string
+  failed_at?: number
 }
 
 /** 本地某条笔记的同步状态（planPull 输入）。 */
@@ -75,7 +78,7 @@ export interface LocalNoteState {
   /** 本地 body 字段当前对应的服务端版本；0 表示正文还没拉到 */
   body_version: number
   prop_version: number
-  /** outbox 里是否有未失败的 body/create 任务——有就别拿远端正文盖本地 */
+  /** outbox 是否有未确认的 body/create 任务（包括失败任务）。 */
   body_pending: boolean
 }
 
@@ -156,6 +159,8 @@ export interface PatchGroupRequest {
 /** POST /api/sync/pull 请求体（规格 §7.1）。 */
 export interface PullRequest {
   since: number
+  /** Presence opts into checkpoint validation; omitted by legacy clients. */
+  checkpoint?: string | null
   limit?: number
   cursor?: string | null
 }
@@ -166,6 +171,7 @@ export interface PullResponse {
   groups: Group[]
   server_time: number
   next_cursor: string | null
+  checkpoint?: string
   /** 部署级的回收站保留天数；null 表示未开启自动清理。旧服务端没有这个字段。 */
   trash_retention_days?: number | null
 }

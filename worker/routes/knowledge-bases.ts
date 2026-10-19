@@ -5,6 +5,7 @@ import type { KnowledgeBase, KnowledgeBaseAck, KnowledgeBaseRemote, TocNode } fr
 import type { Database } from '../storage'
 import type { Env } from '../types'
 import { cleanupDeletedNotebookImages } from '../knowledge-base-deletion'
+import { issueCheckpoint, validCheckpoint } from '../sync-checkpoint'
 
 export const knowledgeBasesRoutes = new Hono<{ Bindings: Env }>()
 knowledgeBasesRoutes.use('/api/knowledge-bases/*', bodyLimit({ maxSize: MAX_TOC_BYTES + 4096 }))
@@ -67,19 +68,34 @@ function finish(db: Database, id: string, op: string, hash: string, guard: strin
 const metaGuard = 'EXISTS (SELECT 1 FROM knowledge_base WHERE id = ? AND last_operation_id = ?)'
 const tocGuard = 'EXISTS (SELECT 1 FROM knowledge_base_toc WHERE knowledge_base_id = ? AND last_operation_id = ?)'
 
+knowledgeBasesRoutes.post('/api/knowledge-bases/sync/checkpoint', async c => {
+  const req = await c.req.json().catch(() => null)
+  if (!req || !Number.isSafeInteger(req.since) || req.since < 0) return c.json({ error: 'invalid_since' }, 400)
+  return c.json({ valid: await validCheckpoint(c.env.DB, req.checkpoint, req.since, 'books', c.env.SYNC_INSTANCE_EPOCH, !!req.require_current) })
+})
+
 knowledgeBasesRoutes.post('/api/knowledge-bases/sync/pull', async c => {
   const req = await c.req.json().catch(() => null)
   const since = req?.since ?? 0
   const after = req?.after ?? since
   const clock = (await c.env.DB.prepare('SELECT seq FROM knowledge_base_clock WHERE id = 1').first<{ seq: number }>())!.seq
   const until = req?.until ?? clock
+  const receipt = await issueCheckpoint(c.env.DB, until, 'books', c.env.SYNC_INSTANCE_EPOCH)
+  if ('checkpoint' in (req ?? {}) && since > 0 && !await validCheckpoint(c.env.DB, req.checkpoint, since, 'books', c.env.SYNC_INSTANCE_EPOCH)) {
+    return c.json({ error: 'sync_reset_required' }, 409)
+  }
   if (![since, after, until].every(n => Number.isSafeInteger(n) && n >= 0) || after < since || until > clock || since > until) {
     return c.json({ error: 'invalid_cursor' }, 400)
   }
-  const rows = await c.env.DB.prepare(`SELECT ${BOOK_FIELDS} FROM knowledge_base
-    WHERE change_seq > ? AND change_seq <= ? ORDER BY change_seq LIMIT 51`).bind(after, until).all<KnowledgeBase>()
+  const inventory = req?.inventory === true
+  if (inventory && req.after_id !== undefined && (typeof req.after_id !== 'string' || req.after_id.length > 100)) return c.json({ error: 'invalid_cursor' }, 400)
+  const rows = inventory
+    ? await c.env.DB.prepare(`SELECT ${BOOK_FIELDS} FROM knowledge_base WHERE id > ? ORDER BY id LIMIT 51`).bind(req.after_id ?? '').all<KnowledgeBase>()
+    : await c.env.DB.prepare(`SELECT ${BOOK_FIELDS} FROM knowledge_base
+      WHERE change_seq > ? AND change_seq <= ? ORDER BY change_seq LIMIT 51`).bind(after, until).all<KnowledgeBase>()
   const books = rows.results.slice(0, 50)
-  return c.json({ books, until, next_after: rows.results.length > 50 ? books.at(-1)!.change_seq : null })
+  return c.json({ books, until, next_after: rows.results.length > 50 ? books.at(-1)!.change_seq : null,
+    next_id: inventory && rows.results.length > 50 ? books.at(-1)!.id : null, checkpoint: receipt })
 })
 
 knowledgeBasesRoutes.get('/api/knowledge-bases/:id/toc', async c => {

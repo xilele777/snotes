@@ -24,6 +24,7 @@ export function json(path: string, method: string, body: unknown, token: string 
 
 export async function resetDb() {
   await env.DB.batch([
+    env.DB.prepare('DELETE FROM sync_checkpoint'),
     env.DB.prepare('DELETE FROM agent_operation'),
     env.DB.prepare('DELETE FROM agent_token'),
     env.DB.prepare('DELETE FROM knowledge_base_deleted_image'),

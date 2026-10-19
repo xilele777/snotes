@@ -11,6 +11,7 @@ import { trashRoutes } from './routes/trash'
 import { agentRoutes } from './routes/agent'
 import { agentTokenRoutes } from './routes/agent-tokens'
 import type { Env } from './types'
+import { instanceEpoch } from './sync-checkpoint'
 
 export function createApp() {
   const app = new Hono<{ Bindings: Env }>()
@@ -20,6 +21,20 @@ export function createApp() {
 
   app.route('/', agentRoutes)
   app.use('/api/*', auth)
+  app.use('/api/*', async (c, next) => {
+    // Reads used for recovery remain available with a stale epoch. Mutations
+    // from an old tab must stop until that tab completes reconciliation.
+    const epoch = await instanceEpoch(c.env.DB, c.env.SYNC_INSTANCE_EPOCH)
+    c.header('X-Snotes-Epoch', epoch)
+    c.header('Cache-Control', 'no-store')
+    const mutates = !['GET', 'HEAD', 'OPTIONS'].includes(c.req.method)
+      && !c.req.path.includes('/sync/') && !c.req.path.endsWith('/opens')
+    const supplied = c.req.header('X-Snotes-Epoch')
+    if (mutates && (supplied && supplied !== epoch || !supplied && c.env.SYNC_REQUIRE_EPOCH === 'true')) {
+      return c.json({ error: 'sync_reset_required' }, 409)
+    }
+    await next()
+  })
 
   app.get('/api/runtime', c => {
     c.header('Cache-Control', 'no-store')

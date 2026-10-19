@@ -8,7 +8,7 @@ describe('schema', () => {
       "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' AND name NOT LIKE 'd1_%' AND name NOT LIKE '\\_cf\\_%' ESCAPE '\\' ORDER BY name"
     ).all<{ name: string }>()
 
-    expect(results.map((r) => r.name)).toEqual(['agent_operation', 'agent_token', 'image', 'knowledge_base', 'knowledge_base_clock', 'knowledge_base_deleted_image', 'knowledge_base_deleted_note', 'knowledge_base_operation', 'knowledge_base_toc', 'knowledge_base_toc_history', 'note', 'note_body', 'note_group', 'note_history', 'note_open', 'note_sync_clock'])
+    expect(results.map((r) => r.name)).toEqual(['agent_operation', 'agent_token', 'image', 'knowledge_base', 'knowledge_base_clock', 'knowledge_base_deleted_image', 'knowledge_base_deleted_note', 'knowledge_base_operation', 'knowledge_base_toc', 'knowledge_base_toc_history', 'note', 'note_body', 'note_group', 'note_history', 'note_open', 'note_sync_clock', 'sync_checkpoint', 'sync_instance', 'sync_revision'])
   })
 
   it('note 表带默认值插入后各字段符合预期', async () => {
