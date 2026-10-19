@@ -26,8 +26,8 @@ async function main() {
       </style></head><body>${svg}</body></html>`)
       if (fullBleed) {
         // iOS and Android apply their own masks. Keep the background opaque;
-        // the note artwork fits inside the central 80% diameter safe circle.
-        await page.locator('svg > rect').evaluate(rect => rect.setAttribute('rx', '0'))
+        // The notebook artwork fits inside the central 80% diameter safe circle.
+        await page.locator('svg > rect').first().evaluate(rect => rect.setAttribute('rx', '0'))
       }
       await page.screenshot({ path: path.join(publicDir, name), omitBackground: true })
       console.log(`${name}: ${size} x ${size}`)
