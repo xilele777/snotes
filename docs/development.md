@@ -2,7 +2,7 @@
 
 [返回文档首页](README.md)
 
-建议统一使用 Node.js 24 LTS：前端和 Worker 开发要求 Node.js 22.12+，Node.js 后端及其测试要求 Node.js 24。所有命令在仓库根目录执行。
+项目统一使用 Node.js 24 LTS，`package.json` engines 与 CI 使用相同主版本。所有命令在仓库根目录执行。
 
 ## 本地开发
 
@@ -33,6 +33,9 @@ npm run test:all    # 以上全部
 npm run test:e2e    # Playwright 端到端
 npm run test:e2e:server # 相同浏览器用例，改用 Node.js 服务
 npm run typecheck   # 类型检查
+npm run check:bundle # 生产构建后检查 main / Vditor / Lute 的 gzip 和解码体积预算
+npm run profile:startup -- --runs 3 --output tmp/startup-profile.json
+npm run profile:startup -- --runs 3 --large-note --output tmp/startup-large-profile.json
 ```
 
 E2E 会自己构建、应用迁移并在 `8790` 端口拉起 `wrangler dev`，打的是生产形态（同源静态资源 + API），不需要手动先起服务。测试使用 `tests/e2e/wrangler.jsonc` 中的固定测试令牌，数据独立保存在 `tmp/e2e-state`。
@@ -41,11 +44,13 @@ E2E 会自己构建、应用迁移并在 `8790` 端口拉起 `wrangler dev`，�
 
 提交前请跑通 `npm run test:all && npm run build`。
 
+GitHub Actions 会运行全部单元/集成测试、生产构建、资源预算、生产依赖安全审计，以及 Worker/Node 两种后端的 Chromium E2E。浏览器矩阵在独立 runner 中执行；本地两套 E2E 需要顺序运行。性能 profile 使用 500 条合成笔记、390×844、4 倍 CPU 降速和 4 Mbps/40 ms，不访问生产数据；测量时避免并行构建或其他浏览器测试。长文用例为约 76,000 字符、2,000 段落。性能结果与体积预算用途不同，体积通过不能代替真实手机性能验收。
+
 ## 技术栈
 
 | 层 | 技术 |
 | --- | --- |
-| 前端 | Vue 3、Pinia、Milkdown（Markdown 编辑器）、Dexie（IndexedDB） |
+| 前端 | Vue 3、Pinia、Vditor（Markdown 编辑器）、Dexie（IndexedDB） |
 | PWA | vite-plugin-pwa（Workbox） |
 | 后端 | Hono，运行于 Cloudflare Workers 或 Node.js 24 |
 | 存储 | Cloudflare D1 / R2，或 SQLite / 本地磁盘 |
@@ -73,7 +78,7 @@ flowchart LR
 ```
 src/            前端（Vue 3 + Pinia）
   components/    列表、详情、侧栏、监控等组件
-  editor/        Milkdown 编辑器封装
+  editor/        Vditor 编辑器封装
   stores/        Pinia 状态（notes / ui / groups）
   sync/          同步引擎（pull / push / conflict）
   db/            Dexie schema 与 repo
@@ -112,3 +117,11 @@ docs/           设计文档、运维手册
 - 数据库 schema 变更一律新增 `migrations/000N_*.sql` 递增迁移，不改动已有迁移文件；迁移编号与应用版本号是两套独立序列
 - 版本号唯一来源是根目录 `package.json` 的 `version`，发布流程见 [CLAUDE.md](../CLAUDE.md)
 - 行为变更请附对应测试
+
+## 编辑器迁移与恢复协议
+
+生产编辑器统一为 `src/editor/VditorEditor.vue`；旧 Milkdown 实现、专属组件、样式和依赖已移除。历史设计文档保留当时决策，不应直接复制旧文件路径。历史正文的空行兼容转换继续由 shared/sanitize 处理。加载期间只显示稳定提示，不渲染原始正文，初始化根隐藏且 inert，就绪后统一显示。
+
+`0010_sync_checkpoints.sql` 新增短期同步凭证。新客户端在上传前验证凭证；过期、缺失或 watermark 回退时先从零对账，分页和正文全部成功且远端水位稳定才处理失踪记录并保存新游标。已确认墓碑直接删除，未确认输入保留副本；缺失记录无法区分删除和备份回退，正文保留为恢复副本。笔记本恢复使用独立持久标记，失败后仍先拉取再上传。凭证不等价于跨表快照，恢复数据库后应清空 sync_checkpoint，完整边界见修复记录。
+
+备份导入先校验索引和正文、准备图片，再以同一个 IndexedDB 事务提交分组、笔记、目录、历史和待同步任务。同 ID 正文差异保留到历史供人工恢复。网络图片上传不属于本地事务；已上传的不可变图片凭证用于同一索引备份重试。

@@ -15,6 +15,7 @@
 
 ```bash
 node scripts/profile-startup.mjs --runs 3
+node scripts/profile-startup.mjs --runs 3 --large-note --output tmp/startup-large-profile.json
 node scripts/profile-startup.mjs --baseline <旧版本构建的dist目录> --runs 3
 ```
 
@@ -27,7 +28,11 @@ node scripts/profile-startup.mjs --baseline <旧版本构建的dist目录> --run
 - 已有本地数据后刷新，到上次编辑正文可见的时间。
 - `navigator.storage.estimate()` 的站点总占用及分类、CacheStorage 条目、同步 XHR 与主线程长任务。
 
-提供基线时，额外在同一 origin 从旧版切换到新版，验证 Service Worker 激活后旧图表等预缓存被删除，500 条 IndexedDB 笔记仍保留。存储估算可能滞后于缓存删除，升级检查以缓存键和数据库行数为准。
+提供基线时，额外在同一 origin 从旧版切换到新版，点击「保存并更新」后验证 Service Worker 激活、旧图表等预缓存被删除，500 条 IndexedDB 笔记仍保留。存储估算可能滞后于缓存删除，升级检查以缓存键和数据库行数为准。
+
+长文超过 50,000 个 JS 字符优先源码分屏打开，保留手动切换入口。资源加载期间仅显示稳定加载提示，不提前渲染正文；初始化中的编辑器隐藏并脱离占位布局，避免先后两份正文挤动。旧 Milkdown 实现、样式和依赖已移除。Node 静态服务启用 gzip；profile 临时服务本来就有 gzip，因此不能把它的前后结果当作 Node 压缩改进的收益。Node 压缩由服务端回归分别验证编码协商、Vary 和解压后内容一致。
+
+`npm run check:bundle` 对构建后的主入口、编辑器与 Lute 分别检查 gzip 和解码体积，已加入 CI。运行速度仍需上面的独立 profile 和真实手机验收。最新测量与限制见 [修复记录](audits/2026-10-19-v1-repairs.md)。
 
 这些结果用于相同环境的前后比较，不代表真实手机、真实服务端或任意网络的绝对耗时。首次清空后仍需要传输用户正文，无法对任意笔记量和带宽承诺一秒恢复完全部内容。
 
