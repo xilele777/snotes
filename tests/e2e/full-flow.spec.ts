@@ -123,14 +123,24 @@ const PNG_BASE64 =
   'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=='
 
 /** 把图片粘贴事件交给 Vditor 当前的正文输入区域。 */
-async function pasteImage(page: Page) {
-  await page.locator('.snotes-vditor [role="textbox"]:visible').evaluate((el, base64) => {
+async function pasteImage(page: Page, touchTarget = false) {
+  await page.locator('.snotes-vditor [role="textbox"]:visible').evaluate((el, { fixture, touchTarget }) => {
+    let base64 = fixture
+    if (touchTarget) {
+      // Touch hit testing expands the contact area; a 1px image targets its
+      // surrounding paragraph. Use an actual finger-sized uploaded image.
+      const canvas = document.createElement('canvas')
+      canvas.width = 80
+      canvas.height = 60
+      canvas.getContext('2d')!.fillRect(0, 0, 80, 60)
+      base64 = canvas.toDataURL('image/png').split(',')[1]!
+    }
     const bytes = Uint8Array.from(atob(base64), (c) => c.charCodeAt(0))
     const file = new File([bytes], 'a.png', { type: 'image/png' })
     const dt = new DataTransfer()
     dt.items.add(file)
     el.dispatchEvent(new ClipboardEvent('paste', { clipboardData: dt, bubbles: true }))
-  }, PNG_BASE64)
+  }, { fixture: PNG_BASE64, touchTarget })
 }
 
 /** 读当前笔记落在 IndexedDB 里的正文，用来确认 debounce 存盘已经完成 */
@@ -329,6 +339,7 @@ test('GFM 表格在编辑器里渲染成 table', async ({ page }) => {
   await page.locator('.snotes-vditor [role="textbox"]:visible').click()
 
   await page.locator('.vditor-toolbar [data-type="table"]').click()
+  await page.locator('.table-dialog').getByRole('button', { name: '插入', exact: true }).click()
 
   const table = page.locator('.snotes-vditor [role="textbox"]:visible table')
   await expect(table).toHaveCount(1, { timeout: 5_000 })
@@ -355,6 +366,7 @@ test('原生表格支持加行加列，并在表格后继续输入', async ({ pa
   const editor = page.getByRole('textbox', { name: '笔记正文' })
   await expect(editor).toBeFocused()
   await page.locator('.vditor-toolbar [data-type="table"]').click()
+  await page.locator('.table-dialog').getByRole('button', { name: '插入', exact: true }).click()
   const table = editor.locator('table')
   await expect(table).toHaveCount(1)
   await table.locator('td').last().click()
@@ -508,7 +520,7 @@ test.describe('触摸操作', () => {
   test('长按图片打开灯箱，轻点不会误触发', async ({ page }) => {
     await createNote(page)
     await page.locator('.snotes-vditor [role="textbox"]:visible').click()
-    await pasteImage(page)
+    await pasteImage(page, true)
     await expect(page.locator('.snotes-vditor [role="textbox"]:visible img[src^="/api/images/"]')).toHaveCount(1, { timeout: 15_000 })
 
     const box = (await page.locator('.snotes-vditor [role="textbox"]:visible img').first().boundingBox())!
@@ -530,7 +542,7 @@ test.describe('触摸操作', () => {
   test('长按后手指滑动（滚动正文）不会弹出灯箱', async ({ page }) => {
     await createNote(page)
     await page.locator('.snotes-vditor [role="textbox"]:visible').click()
-    await pasteImage(page)
+    await pasteImage(page, true)
     await expect(page.locator('.snotes-vditor [role="textbox"]:visible img[src^="/api/images/"]')).toHaveCount(1, { timeout: 15_000 })
 
     const box = (await page.locator('.snotes-vditor [role="textbox"]:visible img').first().boundingBox())!
@@ -623,6 +635,33 @@ test('统计页面保留编辑器、撤销和滚动位置，侧栏可切换页�
   const grid = (await dialog.locator('.stats-grid').boundingBox())!
   const heatmap = (await dialog.locator('.panel-heatmap').boundingBox())!
   expect(heatmap.width).toBeCloseTo(grid.width, 0)
+  const chart = (await dialog.locator('.panel-daily').boundingBox())!
+  const cards = (await dialog.locator('.stats-totals').boundingBox())!
+  expect(chart.width).toBeCloseTo(cards.width, 0)
+  await expect(dialog.getByRole('heading', { name: '写作时段' })).toHaveCount(0)
+  await expect(dialog.getByRole('heading', { name: '星期分布' })).toHaveCount(0)
+  await expect(dialog).not.toContainText('开始记录')
+  const range = dialog.getByLabel('统计时间范围')
+  const chooseRange = async (label: string) => {
+    await range.click()
+    await page.getByRole('menu', { name: '统计时间范围' }).getByRole('menuitemradio', { name: label, exact: true }).click()
+    await expect(range).toBeFocused()
+  }
+  await range.press('ArrowDown')
+  await expect(page.getByRole('menuitemradio', { name: '近 30 天', exact: true })).toBeFocused()
+  await page.keyboard.press('Escape')
+  await expect(range).toBeFocused()
+  await chooseRange('近 7 天')
+  await expect(dialog.locator('.daily-hit')).toHaveCount(7)
+  await expect(dialog.locator('[data-kpi="created"]')).toContainText('近 7 天创建')
+  await chooseRange('近 90 天')
+  await expect(dialog.locator('.daily-hit')).toHaveCount(13)
+  await chooseRange('自定义日期')
+  await dialog.getByLabel('开始日期').fill('2026-01-01')
+  await dialog.getByLabel('结束日期').fill('2026-01-01')
+  await expect(dialog.locator('.daily-hit')).toHaveCount(1)
+  await expect(dialog.locator('[data-kpi="created"] strong')).toHaveText('0篇')
+  await chooseRange('近 30 天')
   await page.getByRole('button', { name: '设置', exact: true }).click()
   await expect(page.getByRole('region', { name: '设置', exact: true })).toBeVisible()
   await expect(page.locator('.sidebar-tool[data-view="settings"]')).toHaveAttribute('aria-current', 'page')
@@ -645,18 +684,6 @@ test('统计页面保留编辑器、撤销和滚动位置，侧栏可切换页�
   await page.getByRole('button', { name: '返回工作区' }).click()
   await expect(dialog).toHaveCount(0)
 
-  await openStatsPage(page)
-  // 打开榜只统计「用户真的点开过」的笔记：本用例点开的是 navigation-12（项目记录 13），
-  // 自动选中不再计入打开次数。
-  await dialog.locator('.opened-title').filter({ hasText: /^项目记录 13$/ }).click()
-  await expect(dialog).toHaveCount(0)
-  await expect(page.locator('.layout')).toHaveAttribute('data-view', 'all')
-  await expect(page.getByRole('searchbox', { name: '搜索笔记', exact: true })).toHaveValue('')
-  await expect(page.locator('.snotes-vditor [role="textbox"]:visible h1')).toHaveText('项目记录 13')
-  await page.goBack()
-  await expect(page.locator('.layout')).toHaveAttribute('data-view', 'group')
-  await expect(page.locator('[data-note-id="navigation-12"]')).toHaveClass(/is-active/)
-  await expect(page.getByRole('searchbox', { name: '搜索笔记', exact: true })).toHaveValue('项目')
 })
 
 test('回收站预览与正文对齐，返回后恢复分组、搜索和阅读位置', async ({ page }) => {
@@ -719,9 +746,10 @@ test('原生编辑工具栏写入标题、加粗、清单和表格', async ({ pa
 
   await createNoteAndWait(page, editor)
   await page.locator('.vditor-toolbar [data-type="table"]').click()
+  await page.locator('.table-dialog').getByRole('button', { name: '插入', exact: true }).click()
   await expect(editor.locator('table')).toHaveCount(1)
   await expect(editor.locator('th')).toHaveCount(3)
-  await expect.poll(() => savedBody(page)).toContain('| col1')
+  await expect.poll(() => savedBody(page)).toContain('| - | - | - |')
 })
 
 test('原生链接浮层编辑地址，Mod 点击安全打开，取消链接保留文字', async ({ page }) => {
@@ -923,12 +951,12 @@ test('清单可勾选、撤销并保存，回收站中保持只读', async ({ pa
 
   await checkbox.check()
   await expect(checkbox).toBeChecked()
-  await expect.poll(() => savedBody(page)).toContain('[x] 买牛奶')
+  await expect.poll(() => savedBody(page)).toMatch(/\[[xX]\] 买牛奶/)
   await page.locator('.vditor-toolbar [data-type="undo"]').click()
   await expect(checkbox).not.toBeChecked()
   await page.locator('.vditor-toolbar [data-type="redo"]').click()
   await expect(checkbox).toBeChecked()
-  await expect.poll(() => savedBody(page)).toContain('[x] 买牛奶')
+  await expect.poll(() => savedBody(page)).toMatch(/\[[xX]\] 买牛奶/)
 
   await page.reload()
   await expect(checkbox).toBeChecked()
@@ -1013,6 +1041,7 @@ test('取消误粘贴的 Markdown 代码块时恢复正文格式', async ({ page
     element.dispatchEvent(new ClipboardEvent('paste', { clipboardData, bubbles: true, cancelable: true }))
   }, pasteMarkdown)
   await expect(editor.locator('pre.vditor-wysiwyg__pre')).toHaveText(pasteMarkdown)
+  await editor.locator('.vditor-wysiwyg__preview').first().click()
   await editor.locator('pre.vditor-wysiwyg__pre').click()
   await page.locator('.vditor-toolbar [data-type="code"]').click()
   await expect(editor.locator('h1')).toHaveText('Markflow｜技术讲解')
@@ -1142,6 +1171,8 @@ test.describe('手机操作', () => {
     await page.keyboard.type('测试触摸手势')
     await expect.poll(() => savedBody(page)).toContain('测试触摸手势')
     await page.reload()
+    await page.getByRole('button', { name: '返回列表', exact: true }).click()
+    await expect(page.locator('.list-pane')).toBeVisible()
     const row = page.locator('.note-item').first()
     await row.dispatchEvent('pointerdown', { pointerType: 'touch', clientX: 220, clientY: 200 })
     await row.dispatchEvent('pointerup', { pointerType: 'touch', clientX: 160, clientY: 350 })

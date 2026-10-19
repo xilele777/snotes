@@ -75,6 +75,20 @@ test('快速切换笔记保留最后按键，撤销不跨文档', async ({ page 
   await expect(body(page)).toContainText('第一篇最后按键')
 })
 
+test('表格按钮先收行数与列数，再按指定尺寸插入', async ({ page }) => {
+  await switchMode(page, 'wysiwyg')
+  await tool(page, 'table').click()
+  const dialog = page.locator('.table-dialog')
+  await expect(dialog).toBeVisible()
+  await page.getByLabel('行数').fill('4')
+  await page.getByLabel('列数').fill('2')
+  await dialog.getByRole('button', { name: '插入' }).click()
+  await expect(dialog).toHaveCount(0)
+  await expect(body(page).locator('table tr')).toHaveCount(4)
+  await expect(body(page).locator('table th')).toHaveCount(2)
+  await expect.poll(() => saved(page)).toContain('| - | - |')
+})
+
 test('原生格式工具和撤销重做', async ({ page }) => {
   await switchMode(page, 'wysiwyg')
   await body(page).click()
@@ -87,6 +101,139 @@ test('原生格式工具和撤销重做', async ({ page }) => {
   await expect(body(page).locator('b, strong')).toHaveCount(0)
   await tool(page, 'redo').click()
   await expect(body(page).locator('b, strong')).toHaveText('需要加粗')
+})
+
+for (const mode of ['ir', 'wysiwyg', 'sv']) {
+  test(`${mode} 刚输入就能撤销和重做，连续撤销不会丢掉尚未入栈的文字`, async ({ page }) => {
+    await switchMode(page, mode)
+    await body(page).click()
+    await page.keyboard.insertText('即时输入')
+    await tool(page, 'undo').click()
+    if (mode === 'sv') await expect(body(page)).not.toHaveValue(/即时输入/)
+    else await expect(body(page)).not.toContainText('即时输入')
+    await tool(page, 'redo').click()
+    if (mode === 'sv') await expect(body(page)).toHaveValue(/即时输入/)
+    else await expect(body(page)).toContainText('即时输入')
+    await page.keyboard.insertText('追加文字')
+    await page.keyboard.press('Control+z')
+    if (mode === 'sv') await expect(body(page)).toHaveValue(/^\s*即时输入\s*$/)
+    else await expect(body(page)).toHaveText('即时输入')
+    await page.keyboard.press('Control+z')
+    if (mode === 'sv') await expect(body(page)).not.toHaveValue(/即时输入/)
+    else await expect(body(page)).not.toContainText('即时输入')
+    await page.keyboard.press('Control+y')
+    if (mode === 'sv') await expect(body(page)).toHaveValue(/即时输入/)
+    else await expect(body(page)).toContainText('即时输入')
+    await expect.poll(() => saved(page)).toContain('即时输入')
+    expect(await saved(page)).not.toContain('追加文字')
+  })
+}
+
+for (const mode of ['ir', 'wysiwyg', 'sv']) {
+  test(`${mode} 格式与插入按钮逐项可用`, async ({ page }) => {
+    const errors: string[] = []
+    page.on('pageerror', error => errors.push(error.message))
+    async function seed(markdown = '检查文字') {
+      if (await page.locator('.snotes-vditor').getAttribute('data-mode') !== 'sv') await switchMode(page, 'sv')
+      await body(page).fill(markdown)
+      if (mode !== 'sv') await switchMode(page, mode)
+      await body(page).click()
+      await page.keyboard.press('Control+a')
+      if (mode !== 'sv' && markdown === '检查文字') {
+        // Select text, excluding the trailing empty paragraph in rich modes.
+        await body(page).evaluate(root => {
+          const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT)
+          let node: Node | null
+          while ((node = walker.nextNode())) {
+            const index = node.textContent?.indexOf('检查文字') ?? -1
+            if (index < 0) continue
+            const range = document.createRange()
+            range.setStart(node, index)
+            range.setEnd(node, index + 4)
+            window.getSelection()!.removeAllRanges()
+            window.getSelection()!.addRange(range)
+            break
+          }
+        })
+      }
+    }
+    const inline: [string, RegExp][] = [
+      ['bold', /\*\*检查文字\*\*/], ['italic', /\*检查文字\*/],
+      ['strike', /~~检查文字~~/], ['highlight', /==检查文字==/],
+      ['inline-code', /`检查文字`/],
+    ]
+    for (const [name, markdown] of inline) {
+      await seed()
+      await tool(page, name).click()
+      await expect.poll(() => saved(page), { message: `${mode}: ${name}` }).toMatch(markdown)
+    }
+    for (const [name, markdown] of [
+      ['list', /\* 检查文字/], ['ordered-list', /1\. 检查文字/],
+      ['check', /\* \[ \] +检查文字/], ['quote', /> 检查文字/],
+      ['code', /```[\s\S]*检查文字[\s\S]*```/], ['line', /(?:---|\*\*\*)/],
+    ] as [string, RegExp][]) {
+      await seed()
+      await tool(page, name).click()
+      await expect.poll(() => saved(page), { message: `${mode}: ${name}` }).toMatch(markdown)
+    }
+    await seed()
+    await tool(page, 'headings').click()
+    await page.locator('.vditor-toolbar [data-tag="h2"]').click()
+    await expect.poll(() => saved(page)).toContain('## 检查文字')
+    await seed()
+    await tool(page, 'emoji').click()
+    const emoji = page.locator('.vditor-emojis button[data-value]').first()
+    const value = (await emoji.getAttribute('data-value'))!.trim()
+    await emoji.click()
+    await expect.poll(() => saved(page)).toContain(value)
+    if (mode !== 'sv') {
+      await seed('- 第一项\n- 第二项')
+      await body(page).locator('li').last().click()
+      await expect(tool(page, 'indent')).not.toHaveClass(/vditor-menu--disabled/)
+      await tool(page, 'indent').click()
+      await expect(body(page).locator('li li')).toHaveCount(1)
+      await tool(page, 'outdent').click()
+      await expect(body(page).locator('li li')).toHaveCount(0)
+      await seed()
+      await page.keyboard.press('ArrowRight')
+      await tool(page, 'insert-before').click()
+      await page.keyboard.insertText('前插入')
+      await expect.poll(() => saved(page)).toMatch(/前插入[\s\S]*检查文字/)
+      await tool(page, 'insert-after').click()
+      await page.keyboard.insertText('后插入')
+      await expect.poll(() => saved(page)).toContain('后插入')
+    }
+    expect(errors).toEqual([])
+  })
+}
+
+test('预览切换与主题二级菜单可以实际点击', async ({ page }) => {
+  await switchMode(page, 'sv')
+  await body(page).fill('# 预览检查\n\n```js\nconst n = 1\n```')
+  await tool(page, 'more').click()
+  await tool(page, 'both').click()
+  await expect(page.locator('.vditor-preview')).toBeHidden()
+  await tool(page, 'more').click()
+  await tool(page, 'both').click()
+  await expect(page.locator('.vditor-preview')).toBeVisible()
+  await tool(page, 'more').click()
+  await tool(page, 'preview').click()
+  await expect(body(page)).toHaveCount(0)
+  await expect(page.locator('.vditor-preview')).toContainText('预览检查')
+  await tool(page, 'more').click()
+  await tool(page, 'preview').click()
+  await expect(body(page)).toBeVisible()
+  for (const width of [1440, 390]) {
+    await page.setViewportSize({ width, height: 900 })
+    await tool(page, 'more').click()
+    await tool(page, 'content-theme').click()
+    await page.locator('.vditor-toolbar [data-type="wechat"]').click()
+    await expect(page.locator('#vditorContentTheme')).toHaveAttribute('href', /wechat\.css/)
+    await tool(page, 'more').click()
+    await tool(page, 'code-theme').click()
+    await page.locator('.vditor-toolbar .vditor-hint button').filter({ hasText: /^github$/ }).click()
+    await expect(page.locator('#vditorHljsStyle')).toHaveAttribute('href', /github\.min\.css/)
+  }
 })
 
 test('原生链接和高亮快捷键可用，搜索使用更新后的键位', async ({ page }) => {

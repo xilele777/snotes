@@ -9,7 +9,7 @@ async function signIn(page: Page) {
 }
 async function enterLibraries(page: Page, width: number) {
   if (width <= 1020) await page.getByRole('button', { name: '打开侧栏', exact: true }).click()
-  await page.getByRole('button', { name: '笔记本', exact: true }).click()
+  await page.getByRole('navigation', { name: '便签导航' }).getByRole('button', { name: '笔记本', exact: true }).click()
   await expect(page.getByRole('heading', { name: '笔记本', exact: true })).toBeVisible()
 }
 test.beforeEach(() => resetServer())
@@ -76,6 +76,10 @@ for (const width of [1440, 720, 390, 320]) {
     await page.request.post('/api/notes', { headers, data: { id, title: '已有参考', summary: '原正文', content: '# 已有参考\n\n原正文', create_time: Date.now() } })
     await signIn(page)
     await expect(page.locator('.note-item')).toHaveCount(1)
+    // Load the editor assets once before testing an offline editing session.
+    await page.locator('.note-select').first().click()
+    await expect(page.locator('.snotes-vditor [role="textbox"]:visible')).toContainText('原正文')
+    if (width <= 720) await page.getByRole('button', { name: '返回列表', exact: true }).click()
     await enterLibraries(page, width)
     await page.context().setOffline(true)
     await page.getByRole('button', { name: '新建笔记本', exact: true }).click()
@@ -93,19 +97,32 @@ for (const width of [1440, 720, 390, 320]) {
     await page.getByRole('button', { name: '加入 1 篇', exact: true }).click()
     await expect(page.getByRole('dialog', { name: '加入已有笔记' })).toHaveCount(0)
     await expect(page.locator('.kb-node-link').filter({ hasText: '已有参考' })).toBeVisible()
-    if (width <= 720) await page.locator('.kb-mobile-overview summary').click()
-    const overview = page.locator(width <= 720 ? '.kb-mobile-overview .kb-info' : '.knowledge-base-home .kb-info')
+    const overview = page.locator(width <= 720 ? '.kb-mobile-overview .kb-home-card' : '#app > .layout > .knowledge-base-home .kb-home-card')
     await expect(overview).toBeVisible()
-    await expect(overview.locator('.kb-info-stat.notes dd')).toHaveText('1 篇')
-    await expect(overview.locator('.kb-info-stat.chapters dd')).toHaveText('1 个')
+    await expect(overview.locator('h1')).toHaveText('产品研究')
+    await expect(overview.locator('.kb-home-stats')).toHaveText('1 文档 · 7 字')
+    await expect(overview).toContainText('研究资料与实践笔记')
+    if (width > 720) {
+      await expect(overview.locator('.kb-home-section-head')).toContainText('1 个章节 · 1 篇笔记')
+      await overview.getByRole('button', { name: '打开笔记：已有参考', exact: true }).click()
+      await expect(page.locator('.snotes-vditor [role="textbox"]:visible')).toContainText('原正文')
+      await page.getByRole('button', { name: '首页', exact: true }).click()
+      await expect(overview).toBeVisible()
+    }
+    await overview.getByRole('button', { name: '固定', exact: true }).click()
+    await expect(overview.getByRole('button', { name: '已固定', exact: true })).toHaveAttribute('aria-pressed', 'true')
+    await overview.getByRole('button', { name: '首页更多操作', exact: true }).click()
+    await page.getByRole('menuitem', { name: '编辑笔记本', exact: true }).click()
+    await expect(page.getByRole('dialog', { name: '编辑笔记本' })).toBeVisible()
+    await page.getByRole('dialog', { name: '编辑笔记本' }).getByRole('button', { name: '取消', exact: true }).click()
     for (const theme of ['light', 'dark']) {
       await page.evaluate(value => document.documentElement.dataset.theme = value, theme)
       expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
       await page.screenshot({ path: testInfo.outputPath(`notebook-home-${theme}-${width}.png`), fullPage: true, animations: 'disabled' })
     }
     await page.evaluate(() => document.documentElement.dataset.theme = 'light')
-    if (width <= 720) await page.locator('.kb-mobile-overview summary').click()
-    await page.locator('.kb-toolbar').getByRole('button', { name: '新建笔记', exact: true }).click()
+    await page.getByRole('button', { name: '更多新建方式', exact: true }).click()
+    await page.getByRole('menuitem', { name: '新建笔记', exact: true }).click()
     const editor = page.locator('.snotes-vditor [role="textbox"]:visible[contenteditable="true"]')
     await expect(editor).toBeVisible()
     await editor.fill('新建实践\n\n离线记录')
