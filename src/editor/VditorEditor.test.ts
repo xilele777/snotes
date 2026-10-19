@@ -21,18 +21,32 @@ beforeEach(() => { MockVditor.instances = []; vi.useFakeTimers({ toFake: ['setTi
 afterEach(() => { mounted.splice(0).forEach(wrapper => wrapper.unmount()); vi.useRealTimers(); vi.clearAllMocks() })
 
 describe('Vditor 保存与同步边界', () => {
+  it('长文优先源码分屏，保留普通笔记的设备偏好且打开不改写正文', async () => {
+    localStorage.setItem('snotes_editor_mode', 'ir')
+    const value = '# 长文\n\n' + '正文段落。\n\n'.repeat(8000)
+    const { wrapper, editor } = await create(value)
+    expect(editor.options.mode).toBe('sv')
+    expect(localStorage.getItem('snotes_editor_mode')).toBe('ir')
+    expect(wrapper.find('.long-document-notice').text()).toContain('分屏模式')
+    expect(wrapper.emitted('update:modelValue')).toBeUndefined()
+    expect(editor.value).toBe(value)
+  })
   it('资源下载期间显示加载提示，切换后的最新正文在就绪后打开', async () => {
     let resolve!: () => void
     vi.mocked(loadVditorAssets).mockReturnValueOnce(new Promise<void>(done => { resolve = done }))
     const wrapper = mount(VditorEditor, { props: { noteId: 'a', modelValue: 'A' } })
     mounted.push(wrapper)
     expect(wrapper.find('[role="status"]').exists()).toBe(true)
+    expect(wrapper.find('pre').exists()).toBe(false)
+    expect(wrapper.text()).not.toContain('A')
+    expect(wrapper.get('.snotes-vditor').attributes('inert')).toBeDefined()
     expect(MockVditor.instances).toHaveLength(0)
     await wrapper.setProps({ noteId: 'b', modelValue: '最新正文' })
     resolve()
     await flushPromises()
     expect(MockVditor.instances.at(-1)?.value).toBe('最新正文')
     expect(wrapper.find('[role="status"]').exists()).toBe(false)
+    expect(wrapper.get('.snotes-vditor').classes()).not.toContain('is-initializing')
   })
 
   it('资源加载失败可重试，不把正文留在不可恢复的空白页', async () => {

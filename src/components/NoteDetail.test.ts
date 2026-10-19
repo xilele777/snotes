@@ -9,6 +9,7 @@ import { useNotesStore } from '../stores/notes'
 import { useUiStore } from '../stores/ui'
 import { dismissNotice, notice, runNoticeAction } from '../notify'
 import NoteDetail from './NoteDetail.vue'
+import { discardDraft, unsavedDrafts } from '../editor/save-session'
 
 // Vditor 的真实 DOM 与解析器由浏览器测试覆盖。
 vi.mock('vditor', async () => ({ default: (await import('../../tests/unit/mock-vditor')).MockVditor }))
@@ -555,6 +556,31 @@ describe('NoteDetail 回收站只读态', () => {
 })
 
 describe('NoteDetail 把编辑器的基线交给 store', () => {
+  it('本地保存失败可见，重试提交最新草稿，成功前不会清掉恢复记录', async () => {
+    const notes = useNotesStore()
+    const note = await notes.create()
+    notes.currentId = note.id
+    const save = vi.spyOn(notes, 'saveBody').mockRejectedValue(new Error('QuotaExceededError'))
+    const wrapper = mount(NoteDetail, { attachTo: document.body })
+    try {
+      await flushPromises()
+      const editor = wrapper.findComponent(VditorEditor)
+      editor.vm.$emit('update:modelValue', '第一份未保存正文', '')
+      await flushPromises()
+      expect(notice.value).toContain('本地保存失败')
+      editor.vm.$emit('update:modelValue', '失败后继续写的最新正文', '第一份未保存正文')
+      await flushPromises()
+      expect(unsavedDrafts.value.find(d => d.id === note.id)?.body).toBe('失败后继续写的最新正文')
+      save.mockResolvedValue()
+      await runNoticeAction()
+      expect(save).toHaveBeenLastCalledWith(note.id, '失败后继续写的最新正文', '')
+      expect(unsavedDrafts.value.some(d => d.id === note.id)).toBe(false)
+    } finally {
+      wrapper.unmount()
+      for (const draft of [...unsavedDrafts.value]) discardDraft(draft.journalKey)
+      save.mockRestore()
+    }
+  })
   it('update:modelValue 与 flush 都把基线一并传给 saveBody', async () => {
     const notes = useNotesStore()
     const note = await notes.create()
@@ -567,6 +593,9 @@ describe('NoteDetail 把编辑器的基线交给 store', () => {
     const editor = wrapper.findComponent(VditorEditor)
     editor.vm.$emit('update:modelValue', '新正文', '旧正文')
     editor.vm.$emit('flush', note.id, '切走前的正文', '新正文')
+
+    // 同一笔记的保存串行执行；后一份输入必须等前一份确认后落库。
+    await flushPromises()
 
     // 少了基线，数据层就无法发现库里正文已被远端改写
     expect(save).toHaveBeenCalledWith(note.id, '新正文', '旧正文')

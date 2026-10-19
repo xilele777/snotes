@@ -31,6 +31,7 @@ interface PwaOptions {
     share_target: { action: string; method: 'GET'; params: { title: string; text: string; url: string } }
   }
   workbox: {
+    clientsClaim: boolean
     globPatterns: string[]
     globIgnores: string[]
     additionalManifestEntries: { url: string; revision: null }[]
@@ -41,7 +42,8 @@ interface PwaOptions {
 }
 
 export const pwaOptions: PwaOptions = {
-  registerType: 'autoUpdate',
+  // 编辑器有未提交输入时不能被 Service Worker 静默 reload；由应用在安全时机提示更新。
+  registerType: 'prompt',
   injectRegister: null,
   includeAssets: ['snotes.svg', 'favicon-32.png', 'apple-touch-icon.png', 'snotes-192.png', 'snotes-512.png', 'snotes-maskable-512.png'],
   manifest: {
@@ -70,6 +72,8 @@ export const pwaOptions: PwaOptions = {
     },
   },
   workbox: {
+    // 首次安装立即接管，后续版本仍等待用户确认，不自动 skipWaiting。
+    clientsClaim: true,
     // Only pre-cache the parser, Chinese locale and default icons. Optional
     // diagrams, math renderers, emoji and fonts are cached when requested.
     globPatterns: ['**/*.{js,css,html,ico,png,svg,gif,jpg,jpeg,webp,woff,woff2,ttf}'],

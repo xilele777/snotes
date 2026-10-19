@@ -2,6 +2,10 @@ import { describe, expect, it } from 'vitest'
 import { pwaOptions } from '../../pwa.config'
 
 describe('PWA 配置', () => {
+  it('更新等待用户确认，但首次安装接管页面以支持离线缓存', () => {
+    expect(pwaOptions.registerType).toBe('prompt')
+    expect(pwaOptions.workbox.clientsClaim).toBe(true)
+  })
   it('仅预缓存编辑器核心，复杂渲染器按需缓存', () => {
     expect(pwaOptions.workbox.globIgnores).toContain('vendor/**')
     const core = pwaOptions.workbox.additionalManifestEntries.map(entry => entry.url)

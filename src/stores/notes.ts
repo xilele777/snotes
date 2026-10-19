@@ -202,7 +202,7 @@ ${note.body}`, terms)
     // slow on mobile. The repository already wrote the canonical row; patch the
     // one row held by the store instead.
     const updated = await repo.getNote(id)
-    if (!updated) return
+    if (!updated) throw new Error('笔记已被移除，请到设置 → 数据恢复草稿')
     const index = notes.value.findIndex(note => note.id === id)
     if (index >= 0) notes.value[index] = updated
     if (retained.value?.id === id) retained.value = updated

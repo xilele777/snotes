@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import Vditor from 'vditor'
 import 'vditor/dist/index.css'
 import './vditor.css'
@@ -8,7 +8,7 @@ import TableDialog from '../components/TableDialog.vue'
 import EditorLoading from '../components/EditorLoading.vue'
 import { loadVditorAssets } from './vditor-assets'
 import { isAllowedImage, MAX_BYTES, uploadImage } from './image-upload'
-import { VDITOR_CDN, editorMode, rememberEditorMode } from './vditor-options'
+import { VDITOR_CDN, LARGE_DOCUMENT_CHARS, editorMode, rememberEditorMode } from './vditor-options'
 import { markdownFromClipboard } from './markdown-clipboard'
 import { tableMarkdown } from './table'
 
@@ -25,6 +25,8 @@ let editor: Vditor | undefined
 let ready = false
 const initialized = ref(false)
 const loadError = ref('')
+let automaticSource = false
+const longDocumentNotice = ref(false)
 let disposed = false
 let replacing = false
 let documentId = props.noteId
@@ -394,7 +396,10 @@ function rememberMode() {
     if (mode !== observedMode) editor.vditor?.undo?.addToUndoStack(editor.vditor)
     if (mode !== observedMode) historyValue = editor.getValue()
     observedMode = mode
-    rememberEditorMode(mode)
+      // 自动长文模式只作用于此笔记，不覆盖普通笔记的偏好。
+      if (automaticSource && mode !== 'sv') automaticSource = false
+      if (!automaticSource) rememberEditorMode(mode)
+      longDocumentNotice.value = automaticSource
     root.value?.setAttribute('data-mode', mode)
   }
 }
@@ -573,10 +578,12 @@ async function initialize() {
   }
   if (disposed) return
   const initialValue = props.modelValue
+  automaticSource = initialValue.length > LARGE_DOCUMENT_CHARS && editorMode() !== 'sv'
+  longDocumentNotice.value = automaticSource
   editor = new Vditor(root.value!, {
     cdn: VDITOR_CDN,
     cache: { enable: false },
-    mode: editorMode(),
+    mode: initialValue.length > LARGE_DOCUMENT_CHARS ? 'sv' : editorMode(),
     value: escapeRawHtml(migrateLegacyBr(props.modelValue)),
     placeholder: '首行写标题，接着记录正文…',
     lang: 'zh_CN',
@@ -640,7 +647,7 @@ async function initialize() {
       applyEditable()
       rememberMode()
       emit('ready')
-      if (!props.modelValue.trim()) focus()
+      if (!props.modelValue.trim()) void nextTick(() => { if (!disposed) focus() })
     },
   })
   observer = new MutationObserver(applyTheme)
@@ -663,6 +670,7 @@ async function initialize() {
   })
   contentObserver.observe(root.value!, { childList: true, subtree: true, attributes: true, attributeFilter: ['style'] })
   window.addEventListener('pagehide', flush)
+  window.addEventListener('snotes-before-update', flush)
   document.addEventListener('visibilitychange', onVisibility)
 }
 onMounted(() => { void initialize() })
@@ -678,6 +686,7 @@ onBeforeUnmount(() => {
   contentObserver?.disconnect()
   if (controlsFrame !== undefined) cancelAnimationFrame(controlsFrame)
   window.removeEventListener('pagehide', flush)
+  window.removeEventListener('snotes-before-update', flush)
   document.removeEventListener('visibilitychange', onVisibility)
   // Vditor 4 guards its asynchronous initialization after destroy().
   if (ready) editor?.destroy()
@@ -687,11 +696,14 @@ defineExpose({ flush, focus, insertImages })
 </script>
 
 <template>
+  <div class="editor-stage" :aria-busy="!initialized">
   <div v-if="loadError" class="editor-loading" role="alert">{{ loadError }}<button type="button" @click="initialize">重试</button></div>
   <EditorLoading v-else-if="!initialized" />
-  <div ref="root" class="snotes-vditor" :class="{ 'is-readonly': editable === false }"
+  <p v-if="initialized && longDocumentNotice" class="long-document-notice" role="status">长文已使用分屏模式快速打开，可在工具栏切换编辑模式。</p>
+  <div ref="root" class="snotes-vditor" :class="{ 'is-readonly': editable === false, 'is-initializing': !initialized }" :inert="!initialized" :aria-hidden="!initialized"
     @mouseover="onOutlineHover"
     @input="onInput" @keydown.capture="onHistoryKeydown" @paste.capture="onPaste" @click.capture="onClick" @touchstart.capture="onToolbarTouch" @change.capture="onLinkChange" @keyup="rememberMode" @dblclick.capture="onDoubleClick" @pointerdown.capture="onPointerDown"
     @pointerup="cancelLongPress" @pointercancel="cancelLongPress" @pointermove="cancelLongPress" />
   <TableDialog :open="tableOpen" @submit="insertTable" @close="tableOpen = false" />
+  </div>
 </template>

@@ -26,6 +26,8 @@ import { useMediaQuery } from './useMediaQuery'
 import { useWorkspaceScroll } from './useWorkspaceScroll'
 import { pushNav, isMobile, showKnowledgeBases } from '../navigation'
 import { workspacePreferences as preferences, updateWorkspacePreferences } from '../workspace-preferences'
+import { stageDraft, saveDraft } from '../editor/save-session'
+import { LARGE_DOCUMENT_CHARS } from '../editor/vditor-options'
 
 const VditorEditor = defineAsyncComponent({
   loader: () => import('../editor/VditorEditor.vue'),
@@ -52,6 +54,13 @@ onMounted(() => {
 })
 onUnmounted(() => paneObserver?.disconnect())
 const editorReady = ref(false)
+// 普通笔记复用实例；长文切换时重新选择初始化模式。分类在打开时固定，
+// 避免连续输入跨过阈值就重建编辑器、丢掉光标和撤销栈。
+const editorClasses = new Map<string, boolean>()
+function editorSessionKey(id: string, body: string) {
+  if (!editorClasses.has(id)) editorClasses.set(id, body.length > LARGE_DOCUMENT_CHARS)
+  return editorClasses.get(id) ? `long:${id}` : 'normal'
+}
 watch(() => notes.current, note => { if (!note) editorReady.value = false })
 
 const currentGroup = computed(() => groups.groups.find(group => group.group_id === notes.current?.group_id)?.name ?? '未分组')
@@ -183,7 +192,7 @@ let librarySubscription: ReturnType<typeof libraries.subscribe> | undefined
 onMounted(() => {
   document.addEventListener('click', onDocClick)
   window.addEventListener('keydown', onPopoverKeydown, true)
-  librarySubscription = libraries.subscribe()
+  librarySubscription = libraries.subscribeMembership()
 })
 onUnmounted(() => {
   document.removeEventListener('click', onDocClick)
@@ -233,12 +242,28 @@ useWorkspaceScroll(editorBody, 'editor', () => editorReady.value)
 
 function onBody(md: string, base: string) {
   if (props.readonly) return
-  if (notes.current) notes.saveBody(notes.current.id, md, base)
+  if (notes.current) void saveBodyWithFeedback(notes.current.id, md, base)
 }
 
 function onFlush(id: string, md: string, base: string) {
   if (props.readonly) return
-  notes.saveBody(id, md, base)
+  void saveBodyWithFeedback(id, md, base)
+}
+
+async function saveBodyWithFeedback(id: string, md: string, base: string) {
+  stageDraft(id, md, base)
+  try {
+    await saveDraft(id, (noteId, body, previous) => notes.saveBody(noteId, body, previous))
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error)
+    notify(`本地保存失败：${message}`, {
+      label: '重试保存',
+      run: async () => {
+        try { await saveDraft(id, (noteId, body, previous) => notes.saveBody(noteId, body, previous)) }
+        catch { notify('草稿仍未保存，请到设置 → 数据重试或下载草稿。') }
+      },
+    })
+  }
 }
 
 const editorRef = ref<InstanceType<typeof VditorEditorComponent> | null>(null)
@@ -372,7 +397,7 @@ async function runShare() {
   if (!notes.current) return
   const outcome = await shareMarkdown(noteTitle(), notes.current.body)
   // 用户取消分享时不再弹提示，那是他刚做出的选择
-  if (outcome !== 'failed') notify(outcome === 'shared' ? '已分享' : '已复制 Markdown')
+  if (outcome === 'shared' || outcome === 'copied') notify(outcome === 'shared' ? '已分享' : '已复制 Markdown')
 }
 </script>
 
@@ -538,6 +563,7 @@ async function runShare() {
       <VditorEditor
         v-else-if="notes.current && (notes.current.body_version > 0 || notes.current.dirty === 'body' || notes.current.dirty === 'both')"
         ref="editorRef"
+        :key="editorSessionKey(notes.current.id, notes.current.body)"
         :note-id="notes.current.id"
         :model-value="notes.current.body"
         :editable="canEdit"

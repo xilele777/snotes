@@ -40,6 +40,35 @@ test.beforeEach(async ({ page }) => {
   await expect(body(page)).toBeFocused()
 })
 
+test('资源未就绪时仅显示稳定加载提示，不闪现原始正文或挤动编辑区', async ({ page, context }) => {
+  await page.keyboard.insertText('# 加载布局回归\n\n**正文不应先作为 Markdown 预览出现**')
+  await expect.poll(() => saved(page)).toContain('加载布局回归')
+  await page.evaluate(async () => {
+    for (const registration of await navigator.serviceWorker.getRegistrations()) await registration.unregister()
+    for (const key of await caches.keys()) await caches.delete(key)
+  })
+  let release!: () => void
+  const gate = new Promise<void>(resolve => { release = resolve })
+  await context.route('**/vendor/vditor/**/dist/js/lute/lute.min.js', async route => { await gate; await route.continue() })
+  try {
+    await page.reload({ waitUntil: 'domcontentloaded' })
+    const loading = page.locator('.editor-loading')
+    await expect(loading).toBeVisible()
+    await expect(loading).toHaveText('正在打开编辑器…')
+    await expect(page.locator('.editor-body pre')).toHaveCount(0)
+    await expect(page.locator('.snotes-vditor')).toBeHidden()
+    const before = (await page.locator('.editor-body').boundingBox())!
+    release()
+    await expect(body(page)).toContainText('加载布局回归')
+    await expect(loading).toHaveCount(0)
+    const after = (await page.locator('.editor-body').boundingBox())!
+    expect(Math.abs(before.y - after.y)).toBeLessThan(1)
+    expect(Math.abs(before.height - after.height)).toBeLessThan(1)
+    const toolbar = (await page.locator('.vditor-toolbar').boundingBox())!
+    expect(Math.abs(toolbar.y - after.y)).toBeLessThan(2)
+  } finally { release(); await context.unrouteAll({ behavior: 'wait' }) }
+})
+
 test('原生三种编辑模式、Markdown 往返与本设备模式记忆', async ({ page }) => {
   await switchMode(page, 'sv')
   await body(page).fill(content)
@@ -73,6 +102,25 @@ test('快速切换笔记保留最后按键，撤销不跨文档', async ({ page 
   await expect(body(page)).not.toContainText('第一篇')
   await page.locator('.note-select').filter({ hasText: '第一篇最后按键' }).click()
   await expect(body(page)).toContainText('第一篇最后按键')
+})
+
+test('长文使用分屏快速打开，刷新原文不变，普通笔记仍使用原有模式', async ({ page }) => {
+  const markdown = '# 长文性能回归\n\n' + '这是一段中文正文，包含 **加粗** 与 English。\n\n'.repeat(2000)
+  const id = crypto.randomUUID()
+  const response = await page.request.post('/api/notes', {
+    headers: { Authorization: 'Bearer dev-token' },
+    data: { id, content: markdown, title: '长文性能回归', summary: '', create_time: Date.now() },
+  })
+  expect(response.ok()).toBe(true)
+  await page.locator('.header-refresh').click()
+  await page.locator('.note-select').filter({ hasText: '长文性能回归' }).click()
+  await expect(page.locator('.snotes-vditor')).toHaveAttribute('data-mode', 'sv')
+  await expect(body(page)).toHaveValue(markdown)
+  expect(await page.evaluate(() => localStorage.getItem('snotes_editor_mode'))).toBe('ir')
+  await page.reload()
+  await expect(body(page)).toHaveValue(markdown)
+  await page.locator('.header-create').click()
+  await expect(page.locator('.snotes-vditor')).toHaveAttribute('data-mode', 'ir')
 })
 
 test('大纲有右边界，长标题省略且悬停可读全文，更新后提示同步变化', async ({ page }) => {

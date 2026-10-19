@@ -15,12 +15,52 @@ import { clearLaunchParams, parseLaunchIntent } from './launch'
 import { initNavigation, openNotebookLink } from './navigation'
 import { notify } from './notify'
 import { registerSW } from 'virtual:pwa-register'
+import { waitForDraftSaves } from './editor/save-session'
 
 let offlineScheduled = false
+let reloadingForUpdate = false
+function reloadAfterLocalSave() {
+  if (reloadingForUpdate) return
+  reloadingForUpdate = true
+  window.dispatchEvent(new Event('snotes-before-update'))
+  void waitForDraftSaves().then(saved => {
+    if (saved) location.reload()
+    else {
+      reloadingForUpdate = false
+      notify('新版本已就绪，但本页仍有未保存草稿。请到设置 → 数据恢复后刷新。')
+    }
+  })
+}
+if ('serviceWorker' in navigator) {
+  let controlled = !!navigator.serviceWorker.controller
+  navigator.serviceWorker.addEventListener('controllerchange', () => {
+    // First installation claims this page without requiring a reload. Every
+    // subsequent transition is fenced, even if this tab saw no update prompt.
+    if (controlled) reloadAfterLocalSave()
+    controlled = !!navigator.serviceWorker.controller
+  })
+}
 function scheduleOfflineInstall() {
   if (offlineScheduled) return
   offlineScheduled = true
-  const register = () => registerSW({ immediate: true })
+  const register = () => {
+    const update = registerSW({
+      immediate: true,
+      // 另一个标签页批准更新也会触发 controlling。每个页面都必须先交接
+      // 自己的最后输入，不能由插件直接 reload。
+      onNeedReload: reloadAfterLocalSave,
+      onNeedRefresh() {
+        notify('新版本已准备好，保存正文后即可更新。', {
+          label: '保存并更新',
+          run: async () => {
+            window.dispatchEvent(new Event('snotes-before-update'))
+            if (await waitForDraftSaves()) await update(true)
+            else notify('存在未保存草稿，请先到设置 → 数据恢复或下载。')
+          },
+        })
+      },
+    })
+  }
   if (typeof window.requestIdleCallback === 'function') window.requestIdleCallback(register, { timeout: 2500 })
   else setTimeout(register, 0)
 }
@@ -51,7 +91,7 @@ function warmEditorChunk(): Promise<void> {
         import('./editor/vditor-assets').then(({ loadVditorAssets }) => loadVditorAssets()),
       ]).then(() => resolve(), () => resolve())
     }
-    if (typeof window.requestIdleCallback === 'function') window.requestIdleCallback(load, { timeout: 500 })
+    if (typeof window.requestIdleCallback === 'function') window.requestIdleCallback(load, { timeout: 150 })
     else setTimeout(load, 0)
   })
 }
