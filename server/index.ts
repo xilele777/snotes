@@ -1,5 +1,6 @@
 import { serve } from '@hono/node-server'
-import { existsSync } from 'node:fs'
+import { existsSync, readFileSync, writeFileSync } from 'node:fs'
+import { randomUUID } from 'node:crypto'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { createServerApp } from './app'
@@ -23,7 +24,19 @@ try {
 }
 const env = {
   DB: db, R2: new DiskImages(join(config.dataDirectory, 'images')), ACCESS_TOKEN: config.token, RUNTIME: 'server' as const,
-  TRASH_RETENTION_DAYS: config.trashRetentionDays === null ? undefined : String(config.trashRetentionDays),
+  TRASH_RETENTION_DAYS: config.trashRetentionDays === null ? 'off' : String(config.trashRetentionDays),
+  SYNC_INSTANCE_EPOCH: deploymentEpoch(),
+  SYNC_REQUIRE_EPOCH: existsSync(join(config.dataDirectory, 'sync-require-epoch')) ? 'true' : process.env.SYNC_REQUIRE_EPOCH,
+}
+function deploymentEpoch(): string {
+  if (process.env.SYNC_INSTANCE_EPOCH) return process.env.SYNC_INSTANCE_EPOCH
+  const path = join(config.dataDirectory, 'sync-epoch')
+  try { writeFileSync(path, randomUUID(), { flag: 'wx', mode: 0o600 }) } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error
+  }
+  const epoch = readFileSync(path, 'utf8').trim()
+  if (!epoch) throw new Error('Empty sync-epoch')
+  return epoch
 }
 const app = createServerApp(assets)
 const server = serve({

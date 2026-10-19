@@ -14,6 +14,7 @@ COPY --from=build /app/package.json ./package.json
 COPY --from=build /app/dist ./dist
 COPY --from=build /app/dist-server ./dist-server
 COPY --from=build /app/migrations ./migrations
+COPY --from=build /app/scripts/instance-backup.mjs ./scripts/instance-backup.mjs
 RUN mkdir /app/data && chown node:node /app/data
 USER node
 EXPOSE 3000
