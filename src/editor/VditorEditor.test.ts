@@ -127,6 +127,32 @@ describe('Vditor 图片与原生功能适配', () => {
     expect(wrapper.emitted('notice')).toHaveLength(2)
   })
 
+  it('原生表格按钮先弹行列弹窗，禁用态保持原生行为', async () => {
+    const { wrapper, editor } = await create()
+    const root = wrapper.get('.snotes-vditor').element as HTMLElement
+    root.insertAdjacentHTML('beforeend', '<div class="vditor-toolbar"><button data-type="table"></button><button data-type="table" class="vditor-menu--disabled"></button></div>')
+    const [enabled, disabled] = root.querySelectorAll<HTMLButtonElement>('[data-type="table"]')
+
+    disabled.click()
+    await flushPromises()
+    expect(document.querySelector('.table-dialog')).toBeNull()
+
+    enabled.click()
+    await flushPromises()
+    expect(document.querySelector('.table-dialog')).not.toBeNull()
+    expect(editor.insertMD).not.toHaveBeenCalled()
+
+    const rows = document.querySelector<HTMLInputElement>('[data-field="rows"]')!
+    const cols = document.querySelector<HTMLInputElement>('[data-field="cols"]')!
+    rows.value = '4'
+    rows.dispatchEvent(new Event('input'))
+    cols.value = '2'
+    cols.dispatchEvent(new Event('input'))
+    document.querySelector<HTMLButtonElement>('[data-op="confirm"]')!.click()
+
+    expect(editor.insertMD).toHaveBeenCalledWith('|  |  |\n| --- | --- |\n|  |  |\n|  |  |\n|  |  |')
+  })
+
   it('关闭第二套正文缓存，资源同源，保留三种模式与扩展语法', async () => {
     localStorage.setItem('snotes_editor_mode', 'sv')
     const { editor } = await create()
@@ -134,6 +160,7 @@ describe('Vditor 图片与原生功能适配', () => {
     expect(editor.options.cache?.enable).toBe(false)
     expect(editor.options.cdn).toMatch(/^\/vendor\/vditor\/4\.0\.0$/)
     expect(editor.options.toolbar).toContain('edit-mode')
+    expect(editor.options.toolbar).toContain('table')
     expect(editor.options.preview?.markdown).toMatchObject({ mark: true, toc: true, sanitize: true })
   })
 })

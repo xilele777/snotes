@@ -1,10 +1,7 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
+import { TABLE_MAX, TABLE_MIN } from '../editor/table'
 import { useDialogFocus } from './useDialogFocus'
-
-/** 行列上限：再大在手机上既画不下也没人手填，需要更大的表格直接贴 Markdown */
-const TABLE_MIN = 1
-const TABLE_MAX = 20
 
 const props = defineProps<{ open: boolean }>()
 const emit = defineEmits<{ submit: [{ rows: number; cols: number }]; close: [] }>()

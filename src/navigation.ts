@@ -304,12 +304,14 @@ export function popNav() {
 
 /** NoteDetail 的「返回列表」按钮 / 移动端编辑态返回：语义上就是弹一层 */
 export function backToList() {
-  if (navigationDepth > 0) popNav()
+  if (navigationDepth > 0) { returningToList = true; popNav() }
   else {
     useNotesStore().currentId = null
     useUiStore().mobilePane = 'list'
   }
 }
+
+let returningToList = false
 
 /** 开抽屉：先入栈再展开，这样返回能收回抽屉而不是退出应用 */
 export function openDrawer() {
@@ -366,5 +368,8 @@ function onPopState(e: PopStateEvent) {
     return
   }
 
-  restore(state)
+  const destination = returningToList && state.mobilePane === 'editor'
+    ? { ...state, currentId: null, mobilePane: 'list' as const } : state
+  returningToList = false
+  restore(destination)
 }

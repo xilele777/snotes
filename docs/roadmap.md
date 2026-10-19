@@ -369,3 +369,6 @@
   - 提交与发布：`8ed06c5`（`chore(release): v0.23.3`）及注解标签 `v0.23.3` 已推送；中英文 README 与安装文档已同步。GitHub Release https://github.com/xilele777/snotes/releases/tag/v0.23.3，发布说明取自 CHANGELOG 对应条目，已核对为 Latest 正式稳定版。
   - 部署结果：`npm run deploy -- --message 'Release v0.23.3'` 成功；Cloudflare Version ID `35307ad8-20ba-44f2-875d-dc83690d803d`，Deployment ID `36aa1659-3e0a-4bd8-aa42-0641fe3ed4ca`，经 Wrangler 确认承接 100% 生产流量。部署与线上检查日志保存在部署机 `tmp/release-v0.23.3-*`，未纳入 Git。
   - 线上核验：正式站点 https://note.alover.me 的首页、`/api/health`、`/settings/agents` 与 `/notebooks` 均返回 200，健康响应为 `ok=true`；页面均引用本次入口 `/assets/index-AW8HBBme.js`，线上入口资源与本地构建 SHA256 一致（`0943219a576f65e6553a12ddbe1ae7b549e08bfc52be9a37af36d09c6af86ee2`），并包含应用版本 `0.23.3`。未执行登录后的生产笔记读写验证。
+
+- 2026-10-18：恢复编辑器「插入表格」的自定义行列。v0.23.4 切换 Vditor 时移除了旧表格弹窗，工具栏只能固定插入 3×3；现在保留原生表格按钮与快捷键，在捕获阶段拦下点击，先收行数与列数（1 到 20，默认 3×3，行数含表头），再在光标处插入对应尺寸，提交后焦点回到表格。代码块和表格内的原生禁用态继续生效；WYSIWYG 下表格内的原生浮动工具条（对齐、增删行列、行列数调整）不受影响。
+  - 验证：`tableMarkdown` 单元测试、编辑器组件测试（弹窗打开、禁用态不弹窗、按尺寸插入）通过；浏览器实测点击原生表格按钮插入 4 行 2 列表格后渲染为 4 行、2 个表头单元格，正文保存为对应 Markdown。

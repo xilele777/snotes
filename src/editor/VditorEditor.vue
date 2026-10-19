@@ -4,9 +4,11 @@ import Vditor from 'vditor'
 import 'vditor/dist/index.css'
 import './vditor.css'
 import { escapeRawHtml, migrateLegacyBr } from '../../shared/sanitize'
+import TableDialog from '../components/TableDialog.vue'
 import { isAllowedImage, MAX_BYTES, uploadImage } from './image-upload'
 import { VDITOR_CDN, editorMode, rememberEditorMode } from './vditor-options'
 import { markdownFromClipboard } from './markdown-clipboard'
+import { tableMarkdown } from './table'
 
 const props = defineProps<{ noteId: string; modelValue: string; editable?: boolean }>()
 const emit = defineEmits<{
@@ -32,7 +34,12 @@ let timer: ReturnType<typeof setTimeout> | undefined
 let observer: MutationObserver | undefined
 let contentObserver: MutationObserver | undefined
 let observedMode: string | undefined
+let historyValue = ''
 let forwardingPaste = false
+const tableOpen = ref(false)
+// 弹窗打开时编辑器会失焦，先记住插入位置，提交后再还原。
+let tableSelection: Range | undefined
+let tableTextarea: { start: number; end: number } | undefined
 
 function clearTimer() {
   clearTimeout(timer)
@@ -70,6 +77,7 @@ function replace(markdown: string, resetHistory: boolean) {
   try {
     editor.setValue(escapeRawHtml(migrateLegacyBr(markdown)), resetHistory)
     observed = editor.getValue()
+    historyValue = observed
   } finally {
     replacing = false
   }
@@ -120,6 +128,10 @@ watch(() => props.editable, applyEditable)
 function onInput(event: Event) {
   if (event instanceof InputEvent && event.isComposing) return
   capture()
+  if (ready && editor && props.editable !== false && editor.getValue() !== historyValue) {
+    root.value?.querySelector('[data-type="undo"]')?.classList.remove('vditor-menu--disabled')
+    root.value?.querySelector('[data-type="redo"]')?.classList.add('vditor-menu--disabled')
+  }
 }
 
 function onPaste(event: ClipboardEvent) {
@@ -133,6 +145,23 @@ function onPaste(event: ClipboardEvent) {
   const code = selectionElement?.closest('pre, code, [data-type="code-block"]')
   if (!editableRoot || (code && code !== editableRoot)) return
   const html = event.clipboardData.getData('text/html')
+  if (/<ol\b/i.test(html) && /<li\b[\s\S]*?<ol\b/i.test(html)) {
+    const markdown = editor.vditor.lute.HTML2Md(html.replace(/(<ol\b[^>]*\bstart\s*=\s*)(["'])\s*\2/gi, '$1"1"'))
+    const lines = markdown.split('\n')
+    // A nested list starting above 1 cannot interrupt a paragraph in CommonMark.
+    // Lute's HTML conversion omits the required blank before that child list.
+    const normalized = lines.flatMap((line, index) => {
+      const match = line.match(/^( +)\d+[.)] /)
+      const previous = lines[index - 1] ?? ''
+      return match && previous.trim() && match[1].length > (previous.match(/^ */)?.[0].length ?? 0)
+        ? ['', line] : [line]
+    }).join('\n')
+    event.preventDefault()
+    event.stopPropagation()
+    editor.insertMD(escapeRawHtml(normalized))
+    capture()
+    return
+  }
   if (/<ol\b[^>]*\bstart\s*=\s*(["'])\s*\1/i.test(html)) {
     const clipboardData = new DataTransfer()
     for (const type of event.clipboardData.types) clipboardData.setData(type, event.clipboardData.getData(type))
@@ -161,9 +190,44 @@ function applyTheme() {
 function focus() {
   if (ready && props.editable !== false) editor?.focus()
 }
+
+function runHistory(action: 'undo' | 'redo') {
+  if (!ready || !editor || props.editable === false) return
+  const instance = editor.vditor
+  // Vditor groups typing for 800ms. Commit that pending group before using
+  // history, otherwise an immediate undo is ignored or skips the latest text.
+  clearTimeout(instance.wysiwyg?.afterRenderTimeoutId)
+  clearTimeout(instance.ir?.processTimeoutId)
+  clearTimeout(instance.sv?.processTimeoutId)
+  if (editor.getValue() !== historyValue) instance.undo?.addToUndoStack(instance)
+  instance.undo?.[action](instance)
+  historyValue = editor.getValue()
+  capture(historyValue)
+}
+
+function onHistoryKeydown(event: KeyboardEvent) {
+  if (event.isComposing || !(event.ctrlKey || event.metaKey) || event.altKey) return
+  const target = event.target instanceof Element ? event.target : null
+  if (!target?.closest('.vditor-reset[contenteditable="true"], textarea.vditor-sv')) return
+  const key = event.key.toLowerCase()
+  if (key === 'k' && !event.shiftKey && editor?.getCurrentMode() === 'wysiwyg') {
+    const node = window.getSelection()?.anchorNode
+    const element = node instanceof Element ? node : node?.parentElement
+    root.value?.querySelector('[data-type="link"]')?.classList.toggle('vditor-menu--current', !!element?.closest('a'))
+    return
+  }
+  const action = key === 'z' ? (event.shiftKey ? 'redo' : 'undo') : key === 'y' && !event.shiftKey ? 'redo' : null
+  if (!action) return
+  event.preventDefault()
+  event.stopPropagation()
+  runHistory(action)
+}
 function highlight() {
   if (!editor || !ready || props.editable === false) return
-  editor.insertMD(`==${editor.getSelection() || '\u200b'}==`)
+  // Rich-text selection serializes a whole paragraph with a trailing newline;
+  // placing the closing == after it produces plain text instead of a mark.
+  const selected = editor.getSelection().trim() || '\u200b'
+  editor.insertMD(selected.split('\n').map(line => line.trim() ? `==${line}==` : line).join('\n'))
   capture()
 }
 async function insertImages(files: File[]): Promise<null> {
@@ -209,6 +273,69 @@ async function insertImages(files: File[]): Promise<null> {
   return null
 }
 
+/** 表格入口：Vditor 内置按钮只能插固定 3×3，这里改回先问行列数。 */
+function openTableDialog() {
+  if (!ready || !editor || disposed || props.editable === false) return
+  const selection = window.getSelection()
+  tableSelection = selection?.rangeCount && root.value?.contains(selection.anchorNode)
+    ? selection.getRangeAt(0).cloneRange() : undefined
+  const textarea = root.value?.querySelector<HTMLTextAreaElement>('.vditor-sv')
+  tableTextarea = textarea ? { start: textarea.selectionStart ?? 0, end: textarea.selectionEnd ?? 0 } : undefined
+  tableOpen.value = true
+}
+
+function insertTable({ rows, cols }: { rows: number; cols: number }) {
+  tableOpen.value = false
+  if (!ready || !editor || disposed || props.editable === false) return
+  const instance = editor
+  const mode = instance.getCurrentMode()
+  const generation = lifetime
+  if (mode === 'sv' && tableTextarea) {
+    const textarea = root.value?.querySelector<HTMLTextAreaElement>('.vditor-sv')
+    textarea?.focus()
+    textarea?.setSelectionRange(tableTextarea.start, tableTextarea.end)
+  } else if (tableSelection?.startContainer.isConnected && root.value?.contains(tableSelection.startContainer)) {
+    const selection = window.getSelection()
+    selection?.removeAllRanges()
+    selection?.addRange(tableSelection)
+  }
+  const previousTables = new Set(root.value?.querySelectorAll('table'))
+  instance.insertMD(tableMarkdown(rows, cols))
+  const firstCell = Array.from(root.value?.querySelectorAll('table') ?? []).find(table => !previousTables.has(table))?.querySelector<HTMLElement>('th')
+  capture()
+
+  // 弹窗关闭时会把焦点还给工具栏按钮；等这轮焦点恢复结束后，再把光标放回刚插入的表格。
+  const selection = window.getSelection()
+  const caret = mode === 'sv' ? undefined
+    : selection?.rangeCount && root.value?.contains(selection.anchorNode)
+      ? selection.getRangeAt(0).cloneRange() : undefined
+  const textarea = root.value?.querySelector<HTMLTextAreaElement>('.vditor-sv')
+  const svCaret = textarea?.selectionStart
+  setTimeout(() => {
+    if (!ready || disposed || editor !== instance || generation !== lifetime || instance.getCurrentMode() !== mode || props.editable === false) return
+    if (mode === 'sv') {
+      const current = root.value?.querySelector<HTMLTextAreaElement>('.vditor-sv')
+      current?.focus()
+      if (svCaret !== undefined) current?.setSelectionRange(svCaret, svCaret)
+      return
+    }
+    if (firstCell && !firstCell.textContent?.trim()) {
+      const current = window.getSelection()
+      const cellRange = document.createRange()
+      cellRange.selectNodeContents(firstCell)
+      cellRange.collapse(true)
+      current?.removeAllRanges()
+      current?.addRange(cellRange)
+      firstCell.closest<HTMLElement>('[contenteditable="true"]')?.focus()
+      return
+    }
+    if (!caret?.startContainer.isConnected || !root.value?.contains(caret.startContainer)) return
+    const current = window.getSelection()
+    current?.removeAllRanges()
+    current?.addRange(caret)
+  }, 0)
+}
+
 function openImage(image: Element) {
   if (!(image instanceof HTMLImageElement) || !root.value) return
   const container = image.closest('.vditor-reset') ?? root.value
@@ -217,6 +344,18 @@ function openImage(image: Element) {
 }
 
 let lastImageClick: { image: HTMLImageElement; time: number; x: number; y: number } | undefined
+function positionImagePanel() {
+  const image = lastImageClick?.image
+  const panel = root.value?.querySelector<HTMLElement>('.vditor-wysiwyg > .vditor-panel')
+  if (!image?.isConnected || !panel || panel.style.display !== 'block') return
+  const panelRect = panel.getBoundingClientRect()
+  const imageRect = image.getBoundingClientRect()
+  if (panelRect.bottom <= imageRect.top || panelRect.top >= imageRect.bottom
+    || panelRect.right <= imageRect.left || panelRect.left >= imageRect.right) return
+  const top = imageRect.bottom + panelRect.height + 8 < window.innerHeight
+    ? imageRect.bottom + 8 : imageRect.top - panelRect.height - 8
+  panel.style.top = `${panel.offsetTop + top - panelRect.top}px`
+}
 function onDoubleClick(event: MouseEvent) {
   let image = event.target instanceof Element ? event.target.closest('img') : null
   // The native image popover can cover a small image after the first click.
@@ -245,12 +384,65 @@ function rememberMode() {
     // A newly visited mode has no undo baseline until Vditor's debounce runs.
     // Seed it before the first keystroke can replace that initial snapshot.
     if (mode !== observedMode) editor.vditor?.undo?.addToUndoStack(editor.vditor)
+    if (mode !== observedMode) historyValue = editor.getValue()
     observedMode = mode
     rememberEditorMode(mode)
     root.value?.setAttribute('data-mode', mode)
   }
 }
+/**
+ * 原生表格按钮只会插入写死的 3×3。这里在捕获阶段拦下点击/触摸，改为先收行列数；
+ * 禁用态（代码块或表格内）保留 Vditor 的原生判断，不弹窗。
+ */
+function interceptTableButton(event: Event, target: EventTarget | null): boolean {
+  const button = target instanceof Element ? target.closest<HTMLElement>('.vditor-toolbar [data-type="table"]') : null
+  if (!button) return false
+  if (button.classList.contains('vditor-menu--disabled')) return true
+  event.preventDefault()
+  event.stopPropagation()
+  openTableDialog()
+  return true
+}
+function onToolbarTouch(event: Event) {
+  if (interceptHistory(event)) return
+  interceptTableButton(event, event.target)
+}
+function interceptHistory(event: Event): boolean {
+  const history = event.target instanceof Element ? event.target.closest<HTMLElement>('.vditor-toolbar [data-type="undo"], .vditor-toolbar [data-type="redo"]') : null
+  if (history) {
+    event.preventDefault()
+    event.stopPropagation()
+    runHistory(history.dataset.type as 'undo' | 'redo')
+    return true
+  }
+  return false
+}
 function onClick(event: MouseEvent) {
+  if (interceptHistory(event)) return
+  const command = event.target instanceof Element ? event.target.closest<HTMLElement>('.vditor-toolbar [data-type]') : null
+  if (command && ready && editor && !command.classList.contains('vditor-menu--disabled')
+    && ['headings', 'bold', 'italic', 'strike', 'highlight', 'link', 'list', 'ordered-list', 'check', 'outdent', 'indent', 'quote', 'line', 'code', 'inline-code', 'insert-before', 'insert-after', 'emoji', 'upload', 'table'].includes(command.dataset.type ?? '')
+    && editor.getValue() !== historyValue) editor.vditor.undo?.addToUndoStack(editor.vditor)
+  if (command?.dataset.type === 'code' && editor?.getCurrentMode() === 'wysiwyg') {
+    const selection = window.getSelection()
+    const node = selection?.anchorNode
+    const block = (node instanceof Element ? node : node?.parentElement)?.closest<HTMLElement>('[data-type="code-block"]')
+    const source = block?.querySelector('pre.vditor-wysiwyg__pre')
+    if (block && source && root.value?.contains(block)) {
+      event.preventDefault()
+      event.stopPropagation()
+      editor.vditor.undo?.addToUndoStack(editor.vditor)
+      const range = document.createRange()
+      range.selectNode(block)
+      selection?.removeAllRanges()
+      selection?.addRange(range)
+      editor.insertMD(escapeRawHtml(source.textContent ?? ''))
+      block.remove()
+      capture()
+      return
+    }
+  }
+  if (interceptTableButton(event, event.target)) return
   const outlineItem = event.target instanceof Element
     ? event.target.closest<HTMLElement>('.vditor-outline [data-target-id]') : null
   if (outlineItem) {
@@ -274,7 +466,27 @@ function onClick(event: MouseEvent) {
       return
     }
   }
-  if (event.target instanceof HTMLImageElement) lastImageClick = { image: event.target, time: event.timeStamp, x: event.clientX, y: event.clientY }
+  if (event.target instanceof HTMLImageElement) {
+    const image = event.target
+    lastImageClick = { image, time: event.timeStamp, x: event.clientX, y: event.clientY }
+    if (props.editable !== false && image.closest('.vditor-reset[contenteditable="true"]')) {
+      const bounds = image.getBoundingClientRect()
+      const after = event.clientX >= bounds.left + bounds.width / 2
+      // Keep Vditor's image controls, but leave a text caret beside the image
+      // so the next character cannot replace it or appear on the wrong side.
+      queueMicrotask(() => {
+        if (!image.isConnected || disposed) return
+        positionImagePanel()
+        const range = document.createRange()
+        if (after) range.setStartAfter(image)
+        else range.setStartBefore(image)
+        range.collapse(true)
+        const selection = window.getSelection()
+        selection?.removeAllRanges()
+        selection?.addRange(range)
+      })
+    }
+  }
   const anchor = event.target instanceof Element ? event.target.closest('a') : null
   if (anchor && (event.ctrlKey || event.metaKey || props.editable === false || anchor.closest('.vditor-preview'))) {
     const href = normalizeHref(anchor.getAttribute('href') ?? anchor.querySelector('.vditor-ir__marker--link')?.textContent ?? '')
@@ -298,16 +510,18 @@ function onClick(event: MouseEvent) {
 function positionToolbarPanels() {
   const toolbar = root.value?.querySelector<HTMLElement>('.vditor-toolbar')
   if (!toolbar) return
-  toolbar.querySelectorAll<HTMLElement>(':scope > .vditor-toolbar__item > .vditor-hint, :scope > .vditor-toolbar__item > .vditor-panel').forEach(panel => {
+  toolbar.querySelectorAll<HTMLElement>('.vditor-hint, .vditor-panel').forEach(panel => {
     if (getComputedStyle(panel).display === 'none') return
     const anchor = panel.parentElement!.getBoundingClientRect()
     const bounds = toolbar.getBoundingClientRect()
     const width = panel.getBoundingClientRect().width
+    const nested = !!panel.parentElement!.closest('.vditor-hint')
     panel.style.position = 'fixed'
-    panel.style.top = `${bounds.bottom}px`
-    panel.style.left = `${Math.max(8, Math.min(anchor.left, window.innerWidth - width - 8))}px`
+    panel.style.top = `${nested ? anchor.top : bounds.bottom}px`
+    const left = nested ? (anchor.right + width + 8 <= window.innerWidth ? anchor.right : anchor.left - width) : anchor.left
+    panel.style.left = `${Math.max(8, Math.min(left, window.innerWidth - width - 8))}px`
     panel.style.right = 'auto'
-    panel.style.maxHeight = `${Math.max(120, window.innerHeight - bounds.bottom - 12)}px`
+    panel.style.maxHeight = `${Math.max(120, window.innerHeight - (nested ? anchor.top : bounds.bottom) - 12)}px`
     panel.style.overflowY = 'auto'
   })
 }
@@ -369,11 +583,27 @@ onMounted(() => {
       handler: insertImages,
     },
     image: { isPreview: true, preview: element => openImage(element) },
+    link: {
+      isOpen: false,
+      // Vditor returns early on anchor clicks, before refreshing the popover.
+      // Reuse its keyboard selection refresh to show the native link editor.
+      click: element => {
+        if (editor?.getCurrentMode() === 'wysiwyg') element.dispatchEvent(new KeyboardEvent('keyup', { key: 'ArrowRight', bubbles: true }))
+      },
+    },
     input: value => { capture(value); rememberMode() },
     blur: () => { flush(); rememberMode() },
     after: () => {
       if (disposed) { editor?.destroy(); return }
       ready = true
+      const instance = editor?.vditor
+      if (instance?.undo) {
+        const record = instance.undo.addToUndoStack.bind(instance.undo)
+        instance.undo.addToUndoStack = state => {
+          record(state)
+          historyValue = editor!.getValue()
+        }
+      }
       // props may have changed while Lute and language assets were loading.
       replace(props.modelValue, true)
       applyTheme()
@@ -385,8 +615,8 @@ onMounted(() => {
   })
   observer = new MutationObserver(applyTheme)
   observer.observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] })
-  contentObserver = new MutationObserver(updateContentControls)
-  contentObserver.observe(root.value!, { childList: true, subtree: true })
+  contentObserver = new MutationObserver(() => { updateContentControls(); positionImagePanel() })
+  contentObserver.observe(root.value!, { childList: true, subtree: true, attributes: true, attributeFilter: ['style'] })
   window.addEventListener('pagehide', flush)
   document.addEventListener('visibilitychange', onVisibility)
 })
@@ -411,6 +641,7 @@ defineExpose({ flush, focus, insertImages })
 
 <template>
   <div ref="root" class="snotes-vditor" :class="{ 'is-readonly': editable === false }"
-    @input="onInput" @paste.capture="onPaste" @click.capture="onClick" @change.capture="onLinkChange" @keyup="rememberMode" @dblclick.capture="onDoubleClick" @pointerdown.capture="onPointerDown"
+    @input="onInput" @keydown.capture="onHistoryKeydown" @paste.capture="onPaste" @click.capture="onClick" @touchstart.capture="onToolbarTouch" @change.capture="onLinkChange" @keyup="rememberMode" @dblclick.capture="onDoubleClick" @pointerdown.capture="onPointerDown"
     @pointerup="cancelLongPress" @pointercancel="cancelLongPress" @pointermove="cancelLongPress" />
+  <TableDialog :open="tableOpen" @submit="insertTable" @close="tableOpen = false" />
 </template>

@@ -262,6 +262,22 @@ describe('navigation 导航栈', () => {
     back.mockRestore()
   })
 
+  it('手机返回列表遇到旧编辑页快照时仍落在列表', () => {
+    const notes = useNotesStore()
+    const ui = useUiStore()
+    notes.currentId = 'n1'
+    ui.mobilePane = 'editor'
+    initNavigation()
+    pushNav()
+    const previous = { ...history.state }
+    const back = vi.spyOn(history, 'back').mockImplementation(() => {})
+    backToList()
+    window.dispatchEvent(new PopStateEvent('popstate', { state: previous }))
+    expect(ui.mobilePane).toBe('list')
+    expect(notes.currentId).toBeNull()
+    back.mockRestore()
+  })
+
   it('jsdom 桌面视口下 isMobile 为 false', () => {
     expect(isMobile()).toBe(false)
   })
