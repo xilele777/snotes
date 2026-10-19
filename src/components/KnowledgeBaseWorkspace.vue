@@ -20,7 +20,7 @@ import DeleteNotebookDialog from './DeleteNotebookDialog.vue'
 import KnowledgeBaseForm from './KnowledgeBaseForm.vue'
 import ActionMenu from './ActionMenu.vue'
 import SortMenu from './SortMenu.vue'
-import KnowledgeBaseInfo from './KnowledgeBaseInfo.vue'
+import KnowledgeBaseHome from './KnowledgeBaseHome.vue'
 import { workspacePreferences as preferences, updateWorkspacePreferences, togglePinnedKnowledgeBase, type LibrarySort } from '../workspace-preferences'
 
 const libraries = useKnowledgeBasesStore()
@@ -315,13 +315,21 @@ watch(() => ui.restorePosition, async position => { if (position?.view === 'know
 </script>
 
 <template>
-  <div class="knowledge-base-workspace">
-    <header class="kb-header">
-      <button class="icon-button drawer-btn" aria-label="打开侧栏" @click="openDrawer"><AppIcon name="menu" /></button>
-      <button v-if="book" class="icon-button" aria-label="返回笔记本列表" @click="showKnowledgeBases()"><AppIcon name="back" /></button>
-      <h2 tabindex="-1" :title="book?.name"><button v-if="book" class="kb-title-home" title="笔记本首页" @click="home">{{ book.name }}</button><template v-else>笔记本</template></h2>
-      <button v-if="book && !book.invalid" class="icon-button" aria-label="笔记本操作" title="笔记本操作" aria-haspopup="menu" :aria-expanded="menu?.kind === 'book'" @click="openMenu($event, 'book', book)"><AppIcon name="more" :size="19" /></button>
-      <button v-else-if="!book" class="dialog-btn ok kb-create" aria-label="新建笔记本" @click="create"><AppIcon name="plus" :size="15" />新建</button>
+  <div class="knowledge-base-workspace" :class="{ 'has-book': !!book }">
+    <header class="kb-header" :class="{ 'kb-book-header': !!book }">
+      <template v-if="book">
+        <div class="kb-book-heading">
+          <button class="icon-button drawer-btn" aria-label="打开侧栏" @click="openDrawer"><AppIcon name="menu" /></button>
+          <button class="kb-book-icon icon-button" aria-label="返回笔记本列表" title="返回笔记本合集" @click="showKnowledgeBases()"><AppIcon name="home" :size="20" /></button>
+          <h2 tabindex="-1" :title="book.name">{{ book.name }}</h2>
+          <button v-if="!book.invalid" class="icon-button kb-book-menu" aria-label="笔记本操作" title="笔记本操作" aria-haspopup="menu" :aria-expanded="menu?.kind === 'book'" @click="openMenu($event, 'book', book)"><AppIcon name="more" :size="19" /></button>
+        </div>
+      </template>
+      <template v-else>
+        <button class="icon-button drawer-btn" aria-label="打开侧栏" @click="openDrawer"><AppIcon name="menu" /></button>
+        <h2 tabindex="-1">笔记本</h2>
+        <button class="dialog-btn ok kb-create" aria-label="新建笔记本" @click="create"><AppIcon name="plus" :size="15" />新建</button>
+      </template>
     </header>
     <p v-if="error || libraries.error" class="kb-error" role="alert">{{ error || libraries.error }}</p>
     <div v-if="conflicts.length" class="kb-sync-warning" role="status">笔记本有同步冲突，两份修改已保留。<button @click="dialog = 'conflict'">查看并选择</button></div>
@@ -332,17 +340,24 @@ watch(() => ui.restorePosition, async position => { if (position?.view === 'know
       </div>
       <div class="kb-card-grid">
         <article v-for="b in books" :key="b.id" class="kb-card" :data-book-id="b.id">
-          <button class="kb-card-link" :disabled="!!b.invalid" @click="showKnowledgeBases(b.id)"><span class="kb-card-icon" aria-hidden="true">{{ b.icon || '📚' }}</span><span class="kb-card-body"><h3>{{ b.name }}</h3><p v-if="b.description">{{ b.description }}</p><small>{{ count(b.id) }} 篇笔记</small></span></button>
-          <div class="kb-card-actions"><span class="kb-card-updated">{{ preferences.pinnedKnowledgeBaseIds.includes(b.id) ? '已固定 · ' : '' }}{{ new Date(b.update_time).toLocaleDateString() }} 更新</span><button v-if="!b.invalid" class="icon-button" :aria-label="`笔记本「${b.name}」操作`" aria-haspopup="menu" @click="openMenu($event, 'book', b)"><AppIcon name="more" :size="18" /></button></div>
+          <button class="kb-card-link" :disabled="!!b.invalid" @click="showKnowledgeBases(b.id)">
+            <span class="kb-card-heading"><span class="kb-card-icon" aria-hidden="true"><AppIcon v-if="!b.icon || b.icon === '📚'" name="book" :size="23" /><span v-else>{{ b.icon }}</span></span><h3>{{ b.name }}</h3></span>
+            <p v-if="b.description">{{ b.description }}</p>
+            <span class="kb-card-meta"><span>{{ count(b.id) }} 篇笔记</span><span aria-hidden="true">·</span><span class="kb-card-updated">{{ new Date(b.update_time).toLocaleDateString('zh-CN') }} 更新</span></span>
+          </button>
+          <button v-if="!b.invalid" class="icon-button kb-card-menu" :aria-label="`笔记本「${b.name}」操作`" aria-haspopup="menu" :aria-expanded="menu?.book?.id === b.id" @click="openMenu($event, 'book', b)"><AppIcon name="more" :size="18" /></button>
         </article>
         <button v-if="!ui.query && !books.length" class="kb-card kb-new-card" @click="create"><AppIcon name="plus" :size="24" /><span>创建第一本笔记本</span></button>
       </div>
       <div v-if="ui.query && !books.length" class="kb-empty"><p>没有找到匹配的笔记本</p><button class="dialog-btn cancel" @click="ui.query = ''">清除搜索</button></div>
     </template>
     <template v-else-if="!book.invalid">
-      <details class="kb-mobile-overview"><summary>笔记本信息<AppIcon name="chevron" :size="13" /></summary><KnowledgeBaseInfo :book="book" compact /></details>
-      <div class="kb-toolbar"><button class="kb-primary-create" :disabled="busy" @click="run(() => notes.create())"><AppIcon name="plus" :size="14" />新建笔记</button><button title="更多新建方式" aria-label="更多新建方式" aria-haspopup="menu" :aria-expanded="menu?.kind === 'create'" @click="openMenu($event, 'create')"><AppIcon name="chevron" :size="12" class="expanded" /></button><button aria-label="目录选项" title="展开或收起目录" aria-haspopup="menu" :aria-expanded="menu?.kind === 'tree'" @click="openMenu($event, 'tree')"><AppIcon name="sort" :size="15" /></button></div>
-      <label class="kb-search"><AppIcon name="search" :size="16" /><input v-model="ui.query" placeholder="搜索本笔记本中的笔记" aria-label="搜索本笔记本中的笔记" /><button v-if="ui.query" class="icon-button" aria-label="清除笔记本搜索" @click="ui.query = ''"><AppIcon name="close" :size="14" /></button></label>
+      <div class="kb-mobile-overview"><KnowledgeBaseHome embedded /></div>
+      <div class="kb-search-create">
+        <label class="kb-search"><AppIcon name="search" :size="18" /><input v-model="ui.query" placeholder="搜索" aria-label="搜索本笔记本中的笔记" /><button v-if="ui.query" class="icon-button" aria-label="清除笔记本搜索" @click="ui.query = ''"><AppIcon name="close" :size="14" /></button></label>
+      </div>
+      <button class="kb-home-link" :class="{ active: !notes.currentId && !ui.activeTocNodeId }" :aria-current="!notes.currentId && !ui.activeTocNodeId ? 'page' : undefined" @click="home"><AppIcon name="home" :size="17" />首页</button>
+      <div class="kb-directory-heading"><AppIcon name="listPanel" :size="17" /><span>目录</span><button class="icon-button" title="更多新建方式" aria-label="更多新建方式" aria-haspopup="menu" :aria-expanded="menu?.kind === 'create'" @click="openMenu($event, 'create')"><AppIcon name="plus" :size="17" /></button><button class="icon-button" aria-label="目录选项" title="展开或收起目录" aria-haspopup="menu" :aria-expanded="menu?.kind === 'tree'" @click="openMenu($event, 'tree')"><AppIcon name="sort" :size="18" /></button></div>
       <p v-if="ui.query" class="kb-search-hint">搜索标题与已下载正文 · {{ rows.length }} 个结果</p>
       <div ref="tree" class="knowledge-base-tree" aria-label="笔记本目录" @keydown="onTreeKeydown">
         <div v-for="{ node, depth, path } in rows" :key="node.id" class="kb-tree-row" :class="{ selected: ui.activeTocNodeId === node.id, 'drop-inside': dropTarget === node.id && dropZone === 'inside', 'drop-before': dropTarget === node.id && dropZone === 'before', 'drop-after': dropTarget === node.id && dropZone === 'after' }" :style="{ paddingLeft: `${Math.min(depth, 5) * 14 + 8}px` }" :data-node-id="node.id" draggable="true" @dragstart="dragStart($event, node)" @dragend="dragging = dropTarget = null" @dragover="dragOver($event, node)" @dragleave="dragLeave" @drop.stop="drop($event, node)">
@@ -364,6 +379,7 @@ watch(() => ui.restorePosition, async position => { if (position?.view === 'know
         <button class="menu-item danger" role="menuitem" @click="menuAction('remove-book')"><AppIcon name="trash" :size="15" />删除笔记本</button>
       </template>
       <template v-else-if="menu?.kind === 'create'">
+        <button class="menu-item" role="menuitem" :disabled="busy" @click="menuAction('new-note')"><AppIcon name="plus" :size="15" />新建笔记</button>
         <button class="menu-item" role="menuitem" @click="menuAction('add')"><AppIcon name="notes" :size="15" />加入笔记</button>
         <button class="menu-item" role="menuitem" @click="menuAction('chapter')"><AppIcon name="folder" :size="15" />新建章节</button>
       </template>
