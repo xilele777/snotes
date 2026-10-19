@@ -27,6 +27,7 @@
 
 - [开发指南](development.md)：本地启动、测试命令、架构、目录分工与贡献要求。
 - [发布验收与恢复演练](release-acceptance.md)：环境要求、可执行验收、实机记录及门禁状态。
+- [v1.0.0 正式发布](releases/v1.0.0.md)：生产 Deployment/Version ID、迁移、备份和上线核验。
 - [最终验收补充](audits/2026-10-20-v1-acceptance.md)：两域恢复协议、格式 3 备份、Cloudflare/Docker/CDN 实测与保留边界。
 - [启动性能](performance.md)：缓存膨胀与启动瓶颈、手机条件复测、旧版缓存升级回收和离线范围。
 - [1.0.0 发布前审查](audits/2026-10-19-v1-readiness.md) / [修复与验收记录](audits/2026-10-19-v1-repairs.md)：已确认缺陷、修复证据、性能复测与未关闭项。

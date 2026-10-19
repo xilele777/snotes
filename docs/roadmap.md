@@ -386,3 +386,8 @@
   - 提交与发布：发布提交 `81da535`，标签 `v0.24.1` 已推送；GitHub Release：https://github.com/xilele777/snotes/releases/tag/v0.24.1。
   - 部署结果：`npm run deploy -- --message 'Release v0.24.1'` 成功；Cloudflare Version ID `6b21abe8-7fbe-4479-b54a-200fdd5e77b4`，Deployment ID `bc6e4d67-c8c3-4b5a-a45b-72d5d767c355`，承接 100% 生产流量。
   - 线上核验：https://note.alover.me 的首页、`/notebooks`、`/settings/agents` 与 `/api/health` 均返回 200；入口资源 `/assets/index-Dgm1t4NF.js` SHA256 为 `557b94ad141fd38ae781716252d12ae084cbe361dd3b8c7029e4154adfaeb48e`，与本地构建一致并包含应用版本 `0.24.1`；Service Worker 与本地构建一致，未执行生产笔记写入。
+
+- 2026-10-20：正式发布 v1.0.0。双域恢复协议、格式 3 备份、离线实例恢复、保存失败草稿保护、PWA 更新交接及蓝色书签图标上线；README 明确离线笔记/章节笔记本/Agent MCP 与双后端部署定位。
+  - 提交与标签：18 个主题提交已推送，发布提交 `080a609`、注解标签 `v1.0.0`；[GitHub Release](https://github.com/xilele777/snotes/releases/tag/v1.0.0) 已设为 Latest。
+  - 生产 D1 迁移 0010、0011 已应用，部署前 SQL 备份和 Time Travel 恢复点已保存。Cloudflare Version ID `60a51524-090d-408b-94ef-751501922a9f`，Deployment ID `db24c8fd-54ad-46f1-933b-6940758cd5d0`，100% 生产流量。
+  - 验证：本地测试 1,032 项、构建及体积预算通过；正式域名 12 项只读核验通过，入口、SW 与图标字节一致。GitHub Actions 仍在执行；手机真机暂缓，图片保留/备份边界保持披露。详情见[正式发布记录](releases/v1.0.0.md)。

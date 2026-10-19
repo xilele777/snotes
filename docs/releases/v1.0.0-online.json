@@ -1,0 +1,99 @@
+{
+  "origin": "https://note.alover.me",
+  "at": "2026-10-19T16:40:33.373Z",
+  "app_version": "1.0.0",
+  "checks": [
+    {
+      "path": "/api/health",
+      "status": 200,
+      "ok": true
+    },
+    {
+      "path": "/assets/index-B5oKFgCG.js",
+      "status": 200,
+      "sha256": "a69d69f691939764da537cf809b5f9c4fe32cbff077380adbd036b57bcc8621b",
+      "hash_equal": true,
+      "cache_control": "public, max-age=31536000, immutable",
+      "content_encoding": "gzip",
+      "vary": "Accept-Encoding"
+    },
+    {
+      "path": "/sw.js",
+      "status": 200,
+      "sha256": "a42e98f79a81d682948ae860d9fdfa4e2fe1486ed2f560e1a8a12fb4255d6ac3",
+      "hash_equal": true,
+      "cache_control": "no-cache",
+      "content_encoding": "gzip",
+      "vary": "Accept-Encoding"
+    },
+    {
+      "path": "/snotes.svg",
+      "status": 200,
+      "sha256": "03f04faeb8ef21bdefafd191641b041d162e9f86ecee118ed6a9d25c1247933a",
+      "hash_equal": true,
+      "cache_control": "public, max-age=0, must-revalidate",
+      "content_encoding": "gzip",
+      "vary": null
+    },
+    {
+      "path": "/favicon-32.png",
+      "status": 200,
+      "sha256": "1448f34d01552ff41000b5b00fd1744570732fa5b073de8c1c4f1877055a7c1e",
+      "hash_equal": true,
+      "cache_control": "public, max-age=0, must-revalidate",
+      "content_encoding": null,
+      "vary": null
+    },
+    {
+      "path": "/snotes-192.png",
+      "status": 200,
+      "sha256": "28bd4f29db13e6109861af938b0657f7647960ea2b5a1dbfd32cdd194e236df9",
+      "hash_equal": true,
+      "cache_control": "public, max-age=0, must-revalidate",
+      "content_encoding": null,
+      "vary": null
+    },
+    {
+      "path": "/snotes-maskable-512.png",
+      "status": 200,
+      "sha256": "cfa89d00c2e9d3d5d27747f69f024913ed2ba03530d9cc6d1861fba01462ca9d",
+      "hash_equal": true,
+      "cache_control": "public, max-age=0, must-revalidate",
+      "content_encoding": null,
+      "vary": null
+    },
+    {
+      "path": "/vendor/vditor/4.0.0/dist/js/lute/lute.min.js",
+      "status": 200,
+      "sha256": "53b61b051a3dfd9ee5a5010c873233679e139d8e62c49da08b4c2f2c195587cb",
+      "hash_equal": true,
+      "cache_control": "public, max-age=31536000, immutable",
+      "content_encoding": "gzip",
+      "vary": "Accept-Encoding"
+    },
+    {
+      "path": "/",
+      "status": 200,
+      "sha256": "0a559182c695bb1385a5b547625efd01134db425daf6fcfd45aeeea559dab013",
+      "hash_equal": true,
+      "cache_control": "no-cache",
+      "content_encoding": "gzip",
+      "vary": "Accept-Encoding"
+    },
+    {
+      "path": "/notebooks",
+      "status": 200,
+      "release_entry": true
+    },
+    {
+      "path": "/settings/agents",
+      "status": 200,
+      "release_entry": true
+    },
+    {
+      "path": "/api/sync/instance",
+      "anonymous_status": 401
+    }
+  ],
+  "status": "passed"
+}
