@@ -14,6 +14,7 @@ const runs = Number(option('--runs') ?? 3)
 if (!Number.isInteger(runs) || runs < 1 || runs > 10) throw new Error('--runs must be 1..10')
 const outputPath = option('--output') ?? 'tmp/startup-profile.json'
 const current = option('--current') ?? 'dist'
+const largeNote = args.includes('--large-note')
 const noteCount = 500
 const notes = Array.from({ length: noteCount }, (_, index) => ({
   id: `perf-${String(index).padStart(4, '0')}`, group_id: null,
@@ -21,7 +22,7 @@ const notes = Array.from({ length: noteCount }, (_, index) => ({
   version: 1, prop_version: 1, star: 0, top: 0, skin_color: null, home_hidden: null,
   invalid: 0, create_time: 1_750_000_000_000 + index, update_time: 1_750_000_000_000 + index,
 }))
-const body = note => `# ${note.title}\n\n` + '这是一段正常的中文笔记正文，包含一些 English 和 **加粗**。\n\n'.repeat(40)
+const body = note => `# ${note.title}\n\n` + '这是一段正常的中文笔记正文，包含一些 English 和 **加粗**。\n\n'.repeat(largeNote && note.id === 'perf-0499' ? 2000 : 40)
 const mime = { '.js': 'text/javascript', '.css': 'text/css', '.html': 'text/html', '.svg': 'image/svg+xml', '.png': 'image/png', '.woff2': 'font/woff2', '.woff': 'font/woff', '.ttf': 'font/ttf', '.webmanifest': 'application/manifest+json' }
 
 async function serve(directory) {
@@ -38,6 +39,8 @@ async function serve(directory) {
           const offset = Number(req.cursor || 0)
           const rows = req.since ? [] : notes.slice(offset, offset + 200)
           result = { notes: rows, groups: [], server_time: 1_750_000_001_000, next_cursor: offset + 200 < noteCount && rows.length ? String(offset + 200) : null }
+        } else if (pathname === '/api/sync/checkpoint') {
+          result = { valid: true }
         } else if (pathname === '/api/sync/bodies') {
           result = { bodies: req.ids.map(id => ({ note_id: id, content: body(notes.find(note => note.id === id)), version: 1 })) }
         } else if (pathname === '/api/notes/opens') result = { opens: (req.want ?? []).map(id => ({ note_id: id, others_count: 0, others_last_open_time: 0 })), server_time: 1 }
@@ -88,14 +91,14 @@ try {
     await cdp.send('Emulation.setCPUThrottlingRate', { rate: 4 })
     await cdp.send('Network.enable')
     await cdp.send('Network.emulateNetworkConditions', { offline: false, latency: 40, downloadThroughput: 4_000_000 / 8, uploadThroughput: 1_000_000 / 8 })
-    const output = { label, run, notes: noteCount, cpu: '4x slowdown', network: '4 Mbps / 40 ms' }
+    const output = { label, run, notes: noteCount, largeNote, cpu: '4x slowdown', network: '4 Mbps / 40 ms' }
     await page.goto(url, { waitUntil: 'domcontentloaded' })
     await page.waitForFunction(count => Number(document.querySelector('.header-count')?.textContent) === count, noteCount, { timeout: 90_000 })
     output.coldListMs = Math.round(await page.evaluate(() => performance.now()))
     const first = page.locator('.note-select').first()
     const openAt = await page.evaluate(() => performance.now())
     await first.evaluate(element => element.click())
-    await page.waitForFunction(() => [...document.querySelectorAll('.snotes-vditor [role="textbox"]')].some(el => el.getClientRects().length && el.textContent.includes('性能测试')), null, { timeout: 60_000 })
+    await page.waitForFunction(() => [...document.querySelectorAll('.snotes-vditor:not(.is-initializing) [role="textbox"]')].some(el => el.getClientRects().length && (el.value ?? el.textContent).includes('性能测试')), null, { timeout: 60_000 })
     output.firstEditorMs = Math.round(await page.evaluate(() => performance.now()) - openAt)
     await page.waitForFunction(() => !document.querySelector('.header-refresh')?.disabled, null, { timeout: 90_000 })
     await page.evaluate(async () => { await navigator.serviceWorker.ready })
@@ -111,7 +114,7 @@ try {
     output.coldSyncXhr = await page.evaluate(() => window.__syncXhr)
     output.coldLongTaskMs = Math.round(await page.evaluate(() => window.__longTasks.reduce((sum, task) => sum + task.duration, 0)))
     await page.reload({ waitUntil: 'domcontentloaded' })
-    await page.waitForFunction(() => [...document.querySelectorAll('.snotes-vditor [role="textbox"]')].some(el => el.getClientRects().length && el.textContent.includes('性能测试')), null, { timeout: 60_000 })
+    await page.waitForFunction(() => [...document.querySelectorAll('.snotes-vditor:not(.is-initializing) [role="textbox"]')].some(el => el.getClientRects().length && (el.value ?? el.textContent).includes('性能测试')), null, { timeout: 60_000 })
     output.warmEditorMs = Math.round(await page.evaluate(() => performance.now()))
     output.warmSyncXhr = await page.evaluate(() => window.__syncXhr)
     output.warmLongTaskMs = Math.round(await page.evaluate(() => window.__longTasks.reduce((sum, task) => sum + task.duration, 0)))
@@ -122,11 +125,10 @@ try {
       setDirectory(current)
       await page.evaluate(async () => {
         const registration = await navigator.serviceWorker.ready
-        const controller = navigator.serviceWorker.controller
-        const changed = new Promise(resolve => navigator.serviceWorker.addEventListener('controllerchange', resolve, { once: true }))
         await registration.update()
-        if (navigator.serviceWorker.controller === controller) await changed
       })
+      // The current app waits for explicit approval, even in the upgrade fixture.
+      await page.getByRole('button', { name: '保存并更新' }).click()
       // Workbox activation must discard unused old vendor URLs while retaining
       // the local database. Browser storage usage estimates may lag cleanup.
       await page.waitForFunction(async () => {

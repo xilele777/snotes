@@ -177,7 +177,7 @@ onUnmounted(() => {
 
     <!--
       回收站详情与编辑详情用同一个组件，只是 readonly 不同。
-      key 区分两者：ProseMirror 的 editable 在建实例时读一次，不重挂就切不干净。
+      key 隔离回收站与编辑视图的临时界面状态，Vditor 通过 editable 响应权限变化。
       监控页没有笔记详情；统计与设置页面都保留当前编辑器实例。
     -->
     <KnowledgeBaseHome v-if="ui.view === 'knowledge-bases' && ui.activeKnowledgeBaseId && !notes.currentId" v-show="!ui.workspacePage" :inert="!!ui.workspacePage || (compact && ui.drawerOpen)" />

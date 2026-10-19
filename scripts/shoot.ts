@@ -19,7 +19,7 @@ async function signIn(page: Page) {
 
 async function note(page: Page, lines: string[]) {
   await page.locator('.header-create').click()
-  await page.locator('.milkdown').click()
+  await page.locator('.snotes-vditor').click()
   for (const [i, line] of lines.entries()) {
     if (i > 0) await page.keyboard.press('Enter')
     await page.keyboard.type(line)

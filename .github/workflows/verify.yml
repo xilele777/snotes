@@ -1,0 +1,49 @@
+name: Verify
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npm run test:all
+      - run: npm run build
+      - run: npm run check:bundle
+      - run: npm audit --omit=dev --audit-level=high --registry=https://registry.npmjs.org
+  browser:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        backend: [worker, server]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      - if: matrix.backend == 'worker'
+        run: npm run test:e2e
+      - if: matrix.backend == 'server'
+        run: npm run test:e2e:server
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: playwright-${{ matrix.backend }}
+          path: |
+            test-results/
+            playwright-report/
+          retention-days: 7
