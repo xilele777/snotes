@@ -27,12 +27,13 @@ const db = await indexedDB.databases()
 // 或直接在 Application → IndexedDB → snotes → outbox 中按 failed 字段筛选
 ```
 
-处理方式二选一：确认内容不重要就直接删除该行；仍需要就把 `failed` 改回 `0`、
-`retry` 改回 `0`，下一轮同步会重试。
+优先到设置 → 数据查看最近错误、下载任务数据或显式重试。不要直接删除尚未备份的正文任务。服务器恢复备份或设备长期离线后，检查点失效会触发完整对账；本地未确认正文受到保护，差异正文保留到历史或独立恢复副本。
+
+新版服务需要新增迁移 `0010_sync_checkpoints.sql`、`0011_sync_instance.sql`。检查点保留 7 天，短于墓碑保留期；旧备份中不存在的检查点会阻止客户端先上传旧任务。服务端数据库与图片仍应一起备份。图片永久回收当前暂缓，已删笔记的图片也可能仍可通过已知地址读取；这保护共享和离线引用，但会增加存储占用，不能把删除笔记等同于擦除图片对象。
 
 ## 每月备份
 
-个人项目不需要自动化流水线，每月手动执行一次即可：
+按数据的重要程度安排备份，至少在升级和恢复前另存一份。D1 导出示例（Bash；PowerShell 可将日期替换为实际字符串）：
 
 ```bash
 npx wrangler d1 export snotes --remote --output "backup-$(date +%Y%m).sql"
@@ -40,11 +41,47 @@ npx wrangler d1 export snotes --remote --output "backup-$(date +%Y%m).sql"
 
 SQL 只包含已经同步到 D1 的数据，浏览器里尚未同步的修改不在其中。完整备份还需单独保存 R2 图片对象；存储冗余不能替代备份。
 
-恢复时：
+R2 全量对象可通过 S3 兼容接口备份。先在 Cloudflare R2 创建仅对目标桶授权的 API 凭据，使用 AWS CLI 的私密 profile 保存，不写进仓库或 Wrangler vars：
 
 ```bash
-npx wrangler d1 execute snotes --remote --file backup-YYYYMM.sql
+aws configure --profile snotes-backup
+# 输入 R2 Access Key ID / Secret Access Key，region 填 auto
+aws s3 sync s3://snotes-images ../backups/r2-YYYYMM/ \
+  --endpoint-url https://YOUR_ACCOUNT_ID.r2.cloudflarestorage.com --profile snotes-backup
 ```
+
+停写后同时导出 SQL、同步全部对象，保存对象数量、大小与本地文件哈希供恢复核对。R2 凭据与应用 ACCESS_TOKEN 不同；不要把应用令牌填给 AWS CLI。备份目录应在私密磁盘上，不提交 Git。定期试恢复，不能只检查命令退出码。
+
+D1 Time Travel 恢复示例（仅在确认目标及维护窗口后执行）：
+
+```bash
+npx wrangler d1 time-travel info snotes --json
+# 将事先记录的恢复点 bookmark 填入下条命令
+npx wrangler d1 time-travel restore snotes --bookmark YOUR_SAVED_BOOKMARK
+```
+
+如果使用 SQL 文件恢复，应先在新建空 D1 导入并核验，再切换 Worker 的数据库绑定；不要直接往正在使用的非空数据库重复执行整份建表 SQL。R2 恢复也建议创建独立空桶，用上述 S3 sync 的源与目标反向拷回并核对对象清单，再切换绑定。切换资源后同步更新监控 vars；保留原资源直到验收完成。配置使用独立文件时，每条 Wrangler 命令都追加同一个 `--config`。
+
+恢复期间必须停写并排空在途请求，包括浏览器、Agent 和定时维护；先恢复数据及图片、应用所有迁移（含 `0011_sync_instance.sql`），再轮换数据库外的部署 epoch，最后开放访问。只恢复笔记本表也执行同样步骤。两个同步域分别签发 checkpoint，共用实例 epoch；表写入的 revision 触发器辅助识别同水位变化。完整快照会连 revision 和凭证一起回滚，因此仍必须执行恢复钩子，不能仅凭数据库识别自身被恢复。
+
+Cloudflare 在维护窗口执行（显式传入目标配置）：
+
+```bash
+node scripts/rotate-sync-epoch.mjs path/to/wrangler.staging.jsonc
+```
+
+若配置 vars 已含 `SYNC_REQUIRE_EPOCH: "true"`，命令追加 `--strict-enabled`，避免同名 secret 冲突；否则工具先开启 `SYNC_REQUIRE_EPOCH=true`，再轮换 Worker Secret `SYNC_INSTANCE_EPOCH`；每次 secret 更新会部署配置。可以再清空 `sync_checkpoint` 回收空间。恢复后不带 epoch 的旧 PWA 写入返回 409，需升级后恢复上传；先保留旧页面并导出未同步内容。正常兼容部署可以暂不启用严格模式，恢复实例必须启用。
+
+Node 完整实例备份/恢复（先停服；目标目录必须不存在，工具拒绝覆盖）：
+
+```bash
+node scripts/instance-backup.mjs backup data backups/instance-20261019 --offline
+node scripts/instance-backup.mjs restore backups/instance-20261019 data-restored --offline
+```
+
+备份包含 SQLite 全部业务表（含云端历史、全部回收站及授权数据）和 images 目录全部文件，包括无引用图片；核验数据库完整性，使用 VACUUM INTO 处理 WAL，再复制图片并记录 SHA-256 清单。恢复先核验清单/哈希/外键，复制到新目录，轮换数据库及文件 epoch，清空两个域凭证并写入严格客户端标记。把 `SNOTES_DATA_DIR` 指向新目录再启动。`--offline` 是操作者已停止写入的声明，工具不会替你停止服务；备份含授权数据，应私密保存。如配置了 `SYNC_INSTANCE_EPOCH` 环境变量，也应更换。Docker 镜像包含同一工具，可在停应用容器后用挂载数据卷的临时容器执行。
+
+完整清单下载并核验成功才处理缺失项；远端缺失的已确认笔记本保留为独立恢复副本，未确认本地创建保留原队列。无法区分过期删除与备份之后创建的内容，可能需要人工合并。跨请求再次恢复会拒绝旧 epoch 写入；正在执行的请求仍必须靠维护窗口排空，此流程不承诺在线无停机恢复。
 
 ## 更换访问令牌
 

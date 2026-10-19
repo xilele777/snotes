@@ -27,7 +27,7 @@
   //   CF_ACCOUNT_ID = <Cloudflare 账号 ID>
   //   CF_API_TOKEN  = 具备 Account > Analytics > Read 权限的 API Token
   // 监控页使用账号级 Analytics，不再依赖 CF_ZONE_ID。
-  // 每日一次的维护任务（worker/maintenance.ts）：孤儿图片回收、回收站过期清理、墓碑回收。
+  // 每日一次的维护任务（worker/maintenance.ts）：回收站过期清理、墓碑回收；已提交图片暂缓永久回收。
   "triggers": { "crons": ["17 3 * * *"] },
   // TRASH_RETENTION_DAYS：回收站保留天数，超期的笔记自动彻底删除。默认 30 天，
   // 要改就在这里加一行，例如 "TRASH_RETENTION_DAYS": "7"；"0" 或 "off" 关闭。

@@ -6,14 +6,14 @@
 
 [返回文档首页](README.md) · [Cloudflare 部署](cloudflare-deployment.md)
 
-服务器支持自 `v0.7.0` 起提供。下面的克隆命令固定到稳定版 `v0.24.1`；其他版本请从 [Releases](https://github.com/xilele777/snotes/releases) 选择。应用内只提醒稳定版更新，不会自动升级服务端。直接运行 Node.js 已验证；Docker Compose 配置检查通过，但镜像构建和容器运行尚未实测。
+服务器支持自 `v0.7.0` 起提供。下面的克隆命令固定到发布标签 `v1.0.0`；其他版本请从 [Releases](https://github.com/xilele777/snotes/releases) 选择。应用内只提醒稳定版更新，不会自动升级服务端。Node.js 与 Docker 镜像构建、容器运行、重启持久化及完整实例恢复已实测，详见[发布验收](release-acceptance.md)。
 
 ## Docker Compose
 
 需要 Docker Engine 与 Compose 插件，宿主机无需安装 Node.js。
 
 ```bash
-git clone --branch v0.24.1 https://github.com/xilele777/snotes.git
+git clone --branch v1.0.0 https://github.com/xilele777/snotes.git
 cd snotes
 cp server.env.example .env
 ```
@@ -42,7 +42,7 @@ Compose 将端口绑定到宿主机 `127.0.0.1:3000`，通过下文的 HTTPS 反
 要求 **Node.js 24 LTS**。使用内置 `node:sqlite`，不需要编译第三方 SQLite 扩展；部分 Node.js 24 版本会显示 SQLite 实验性 API 提示。
 
 ```bash
-git clone --branch v0.24.1 https://github.com/xilele777/snotes.git
+git clone --branch v1.0.0 https://github.com/xilele777/snotes.git
 cd snotes
 npm ci
 npm run build:server
@@ -68,7 +68,7 @@ Windows PowerShell 可以用 `Copy-Item server.env.example .env.server` 代替 `
 | `SNOTES_DATA_DIR` | `./data` | 数据目录，相对路径基于启动进程的工作目录；生产环境建议用绝对路径 |
 | `TRASH_RETENTION_DAYS` | `30` | 回收站保留天数，超期笔记由每日维护任务自动彻底删除；`0` 或 `off` 关闭，非法值拒绝启动 |
 
-`npm start` 自动读取当前目录的 `.env.server`，现有进程环境变量优先。直接执行 `node dist-server/index.mjs` 时，应由 systemd、Docker 或 shell 注入环境变量。首次启动创建数据库并执行 `migrations/`；后续启动只执行尚未应用的迁移，失败的迁移会回滚并阻止启动。启动 5 秒后执行一次维护任务（孤儿图片回收、回收站过期清理、墓碑回收），之后每 24 小时一次，结果以 `maintenance:` 开头写入标准输出。
+`npm start` 自动读取当前目录的 `.env.server`，现有进程环境变量优先。直接执行 `node dist-server/index.mjs` 时，应由 systemd、Docker 或 shell 注入环境变量。首次启动创建数据库并执行 `migrations/`；后续启动只执行尚未应用的迁移，失败的迁移会回滚并阻止启动。启动 5 秒后执行一次维护任务（回收站过期清理、墓碑回收；已提交图片永久回收暂缓），之后每 24 小时一次，结果以 `maintenance:` 开头写入标准输出。
 
 持久化目录包含：
 
@@ -78,6 +78,8 @@ data/
   snotes.sqlite-wal   SQLite 运行时日志（可能存在）
   snotes.sqlite-shm   SQLite 运行时共享文件（可能存在）
   images/            图片，以笔记 ID / 图片 ID 分目录
+  sync-epoch         数据库外的同步实例标识，首次启动生成
+  sync-require-epoch  恢复后启用严格客户端的标记
 ```
 
 仅 `dist/` 被公开提供为静态文件，数据和配置不会通过静态资源接口暴露。服务器必须保留 `dist/`、`dist-server/`、`migrations/`、`package.json` 及生产 `node_modules/`。`npm run build:server` 构建网页和 Node.js 服务；Cloudflare 使用 `npm run deploy`。关于页通过已登录的 `/api/runtime` 请求识别实际运行环境，并显示相应升级步骤。
@@ -142,6 +144,17 @@ docker compose start snotes
 切换代码后，Docker 部署执行 `docker compose up -d --build`；直接运行 Node.js 时先停止服务，再执行 `npm ci`、`npm run build:server`，最后重启服务。数据目录和令牌配置需要保留。迁移在新进程启动时自动完成，首次出现的迁移失败会阻止新服务就绪。联网等待浏览器更新缓存后重新打开应用，在版本弹窗核对版本号。
 
 恢复时先停服务并另存当前数据，将备份解压到一个空的数据目录（Docker 对应 `/app/data` 数据卷），确保文件属于运行服务的用户，再启动。回滚代码不会自动撤销数据库迁移，恢复旧代码时要确认数据库兼容，必要时一起恢复对应备份。
+
+推荐使用带数据库及 SHA-256 清单校验的实例工具，先停止所有写入，目标目录必须不存在：
+
+```bash
+node scripts/instance-backup.mjs backup data backups/instance-20261020 --offline
+node scripts/instance-backup.mjs restore backups/instance-20261020 data-restored --offline
+```
+
+工具保存全部 SQLite 业务数据、历史、回收站及磁盘图片（含无引用对象）；恢复到新目录时轮换数据库和外部 epoch、清空同步凭证、启用严格客户端标记。将 `SNOTES_DATA_DIR` 指向恢复目录，确认文件归属后启动；备份含授权数据，必须私密保存。`--offline` 表示操作者已停写，工具不会自动停止服务。Docker 停应用容器后可用同一镜像的临时容器挂载数据卷运行工具，目标目录放在另一持久卷，最后将恢复目录挂载到应用 `/app/data`。
+
+旧版 tar/SQL 备份先在隔离目录应用当前迁移，再按上述工具重新生成、恢复；不要直接启动旧快照接受写入。手工恢复或只恢复笔记本表时，也必须在停服状态重新生成数据目录的 `sync-epoch`、写入内容为 `true` 的 `sync-require-epoch`，并执行 `DELETE FROM sync_checkpoint`；若设置了 `SYNC_INSTANCE_EPOCH` 环境变量，也需轮换它。仅清空凭证不足以识别完整同水位恢复。浏览器、Agent、维护任务及所有在途写入都必须停止并排空；恢复后旧 PWA 无 epoch 写入返回 409，先备份未同步输入，再升级客户端。图片永久回收仍暂缓，存储会累积，删除笔记不等同于擦除图片；完整步骤见[运维手册](operations.md)。
 
 服务器部署默认创建独立数据库，**不会自动搬运已有 Cloudflare D1/R2 数据**。更换域名也会使用新的浏览器本地存储；迁移旧实例应另行导出、核验数据库与图片，不要直接把两个正在使用的实例当成同一个同步服务。
 

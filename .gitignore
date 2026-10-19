@@ -12,6 +12,7 @@ backups/
 .DS_Store
 base.apk
 *.local
+wrangler.*.local.jsonc
 *.tsbuildinfo
 
 # vite

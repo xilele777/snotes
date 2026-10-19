@@ -4,14 +4,14 @@
 
 ## Version selection
 
-The installation below pins stable release `v0.24.1`. Choose other tags from [Releases](https://github.com/xilele777/snotes/releases); `main` may contain unreleased changes. A pinned deployment uses detached HEAD. For upgrades, back up first, run `git fetch origin --tags`, then `git switch --detach <new-release-tag>`. Do not use `git pull` on detached HEAD or force a checkout over local settings.
+The installation below pins release tag `v1.0.0`. Choose other tags from [Releases](https://github.com/xilele777/snotes/releases); `main` may contain unreleased changes. A pinned deployment uses detached HEAD. For upgrades, back up first, run `git fetch origin --tags`, then `git switch --detach <new-release-tag>`. Do not use `git pull` on detached HEAD or force a checkout over local settings.
 
 
 You need one Worker, one D1 database, and one R2 bucket. Each product offers a free allowance; actual costs depend on usage. See [Free tier](#free-tier).
 
 ## 0. Prerequisites
 
-- **Node.js 22.12 or newer** (wrangler 4 requires `>=22.0.0`, vite 8 requires `>=22.12.0`)
+- **Node.js 24 LTS**, matching the project requirement, CI, and Node backend
 - **A Cloudflare account with R2 enabled**: go to Dashboard → R2 and follow the prompts. Step 2 fails if R2 hasn't been enabled.
 - Log in to wrangler:
 
@@ -22,7 +22,7 @@ You need one Worker, one D1 database, and one R2 bucket. Each product offers a f
 ## 1. Clone and install
 
 ```bash
-git clone --branch v0.24.1 https://github.com/xilele777/snotes.git
+git clone --branch v1.0.0 https://github.com/xilele777/snotes.git
 cd snotes
 npm ci
 ```
@@ -89,7 +89,7 @@ npx wrangler secret put ACCESS_TOKEN
 npx wrangler d1 migrations apply snotes --remote
 ```
 
-`--remote` targets the production database; `--local` only affects your local development database. The two are entirely separate.
+`--remote` targets the remote database in the selected configuration; `--local` affects only local development data. New instances need all migrations. Upgrades from 0.24.1 add `0010_sync_checkpoints.sql` and `0011_sync_instance.sql`: apply migrations before deploying the matching frontend and backend. Never edit an applied migration.
 
 ## 6. Build and deploy
 
@@ -107,6 +107,8 @@ curl https://snotes.<your-subdomain>.workers.dev/api/health
 ```
 
 `/api/health` returns service status without exposing notes or tokens, for post-deploy verification.
+
+Also sign in, create a test note, upload an image, refresh, and read from another browser to verify D1, R2, and authentication. Record the Deployment/Version ID separately from the application version in `package.json`. The built `public/_headers` keeps versioned scripts immutable and HTML / `/sw.js` revalidated; preserve these rules in any additional CDN or proxy.
 
 ## 7. First run
 
@@ -139,6 +141,40 @@ npm run deploy                                      # build and deploy
 ```
 
 Replace `snotes` in the migration command if you renamed the database. Secrets such as `ACCESS_TOKEN` stay on Cloudflare and do not need to be re-entered. After deployment, stay online while the browser downloads the new Service Worker and cache, then reload or close all app windows and reopen. Check the About tab in Settings to verify the new build; offline clients or clients still using the old cache do not update immediately.
+
+Before the first upgrade from 0.24.1 or earlier to 1.0.0, save and sync every old tab, export a backup if needed, and close old app windows. Old pages lack the new save-before-reload handoff. Starting with 1.0.0, updated pages offer a save-and-update action and hand off local input before controller takeover; recover or download failed drafts before refreshing. Routine upgrades do not require epoch rotation; database restores do.
+
+## Dedicated staging
+
+Use a separate Worker, D1, R2 bucket, and access token. Changing the hostname while keeping production bindings is not isolation. Copy [the staging example](../deploy/wrangler.staging.example.jsonc) into the project root as `wrangler.staging.local.jsonc` and fill in your own account/database IDs:
+
+```bash
+npx wrangler d1 create snotes-acceptance-demo
+npx wrangler r2 bucket create snotes-acceptance-demo
+cp deploy/wrangler.staging.example.jsonc wrangler.staging.local.jsonc
+# Edit your account_id and returned database_id; keep resource names consistent
+npx wrangler d1 migrations apply snotes-acceptance-demo --remote --config wrangler.staging.local.jsonc
+npx wrangler secret put ACCESS_TOKEN --config wrangler.staging.local.jsonc
+npm run build
+npx wrangler deploy --config wrangler.staging.local.jsonc
+```
+
+Use `Copy-Item` instead of `cp` in PowerShell. Pass `--config` for every staging Wrangler command. `npm run deploy` uses the default production configuration. The example disables scheduled maintenance and enables strict epoch writes. Keep staging credentials separate. Batch, recovery, and CDN scripts are documented in the [acceptance guide (Chinese)](release-acceptance.md); recovery drills actually roll back remote D1 and require a disposable instance.
+
+## Backups and database restoration
+
+D1 exports and Time Travel exclude R2 objects. Stop writers, save D1 and all R2 objects, and verify the object inventory for an instance backup. An application ZIP performs a merge import, not a remote instance restore. Uploaded images are retained after note deletion and consume storage.
+
+For any full or partial restore, including notebook-only and same-watermark restores, stop browsers, Agents, scheduled maintenance, and all other writers; drain requests, restore data/images, apply all migrations, then rotate the external epoch and enable strict writes before reopening access. Clearing receipts alone is insufficient.
+
+```bash
+# If SYNC_REQUIRE_EPOCH is not already configured, create its strict-mode secret first
+node scripts/rotate-sync-epoch.mjs wrangler.jsonc
+# Alternatively, when the target config already has vars.SYNC_REQUIRE_EPOCH="true"
+node scripts/rotate-sync-epoch.mjs wrangler.staging.local.jsonc --strict-enabled
+```
+
+Choose the command matching the target configuration; do not run both. Secret updates deploy Worker versions, so retain the maintenance window until they take effect. Owner writes with missing or stale epochs return 409 after restoration. Upgrade old PWAs after exporting unsynced input. Agent writes must still be stopped and drained during maintenance; epochs do not provide an online restore lock. See the [operations guide (Chinese)](operations.md#每月备份) for the complete procedure and Node instance backup tool.
 
 ## Optional: configure the usage-monitoring API
 

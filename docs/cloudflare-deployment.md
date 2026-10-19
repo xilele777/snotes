@@ -4,14 +4,14 @@
 
 ## 版本选择
 
-以下安装命令固定到稳定版 `v0.24.1`。也可在 [Releases](https://github.com/xilele777/snotes/releases) 选择其他标签；`main` 可能包含尚未发布的改动。固定标签部署处于 detached HEAD，后续升级应先备份，执行 `git fetch origin --tags`，再 `git switch --detach <新版本标签>`，不要使用 `git pull` 或强制切换覆盖个人配置。
+以下安装命令固定到发布标签 `v1.0.0`。也可在 [Releases](https://github.com/xilele777/snotes/releases) 选择其他标签；`main` 可能包含尚未发布的改动。固定标签部署处于 detached HEAD，后续升级应先备份，执行 `git fetch origin --tags`，再 `git switch --detach <新版本标签>`，不要使用 `git pull` 或强制切换覆盖个人配置。
 
 
 需要一个 Worker、一个 D1 数据库和一个 R2 桶。各产品提供免费额度，实际费用取决于用量，参见[免费额度](#免费额度)。
 
 ## 0. 前置条件
 
-- **Node.js 22.12 或更高版本**（wrangler 4 要求 `>=22.0.0`，vite 8 要求 `>=22.12.0`）
+- **Node.js 24 LTS**（与项目声明、CI 和 Node.js 后端保持一致）
 - **一个 Cloudflare 账号**，并且**已在控制台开通 R2**：进入 Dashboard → R2 按提示开通。未开通时第 2 步创建桶会失败。
 - 登录 wrangler：
 
@@ -22,7 +22,7 @@
 ## 1. 克隆并安装
 
 ```bash
-git clone --branch v0.24.1 https://github.com/xilele777/snotes.git
+git clone --branch v1.0.0 https://github.com/xilele777/snotes.git
 cd snotes
 npm ci
 ```
@@ -89,7 +89,7 @@ npx wrangler secret put ACCESS_TOKEN
 npx wrangler d1 migrations apply snotes --remote
 ```
 
-`--remote` 打的是线上库，`--local` 只影响本机开发库，两者互不相通。
+`--remote` 操作所选配置中的远端数据库，`--local` 只影响本机开发库，两者互不相通。新实例必须应用全部迁移；从 0.24.1 升级时新增 `0010_sync_checkpoints.sql`、`0011_sync_instance.sql`，先迁移，再部署匹配的前后端。不要修改已应用的迁移。
 
 ## 6. 构建并部署
 
@@ -107,6 +107,8 @@ curl https://snotes.<你的子域>.workers.dev/api/health
 ```
 
 `/api/health` 返回服务状态，不包含笔记或令牌，用于部署后验活。
+
+部署后还应登录创建一条测试笔记、上传图片、刷新并从另一浏览器读取，确认鉴权和 D1/R2 均可用。保留终端返回的 Deployment/Version ID；这是部署标识，应用版本仍以 `package.json` 为准。构建中的 `public/_headers` 负责静态缓存头：带版本的脚本使用 immutable，HTML 与 `/sw.js` 使用 no-cache；自定义 CDN 或代理也应保留这些规则。
 
 ## 7. 首次使用
 
@@ -139,6 +141,40 @@ npm run deploy                                      # 构建并部署
 ```
 
 数据库改过名时，迁移命令中的 `snotes` 也要替换。密钥（`ACCESS_TOKEN` 等）保存在 Cloudflare 侧，无需重新输入。部署完成后，保持联网等待浏览器下载新的 Service Worker 和缓存，再刷新或关闭所有应用窗口后重新打开，并在设置「关于」页核对版本号；离线或仍在使用旧缓存时不会立即变为新版。
+
+从 0.24.1 及更旧版本首次升级到 1.0.0 前，先在每个旧标签页完成保存与同步，必要时导出备份，再关闭旧应用窗口。旧页面不具备新版的刷新前保存交接机制。1.0.0 开始，新版提示“保存并更新”，各新版标签页在控制器接管时先交接本地输入；本地保存失败时应恢复或下载草稿后再刷新。普通升级不需要轮换恢复 epoch；数据库或部分表恢复时必须执行下方恢复流程。
+
+## 独立 staging 与验收
+
+staging 必须有独立 Worker、D1、R2 和访问令牌，不能只换域名后继续绑定生产资源。在项目根目录创建不提交的 `wrangler.staging.local.jsonc`，可从 [staging 配置示例](../deploy/wrangler.staging.example.jsonc) 复制；`.local.jsonc` 中的数据库 ID 必须替换为下列创建命令的返回值：
+
+```bash
+npx wrangler d1 create snotes-acceptance-demo
+npx wrangler r2 bucket create snotes-acceptance-demo
+cp deploy/wrangler.staging.example.jsonc wrangler.staging.local.jsonc
+# 编辑配置：填写自己的 account_id、database_id，并确保三个资源名一致
+npx wrangler d1 migrations apply snotes-acceptance-demo --remote --config wrangler.staging.local.jsonc
+npx wrangler secret put ACCESS_TOKEN --config wrangler.staging.local.jsonc
+npm run build
+npx wrangler deploy --config wrangler.staging.local.jsonc
+```
+
+Windows 使用 `Copy-Item` 代替 `cp`。测试环境的所有 Wrangler 命令都显式传 `--config`；`npm run deploy` 默认使用生产配置，不能用于上述 staging。示例不启用定时清理，严格 epoch 写入已开启；凭证与生产分开生成。批量、恢复与 CDN 验收的运行方式见[发布验收](release-acceptance.md)。恢复脚本会实际回滚该远端 D1，只可在可丢弃测试环境运行。
+
+## 备份和数据库恢复
+
+D1 导出或 Time Travel 仅恢复数据库，不包含 R2。完整实例备份需要在停止所有写入后保存 D1 和全部 R2 对象，并核对对象清单；应用内 ZIP 是合并导入，不能替代远端实例备份。已提交图片采用保留策略，删除笔记不擦除图片，会累积存储。
+
+恢复整库、同水位快照或仅笔记本表时，都需维护窗口：停止浏览器、Agent、定时维护及其他写入，排空在途请求；恢复数据和图片，应用全部迁移，然后轮换数据库外的实例 epoch 并启用严格模式，再开放访问。只清空同步凭证不足以完成恢复。
+
+```bash
+# 目标配置中尚未设置 SYNC_REQUIRE_EPOCH 时，工具先创建严格模式 secret
+node scripts/rotate-sync-epoch.mjs wrangler.jsonc
+# 若配置的 vars 已明确包含 SYNC_REQUIRE_EPOCH: "true"，避免同名 secret 冲突
+node scripts/rotate-sync-epoch.mjs wrangler.staging.local.jsonc --strict-enabled
+```
+
+以上两条按配置情况择一执行；第二条只适用于严格模式已生效的配置。工具会部署新的 Worker secret，须保持维护窗口直到生效。恢复后无 epoch 或旧 epoch 的所有者写入返回 409，旧 PWA 需升级；先导出旧页面未同步内容。Agent 写入仍需靠维护窗口停止并排空，不能把 epoch 当作在线无停机恢复锁。详细步骤与 Node 实例恢复工具见[运维手册](operations.md#每月备份)。
 
 ## 可选：配置用量监控 API
 
