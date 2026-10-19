@@ -378,3 +378,9 @@
   - 提交与发布：功能、编辑器修复、浏览器回归、版本元数据分别提交，发布提交 `630796d` 及注解标签 `v0.24.0` 已推送。GitHub Release：https://github.com/xilele777/snotes/releases/tag/v0.24.0，发布说明包含 CHANGELOG 对应条目及部署编号。
   - 部署结果：`npm run deploy -- --message 'Release v0.24.0'` 成功；Cloudflare Version ID `47444150-d7e2-4c4f-9c9b-75bd561a8522`，Deployment ID `c02f5d54-24ad-4429-b81f-231808b57837`，承接 100% 生产流量。
   - 线上核验：https://note.alover.me 的首页、`/notebooks`、`/api/health` 均返回 200，健康响应 `ok=true`；入口资源 `/assets/index-DBds1H-S.js` 与本地构建 SHA256 一致（`a642eb881a4314cf8a3bf5e0ddf1d71fbc05686b778daf74aa063f1b422cda91`），包含应用版本 `0.24.0`。未执行生产笔记写入；检查日志保存在部署机 `tmp/release-v0.24.0-*`。
+
+- 2026-10-19：发布 v0.24.1。针对 v0.23.4 后手机清空数据恢复慢、刷新慢和 Vditor 编辑器白屏卡顿，缩减离线预缓存、优化分批同步与正文落库、启用长列表虚拟滚动、提前异步加载编辑器核心资源，并移除低频编辑工具；大纲增加右边界和长标题悬浮提示。
+  - 验证：`npm run test:all`（807 前端、184 Worker、55 服务端）与 `npm run build` 通过；完整 Playwright 浏览器回归 99 项通过，覆盖桌面/手机、离线同步、编辑器三模式、长列表和大纲。旧版缓存升级验证从 437 项回收至 31 项且 500 条本地笔记完整保留。
+  - 提交与发布：发布提交 `81da535`，标签 `v0.24.1` 已推送；GitHub Release：https://github.com/xilele777/snotes/releases/tag/v0.24.1。
+  - 部署结果：`npm run deploy -- --message 'Release v0.24.1'` 成功；Cloudflare Version ID `6b21abe8-7fbe-4479-b54a-200fdd5e77b4`，Deployment ID `bc6e4d67-c8c3-4b5a-a45b-72d5d767c355`，承接 100% 生产流量。
+  - 线上核验：https://note.alover.me 的首页、`/notebooks`、`/settings/agents` 与 `/api/health` 均返回 200；入口资源 `/assets/index-Dgm1t4NF.js` SHA256 为 `557b94ad141fd38ae781716252d12ae084cbe361dd3b8c7029e4154adfaeb48e`，与本地构建一致并包含应用版本 `0.24.1`；Service Worker 与本地构建一致，未执行生产笔记写入。
