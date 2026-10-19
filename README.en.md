@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="https://github.com/user-attachments/assets/f70b7292-c7ef-4918-8efb-b835007639e6" width="360" alt="snotes" />
+<img src="public/snotes.svg" width="88" height="88" alt="snotes blue bookmark icon" />
 
 # snotes
 
@@ -26,6 +26,20 @@ Notes are saved in the browser first, then synced with your own backend. Run the
 
 > **Single-user and self-hosted.** An instance access token signs in the owner. Agents can use separate credentials scoped to selected notebooks. There are no multiple-user accounts or collaborative editing.
 
+## Why snotes
+
+snotes combines offline writing, personal knowledge organization, and scoped Agent access in a web app you can host yourself.
+
+| What you need | How snotes helps |
+| --- | --- |
+| Capture thoughts without waiting for the network | Notes save in the browser first. Downloaded content stays editable offline and syncs when reconnected; the PWA can be installed on desktop and mobile |
+| Organize quick notes and lasting reference material differently | Use groups, stars, and pins for everyday notes, or chapter trees for project notebooks; move notebook notes out as independent notes |
+| Let an Agent maintain documents with limited access | Built-in MCP and HTTP APIs grant read, create, and update permissions per notebook, with expiring and revocable credentials |
+| Choose where your data lives | Deploy the same app on Cloudflare Workers + D1 + R2, or Node.js / Docker + SQLite + image files on disk |
+| Keep notes portable and recover from mistakes | Markdown ZIPs carry images and properties; local history and trash can be backed up. Concurrent body edits retain conflict copies, and Node includes a full-instance backup tool |
+
+Designed for personal notes, project knowledge, and notebooks shared with an Agent. The app is single-user, body conflicts require manual merging, and offline storage and sync need regular backups.
+
 ## Features
 
 - **Offline-first** — Read and edit notes already synced to the device, then sync automatically when reconnected.
@@ -36,6 +50,7 @@ Notes are saved in the browser first, then synced with your own backend. Run the
 - **Portable data** — Import Markdown or backups; export Markdown ZIPs with images and properties. Download, share, or print individual notes.
 - **Desktop and mobile** — Responsive layouts, light and dark themes, PWA installation, image lightboxes, and system sharing where supported by the browser.
 - **Writing statistics** — Word counts, streaks, an activity heatmap, group distribution, and opens across devices.
+- **Agent access** — MCP / HTTP APIs deliver and maintain Markdown in selected notebooks using separate credentials with scoped permissions and expiry.
 
 ## Quick start
 
@@ -44,7 +59,7 @@ Notes are saved in the browser first, then synced with your own backend. Run the
 Requires **Node.js 24 LTS**. No Cloudflare account is needed: notes use SQLite and images are stored on disk.
 
 ```bash
-git clone --branch v0.24.1 https://github.com/xilele777/snotes.git
+git clone --branch v1.0.0 https://github.com/xilele777/snotes.git
 cd snotes
 npm ci
 npm run build:server
@@ -90,7 +105,7 @@ Data defaults to `data/`. Preserve the entire directory during upgrades and conf
 
 Cloudflare deployment requires your own D1 database and R2 bucket, updated resource settings, and an access token. Costs depend on platform policies and actual usage; free operation is not guaranteed.
 
-> **Verification status:** Cloudflare and direct Node.js operation have integration and browser coverage. Docker Compose configuration has been validated, but image builds and container execution have not been tested.
+> **Verification status:** Both backends have browser regression coverage. Dedicated Cloudflare D1/R2 batch and recovery drills, public CDN checks, and Docker image builds, persistence, and instance recovery have passed. iOS / Android device tests are deferred; see the [acceptance record (Chinese)](docs/release-acceptance.md).
 
 For pinned installations, select a tag from [Releases](https://github.com/xilele777/snotes/releases). `main` may include unreleased changes. Sync and back up before upgrading, then follow the guide for your deployment. In-app notifications do not upgrade your server automatically.
 
@@ -99,8 +114,9 @@ For pinned installations, select a tag from [Releases](https://github.com/xilele
 - **The token grants access to everything.** Anyone with `ACCESS_TOKEN` can read and write all notes and images. Generate it randomly and keep it private.
 - **Self-hosting is not end-to-end encryption.** Use HTTPS and protect the server, database, image storage, and backups.
 - **Offline storage is not a backup.** Browsers can clear local storage. Unsynced changes are not included in server backups.
-- **Use in-app export for migration.** Export a full backup from Settings → Data. Server backups must also cover images; a D1 SQL export does not include R2 objects.
+- **Distinguish migration archives from instance backups.** Settings → Data exports format 3 with local notes, trash, local history, and referenced images. Server-only data and unreferenced images need a server backup; a D1 SQL export excludes R2 objects.
 - **Understand permanent deletion.** Regular note deletion uses trash. Deleting an entire notebook permanently deletes its contents without using trash.
+- **Images are retained.** Deleting a note or notebook does not erase uploaded images. Valid credentials and a known URL may still retrieve them, and storage accumulates. Coordinated image reference tracking and deletion are not implemented.
 
 See the [usage guide (Chinese)](docs/usage.md), [operations guide (Chinese)](docs/operations.md), and [server backup and recovery (Chinese)](docs/server-deployment.md#备份升级与恢复).
 

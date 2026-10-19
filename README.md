@@ -1,7 +1,8 @@
 <div align="center">
   
-<img src="https://socialify.git.ci/xilele777/snotes/image?custom_description=%E4%BD%A0%E7%9A%84%E7%AC%94%E8%AE%B0%EF%BC%8C%E4%BD%A0%E7%9A%84%E6%9C%8D%E5%8A%A1%E5%99%A8%E3%80%82%E5%A4%9A%E7%AB%AF%E5%90%8C%E6%AD%A5%EF%BC%8C%E7%A6%BB%E7%BA%BF%E4%B9%9F%E8%83%BD%E5%86%99%E3%80%82&description=1&font=JetBrains+Mono&language=1&name=1&owner=1&pattern=Plus&theme=Light" alt="snotes" width="520" height="260" />
+<img src="public/snotes.svg" alt="snotes 蓝色书签图标" width="88" height="88" />
 
+# snotes
 
 **轻量的个人 Markdown 笔记应用，支持部署到 Cloudflare 或自己的服务器。**
 
@@ -23,6 +24,20 @@ snotes 面向想自己掌握数据的个人用户：随手记录日常笔记，�
 
 > **项目定位：单用户、自托管。** 使用实例访问令牌登录，不提供多用户账户或协作编辑。Agent 可使用按笔记本授权的独立凭证。
 
+## 为什么选择 snotes
+
+snotes 的特点，是把离线写作、个人知识整理和 Agent 接入放在一个可以自行部署的网页应用里：
+
+| 你想解决的问题 | snotes 的做法 |
+| --- | --- |
+| 随时记下内容，不想每次等待网络 | 笔记先保存到浏览器本地，已下载的内容可离线编辑，联网后同步；PWA 可安装到桌面和手机主屏 |
+| 随手记与长期资料需要不同的整理方式 | 普通笔记用分组、星标和置顶；笔记本用章节目录组织项目资料和长文档，内容可移出为独立笔记 |
+| 想让 Agent 整理资料，又不想交出整个实例的权限 | 内置 MCP 和 HTTP API，按笔记本授予读取、新建、修改权限；凭证可过期、撤销，适合研究记录、项目文档和持续更新 |
+| 希望自己掌握部署和存储 | 同一套应用可部署在 Cloudflare Workers + D1 + R2，或 Node.js / Docker + SQLite + 本地图片目录 |
+| 希望以后能迁移，也能找回误改内容 | Markdown ZIP 携带图片与属性，本地历史和回收站可随备份保存；并发正文保留冲突副本，Node 另有完整实例备份工具 |
+
+适合个人记录、项目知识库，以及人与 Agent 共用的资料笔记本。它采用单用户模型，正文冲突需要人工合并；离线缓存和同步也需要配合备份使用。
+
 ## 功能特性
 
 - **离线优先** — 已同步到设备的笔记可以离线阅读和编辑，重新联网后自动同步。
@@ -33,6 +48,7 @@ snotes 面向想自己掌握数据的个人用户：随手记录日常笔记，�
 - **数据可携带** — 导入 Markdown 或备份包，导出包含图片和属性的 Markdown ZIP，支持单篇下载、分享与打印。
 - **桌面与手机** — 响应式界面、深浅色主题和 PWA 安装；支持图片灯箱与系统分享入口，具体能力取决于浏览器。
 - **写作统计** — 查看字数、连续写作、活动热力图、分组分布与跨设备打开记录。
+- **Agent 接入** — 通过 MCP / HTTP API 向指定笔记本投递或维护 Markdown，使用独立凭证控制范围、权限与有效期。
 
 ## 快速开始
 
@@ -41,7 +57,7 @@ snotes 面向想自己掌握数据的个人用户：随手记录日常笔记，�
 需要 **Node.js 24 LTS**。不需要 Cloudflare 账号，笔记存入 SQLite，图片保存在本地磁盘。
 
 ```bash
-git clone --branch v0.24.1 https://github.com/xilele777/snotes.git
+git clone --branch v1.0.0 https://github.com/xilele777/snotes.git
 cd snotes
 npm ci
 npm run build:server
@@ -87,7 +103,7 @@ Copy-Item server.env.example .env.server
 
 Cloudflare 部署需要创建自己的 D1 数据库和 R2 桶，替换仓库中的资源配置，并设置访问令牌。免费额度与费用以平台政策和实际用量为准。
 
-> **验证范围：** Cloudflare 和直接运行 Node.js 已完成集成及浏览器测试；Docker Compose 目前仅验证了配置，尚未实测镜像构建和容器运行。
+> **验证范围：** 已完成两套后端浏览器回归、隔离 Cloudflare D1/R2 批量与恢复演练、公网 CDN 核验，以及 Docker 镜像构建、容器持久化和实例恢复。iOS / Android 真机测试暂缓；详细证据和边界见[发布验收](docs/release-acceptance.md)。
 
 固定版本安装请使用 [Releases](https://github.com/xilele777/snotes/releases) 中的标签；`main` 可能包含未发布改动。升级前先同步并备份，按对应部署指南操作。应用内更新提醒不会自动升级服务端。
 
@@ -96,8 +112,9 @@ Cloudflare 部署需要创建自己的 D1 数据库和 R2 桶，替换仓库中�
 - **令牌就是访问权限。** 持有 `ACCESS_TOKEN` 的人可以读写整个实例的笔记和图片，请使用随机令牌并妥善保管。
 - **自托管不等于端到端加密。** 请使用 HTTPS，并保护服务器、数据库、图片目录和备份。
 - **离线缓存不等于备份。** 浏览器可能清理本地存储；尚未同步的改动不会出现在服务端备份中。
-- **优先使用应用内导出迁移。** 在「设置 → 数据」导出完整备份包。服务端备份还需覆盖图片；D1 SQL 导出不包含 R2 对象。
+- **区分迁移包与实例备份。**「设置 → 数据」导出格式 3，包含本机笔记、回收站、本地历史及引用图片。云端独有数据和无引用图片需另做服务端备份；D1 SQL 不包含 R2 对象。
 - **注意永久删除。** 普通删除进入回收站；删除整本笔记本会永久删除其中内容，不经过回收站。
+- **图片采用保留策略。** 删除笔记或笔记本不会擦除已上传图片，持有效凭证和已知地址仍可能读取，存储会累积；图片引用与删除协调协议尚未提供。
 
 更多说明见[使用指南](docs/usage.md)、[备份与排错](docs/operations.md)及[服务器备份与恢复](docs/server-deployment.md#备份升级与恢复)。
 
@@ -115,7 +132,7 @@ npm run build
 
 | 层 | 技术 |
 | --- | --- |
-| 界面与编辑器 | Vue 3 · Pinia · Milkdown |
+| 界面与编辑器 | Vue 3 · Pinia · Vditor |
 | 离线与 PWA | Dexie / IndexedDB · Workbox |
 | API | Hono · Cloudflare Workers / Node.js |
 | 存储 | D1 / SQLite · R2 / 本地磁盘 |
