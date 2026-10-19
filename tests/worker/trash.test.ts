@@ -67,7 +67,7 @@ describe('POST /api/notes/:id/purge', () => {
     expect(body).toBeNull()
   })
 
-  it('连带删除该笔记的图片记录与 R2 对象', async () => {
+  it('保留图片对象和索引，避免离线重新引用失效', async () => {
     const req = await seedNote()
     await env.R2.put('k1.png', new Uint8Array([1, 2, 3]))
     await env.DB.prepare(
@@ -78,11 +78,11 @@ describe('POST /api/notes/:id/purge', () => {
 
     await api(`/api/notes/${req.id}/purge`, { method: 'POST' })
 
-    expect(await env.R2.get('k1.png')).toBeNull()
+    expect(await env.R2.get('k1.png')).not.toBeNull()
     const img = await env.DB.prepare('SELECT file_key FROM image WHERE file_key = ?')
       .bind('k1.png')
       .first()
-    expect(img).toBeNull()
+    expect(img).not.toBeNull()
   })
 })
 
@@ -110,7 +110,7 @@ describe('POST /api/trash/clean', () => {
     expect(await res.json()).toEqual({ purged: [] })
   })
 
-  it('清空时回收全部相关 R2 图片', async () => {
+  it('清空正文时保留相关 R2 图片', async () => {
     const trashed = await seedNote()
     await env.R2.put('a.png', new Uint8Array([1]))
     await env.DB.prepare(
@@ -122,7 +122,7 @@ describe('POST /api/trash/clean', () => {
 
     await json('/api/trash/clean', 'POST', {})
 
-    expect(await env.R2.get('a.png')).toBeNull()
+    expect(await env.R2.get('a.png')).not.toBeNull()
   })
 })
 

@@ -1,6 +1,7 @@
 import { HISTORY_KEEP, HISTORY_MAX_AGE_MS, shouldSnapshot } from '../shared/history-rules'
 import type { NoteMeta } from '../shared/types'
 import type { Env } from './types'
+import { QUERY_BATCH_SIZE } from './query-limits'
 
 export function nowMs(): number {
   return Date.now()
@@ -35,26 +36,23 @@ export function rowToNoteMeta(row: Record<string, unknown>): NoteMeta {
  * 把一批笔记物理删除「墓碑化」：note 行不立即 DELETE，而是置 invalid=2（墓碑态），
  * 递增 prop_version、更新 update_time——这样 pull 仍能返回这些行，客户端据此删掉
  * 本地副本，从而让「彻底删除 / 清空回收站」能跨端同步（Bug 2）。
- * 正文与图片在墓碑化时即回收：墓碑只剩元数据，不再需要正文，图片也不再被引用。
+ * 删除正文与历史；图片永久回收暂缓，避免离线和跨笔记引用丢图。
  */
 export async function purgeNotes(env: Env, ids: string[]): Promise<void> {
   if (ids.length === 0) return
 
+  // D1 每条语句最多 100 个绑定参数；保留余量给时间等额外参数。
+  const BATCH = QUERY_BATCH_SIZE
+  for (let offset = 0; offset < ids.length; offset += BATCH) {
+    await purgeNoteBatch(env, ids.slice(offset, offset + BATCH))
+  }
+}
+
+async function purgeNoteBatch(env: Env, ids: string[]): Promise<void> {
   const placeholders = ids.map(() => '?').join(', ')
-
-  // 先回收 R2 图片（墓碑化后这些图永不再被引用）
-  const { results } = await env.DB.prepare(
-    `SELECT file_key FROM image WHERE note_id IN (${placeholders})`
-  )
-    .bind(...ids)
-    .all<{ file_key: string }>()
-
-  await Promise.all(results.map((r) => env.R2.delete(r.file_key)))
-
   const now = nowMs()
 
   await env.DB.batch([
-    env.DB.prepare(`DELETE FROM image WHERE note_id IN (${placeholders})`).bind(...ids),
     env.DB.prepare(`DELETE FROM note_body WHERE note_id IN (${placeholders})`).bind(...ids),
     env.DB.prepare(`DELETE FROM note_open WHERE note_id IN (${placeholders})`).bind(...ids),
     env.DB.prepare(`DELETE FROM note_history WHERE note_id IN (${placeholders})`).bind(...ids),
@@ -65,6 +63,9 @@ export async function purgeNotes(env: Env, ids: string[]): Promise<void> {
        WHERE id IN (${placeholders})`
     ).bind(now, ...ids),
   ])
+
+  // Retain images until deletion can coordinate atomically with body writes.
+
 }
 
 /**
@@ -72,9 +73,8 @@ export async function purgeNotes(env: Env, ids: string[]): Promise<void> {
  * 保留期过后物理 DELETE，避免 note 表无限增长。
  *
  * 走 pull 时如果某客户端游标很旧，可能正好错过一个已被回收的墓碑——这种情况下
- * 它本地会一直留着一条「远端已不存在」的笔记；下次它对该笔记做任何本地改动并推送，
- * 服务端会回 not_found（行已不存在），push 据此丢弃任务，不会卡死。保留期设得足够长
- * （默认 30 天）能把这个窗口压到极小。
+ * 新客户端通过更短有效期的 checkpoint 先全量对账；旧客户端仍可能留下旧副本，
+ * 再次编辑遇到 404 时保留正文任务供恢复，不能仅依赖此保留期。
  */
 export const TOMBSTONE_RETENTION_MS = 30 * 24 * 60 * 60 * 1000
 
@@ -89,13 +89,15 @@ export async function reapTombstones(env: Env, now = nowMs()): Promise<string[]>
   const ids = results.map((r) => r.id)
   if (ids.length === 0) return ids
 
-  const placeholders = ids.map(() => '?').join(', ')
-  await env.DB.batch([
-    env.DB.prepare(`DELETE FROM image WHERE note_id IN (${placeholders})`).bind(...ids),
-    env.DB.prepare(`DELETE FROM note_body WHERE note_id IN (${placeholders})`).bind(...ids),
-    env.DB.prepare(`DELETE FROM note_open WHERE note_id IN (${placeholders})`).bind(...ids),
-    env.DB.prepare(`DELETE FROM note WHERE id IN (${placeholders})`).bind(...ids),
-  ])
+  for (let offset = 0; offset < ids.length; offset += QUERY_BATCH_SIZE) {
+    const slice = ids.slice(offset, offset + QUERY_BATCH_SIZE)
+    const placeholders = slice.map(() => '?').join(', ')
+    await env.DB.batch([
+      env.DB.prepare(`DELETE FROM note_body WHERE note_id IN (${placeholders})`).bind(...slice),
+      env.DB.prepare(`DELETE FROM note_open WHERE note_id IN (${placeholders})`).bind(...slice),
+      env.DB.prepare(`DELETE FROM note WHERE id IN (${placeholders})`).bind(...slice),
+    ])
+  }
   return ids
 }
 

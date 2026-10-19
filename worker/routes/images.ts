@@ -14,7 +14,7 @@ const CACHE_CONTROL = 'public, max-age=31536000, immutable'
 
 // note_id 会直接拼进 R2 的对象键，必须限死成 UUID 形状。
 // 否则调用方能用 `../` 或任意前缀把图片写到别的命名空间下，
-// 让 purgeNotes 按 note_id 回收孤儿图片的逻辑失效。
+// 破坏图片归属边界（已提交图片当前保留，后续回收仍需归属信息）。
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
 export const imagesRoutes = new Hono<{ Bindings: Env }>()
@@ -43,11 +43,16 @@ imagesRoutes.post('/api/images/upload', async (c) => {
     httpMetadata: { contentType: file.type, cacheControl: CACHE_CONTROL },
   })
 
-  await c.env.DB.prepare(
+  try { await c.env.DB.prepare(
     'INSERT INTO image (file_key, note_id, size, mime, create_time) SELECT ?, ?, ?, ?, ? WHERE NOT EXISTS (SELECT 1 FROM knowledge_base_deleted_note WHERE note_id = ?)'
   )
     .bind(fileKey, noteId, file.size, file.type, nowMs(), noteId)
-    .run()
+    .run() } catch (error) {
+    // This object has never been committed or returned to a client. Deleting
+    // it cannot invalidate a published reference. Committed images stay kept.
+    try { await c.env.R2.delete(fileKey) } catch { /* Report original database failure. */ }
+    throw error
+  }
 
   if (await c.env.DB.prepare('SELECT note_id FROM knowledge_base_deleted_note WHERE note_id = ?').bind(noteId).first()) {
     await c.env.R2.delete(fileKey)
@@ -64,8 +69,7 @@ imagesRoutes.post('/api/images/upload', async (c) => {
 
 imagesRoutes.get('/api/images/:file_key{.+}', async (c) => {
   const fileKey = c.req.param('file_key')
-  // Check before the edge cache so previously cached images also become unavailable.
-  if (await c.env.DB.prepare('SELECT note_id FROM knowledge_base_deleted_note WHERE note_id = ?').bind(fileKey.split('/')[0]).first()) return c.json({ error: 'not_found' }, 404)
+  // Images copied into other notes remain valid after their uploader is deleted.
   const cache = c.env.EDGE_CACHE
   const cacheKey = new Request(c.req.url, { method: 'GET' })
 

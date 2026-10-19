@@ -57,9 +57,9 @@ export function knowledgeBaseContract(api: KnowledgeBaseTestApi, environment: ()
       expect(await env.DB.prepare(`SELECT note_id FROM ${table} WHERE note_id = ?`).bind(noteId).first()).toBeNull()
     }
     expect(await env.DB.prepare('SELECT knowledge_base_id FROM knowledge_base_toc_history WHERE knowledge_base_id = ?').bind(id).first()).toBeNull()
-    expect(await env.R2.get(key)).toBeNull()
+    expect(await env.R2.get(key)).not.toBeNull()
     expect((await get(shared.id)).note_states[noteId]).toBe('purged')
-    expect((await api(`/api/images/${key}`, 'GET')).status).toBe(404)
+    expect((await api(`/api/images/${key}`, 'GET')).status).toBe(200)
     expect((await api(`/api/knowledge-bases/${id}`, 'PATCH', { ...request, invalid: 0, base_meta_version: 2, operation_id: crypto.randomUUID() })).status).toBe(410)
     expect((await api(`/api/knowledge-bases/${id}/toc`, 'PUT', { nodes: [node], base_toc_version: 2, operation_id: crypto.randomUUID(), archived_meta_version: 2 })).status).toBe(410)
     // The original create acknowledgement cannot bypass permanent removal either.

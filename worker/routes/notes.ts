@@ -1,4 +1,5 @@
 import { Hono } from 'hono'
+import { noteFits } from '../../shared/limits'
 import type { CreateNoteRequest, PatchNoteRequest, PatchNoteResponse } from '../../shared/types'
 import { listNoteHistory, maybeRecordNoteHistory, nowMs, purgeNotes, recordNoteHistory } from '../db'
 import type { Env } from '../types'
@@ -21,13 +22,15 @@ notesRoutes.post('/api/notes', async (c) => {
   if (
     !req ||
     typeof req.id !== 'string' ||
-    typeof req.create_time !== 'number' ||
+    typeof req.create_time !== 'number' || !Number.isSafeInteger(req.create_time) || req.create_time < 0 || req.create_time > 8_640_000_000_000_000 ||
     typeof req.content !== 'string' ||
     typeof req.title !== 'string' ||
     typeof req.summary !== 'string'
   ) {
     return c.json({ error: 'invalid_body' }, 400)
   }
+
+  if (!noteFits(req.content)) return c.json({ error: 'content_too_large', max_bytes: 1024 * 1024 }, 413)
 
   const now = nowMs()
 
@@ -46,8 +49,7 @@ notesRoutes.post('/api/notes', async (c) => {
   if (existing && existing.invalid === 2) {
     const version = existing.version + 1
     const propVersion = existing.prop_version + 1
-    await c.env.DB.batch([
-      c.env.DB.prepare(
+    const results = await c.env.DB.batch([c.env.DB.prepare(
         `UPDATE note SET group_id = ?, title = ?, summary = ?, thumbnail = ?, version = ?, prop_version = ?,
                          star = ?, top = ?, skin_color = ?, home_hidden = ?, invalid = 0, create_time = ?, update_time = ?
          WHERE id = ? AND invalid = 2`
@@ -65,12 +67,14 @@ notesRoutes.post('/api/notes', async (c) => {
         req.create_time,
         now,
         req.id
-      ),
-      c.env.DB.prepare(
-        `INSERT INTO note_body (note_id, content, version) VALUES (?, ?, ?)
+      ), c.env.DB.prepare(
+        `INSERT INTO note_body (note_id, content, version) SELECT ?, ?, ? WHERE changes() = 1
          ON CONFLICT(note_id) DO UPDATE SET content = excluded.content, version = excluded.version`
-      ).bind(req.id, req.content, version),
-    ])
+      ).bind(req.id, req.content, version)])
+    // 两个迟到的 create 可能都在事务开始前读到 tombstone。只有条件 UPDATE
+    // 成功的请求可以继续写正文；失败者必须重试，绝不能覆盖胜者的 body。
+    // D1 meta.changes 包含触发器写入，不能要求恰好为 1。
+    if (!results[1]?.meta.changes) return c.json({ error: 'write_conflict' }, 503)
     if (await c.env.DB.prepare('SELECT note_id FROM knowledge_base_deleted_note WHERE note_id = ?').bind(req.id).first()) return c.json({ error: 'permanently_deleted' }, 410)
     return c.json({ id: req.id, version, prop_version: propVersion, update_time: now })
   }
@@ -149,6 +153,8 @@ notesRoutes.patch('/api/notes/:id', async (c) => {
   if (!current) return c.json({ error: 'not_found' }, 404)
 
   const touchesBody = req.content !== undefined
+  if (touchesBody && typeof req.content !== 'string') return c.json({ error: 'invalid_body' }, 400)
+  if (touchesBody && !noteFits(req.content!)) return c.json({ error: 'content_too_large', max_bytes: 1024 * 1024 }, 413)
   const touchedProps = PROP_FIELDS.filter((f) => req[f] !== undefined)
 
   if (!touchesBody && touchedProps.length === 0) {

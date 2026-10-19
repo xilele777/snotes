@@ -45,7 +45,7 @@ describe('parseTrashRetentionDays', () => {
 })
 
 describe('deleteOrphanImages', () => {
-  it('删除正文里不再引用且超过宽限期的图片，保留仍被引用的', async () => {
+  it('暂缓永久回收，保留孤儿和仍被引用的图片', async () => {
     const req = noteReq({ content: '![](/api/images/n/kept.png)' })
     await json('/api/notes', 'POST', req)
     const old = NOW - ORPHAN_IMAGE_GRACE_MS - 1
@@ -54,9 +54,9 @@ describe('deleteOrphanImages', () => {
 
     const deleted = await deleteOrphanImages(env, NOW)
 
-    expect(deleted).toEqual(['n/orphan.png'])
-    expect(await imageRows()).toEqual(['n/kept.png'])
-    expect(await env.R2.get('n/orphan.png')).toBeNull()
+    expect(deleted).toEqual([])
+    expect(await imageRows()).toEqual(['n/kept.png', 'n/orphan.png'])
+    expect(await env.R2.get('n/orphan.png')).not.toBeNull()
     expect(await env.R2.get('n/kept.png')).not.toBeNull()
   })
 
@@ -69,11 +69,11 @@ describe('deleteOrphanImages', () => {
     expect(await imageRows()).toEqual(['n/fresh.png'])
   })
 
-  it('所属笔记正文已不存在的图片视为孤儿', async () => {
+  it('所属笔记正文已不存在时也保留图片', async () => {
     await seedImage(crypto.randomUUID(), 'gone/a.png', NOW - ORPHAN_IMAGE_GRACE_MS - 1)
 
-    expect(await deleteOrphanImages(env, NOW)).toEqual(['gone/a.png'])
-    expect(await imageRows()).toEqual([])
+    expect(await deleteOrphanImages(env, NOW)).toEqual([])
+    expect(await imageRows()).toEqual(['gone/a.png'])
   })
 
   it('file_key 是另一个 key 的前缀时不会误判为被引用', async () => {
@@ -86,6 +86,18 @@ describe('deleteOrphanImages', () => {
     // `/api/images/n/a.png` 是 `/api/images/n/a.png.bak` 的子串，instr 会命中；
     // 这是已知的保守取舍：宁可多留一张图，也不能误删被引用的。
     expect(await deleteOrphanImages(env, NOW)).toEqual([])
+  })
+
+  it('跨笔记复用图片时保留仍被另一条正文引用的对象', async () => {
+    const owner = noteReq({ content: '原笔记' })
+    const consumer = noteReq({ content: '![](/api/images/shared/image.png)' })
+    await json('/api/notes', 'POST', owner)
+    await json('/api/notes', 'POST', consumer)
+    await seedImage(owner.id, 'shared/image.png', NOW - ORPHAN_IMAGE_GRACE_MS - 1)
+
+    expect(await deleteOrphanImages(env, NOW)).toEqual([])
+    expect(await env.R2.get('shared/image.png')).not.toBeNull()
+    expect(await imageRows()).toEqual(['shared/image.png'])
   })
 })
 
@@ -100,7 +112,7 @@ describe('purgeExpiredTrash', () => {
     expect(note!.invalid).toBe(1)
   })
 
-  it('超过保留期的回收站笔记墓碑化并回收正文与图片，未超期的保留', async () => {
+  it('过期回收站笔记墓碑化并删除正文，图片保留', async () => {
     const expired = noteReq()
     const recent = noteReq()
     const active = noteReq()
@@ -117,7 +129,7 @@ describe('purgeExpiredTrash', () => {
     const byId = Object.fromEntries(rows.results.map((r) => [r.id, r.invalid]))
     expect(byId).toEqual({ [expired.id]: 2, [recent.id]: 1, [active.id]: 0 })
     expect(await env.DB.prepare('SELECT note_id FROM note_body WHERE note_id = ?').bind(expired.id).first()).toBeNull()
-    expect(await env.R2.get(`${expired.id}/img.png`)).toBeNull()
+    expect(await env.R2.get(`${expired.id}/img.png`)).not.toBeNull()
   })
 
   it('墓碑化后 pull 能把删除信号带给其他客户端', async () => {
@@ -148,7 +160,7 @@ describe('runMaintenance', () => {
 
     const report = await runMaintenance({ ...env, TRASH_RETENTION_DAYS: 'off' }, Date.now())
 
-    expect(report).toEqual({ orphan_images: 1, expired_trash: 0, reaped_tombstones: 1 })
+    expect(report).toEqual({ orphan_images: 0, expired_trash: 0, reaped_tombstones: 1 })
     expect(await env.DB.prepare('SELECT id FROM note WHERE id = ?').bind('tomb').first()).toBeNull()
     const note = await env.DB.prepare('SELECT invalid FROM note WHERE id = ?').bind(trashed.id).first<{ invalid: number }>()
     expect(note!.invalid).toBe(1)
@@ -178,6 +190,6 @@ describe('scheduled 入口', () => {
     await worker.scheduled({ scheduledTime: Date.now(), cron: '17 3 * * *', noRetry() {} } as ScheduledController, env, ctx)
     await waitOnExecutionContext(ctx)
 
-    expect(await imageRows()).toEqual([])
+    expect(await imageRows()).toEqual(['cron/orphan.png'])
   })
 })

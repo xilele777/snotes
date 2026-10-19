@@ -38,6 +38,24 @@ async function createNote() {
   expect(response.status).toBe(200)
   return id
 }
+it('removes an unpublished object if image metadata persistence fails', async () => {
+  const put: string[] = []
+  const deleted: string[] = []
+  const broken: Database = {
+    prepare(sql) {
+      if (sql.includes('INSERT INTO image')) throw new Error('metadata unavailable')
+      return db.prepare(sql)
+    },
+    batch: statements => db.batch(statements),
+  }
+  const form = new FormData()
+  form.set('file', new File([new Uint8Array([1, 2, 3])], 'test.png', { type: 'image/png' }))
+  form.set('note_id', crypto.randomUUID())
+  const response = await app.request('/api/images/upload', { method: 'POST', headers: { Authorization: 'Bearer dev-token' }, body: form }, { ...env, DB: broken, R2: { put: async key => { put.push(key); return null }, delete: async key => { deleted.push(String(key)) }, get: async () => null } })
+  expect(response.status).toBe(500)
+  expect(put).toHaveLength(1)
+  expect(deleted).toEqual(put)
+})
 
 it('serves public health and SPA, protects API and keeps missing assets out of SPA fallback', async () => {
   expect(await (await app.request('/api/health', {}, env)).json()).toEqual({ ok: true })
@@ -214,7 +232,7 @@ it('uploads images, authorizes Cookie reads, handles ETags and purges disk objec
   await api(`/api/notes/${id}/recover`)
   expect(await env.R2.get(file_key)).not.toBeNull()
   await api(`/api/notes/${id}/purge`)
-  expect(await env.R2.get(file_key)).toBeNull()
+  expect(await env.R2.get(file_key)).not.toBeNull()
   expect(await db.prepare('SELECT invalid FROM note WHERE id = ?').bind(id).first()).toEqual({ invalid: 2 })
 })
 
@@ -241,8 +259,8 @@ it('runs the shared maintenance job against SQLite and disk images', async () =>
 
   const report = await runMaintenance({ ...env, TRASH_RETENTION_DAYS: '7' })
 
-  expect(report).toEqual({ orphan_images: 1, expired_trash: 1, reaped_tombstones: 0 })
-  expect(await env.R2.get('k/orphan.png')).toBeNull()
+  expect(report).toEqual({ orphan_images: 0, expired_trash: 1, reaped_tombstones: 0 })
+  expect(await env.R2.get('k/orphan.png')).not.toBeNull()
   expect(await env.R2.get('k/kept.png')).not.toBeNull()
   expect(await db.prepare('SELECT invalid FROM note WHERE id = ?').bind(trashed).first()).toEqual({ invalid: 2 })
 })

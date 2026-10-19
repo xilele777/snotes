@@ -1,10 +1,9 @@
 import { Hono } from 'hono'
 import { purgeNotes, reapTombstones } from '../db'
 import type { Env } from '../types'
+import { QUERY_BATCH_SIZE } from '../query-limits'
 
-// SQLite 默认最多 999 个绑定参数，purgeNotes 一次要为同一批 id 展开三条 IN 语句，
-// 分批切到 200 留足余量。
-const PURGE_BATCH = 200
+const PURGE_BATCH = QUERY_BATCH_SIZE
 
 export const trashRoutes = new Hono<{ Bindings: Env }>()
 
