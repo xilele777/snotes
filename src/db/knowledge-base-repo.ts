@@ -4,7 +4,7 @@ import { db } from './schema'
 import type { KnowledgeBaseTask } from './knowledge-base-types'
 import { emitLocalWrite, emitRemoteApplied } from '../sync/signal'
 import { ApiError, apiFetch } from '../api/client'
-import { trashNote } from './repo'
+import { createConflictCopy, trashNote } from './repo'
 
 export const knowledgeBaseTables = () => [db.knowledgeBases, db.knowledgeBaseTocs, db.knowledgeBaseOutbox, db.knowledgeBaseTocHistory, db.knowledgeBaseNoteStates]
 export const taskId = (id: string, kind: 'meta' | 'toc') => `${id}:${kind}`
@@ -130,12 +130,17 @@ export async function snapshotIn(id: string, nodes: TocNode[], source: 'conflict
   await db.knowledgeBaseTocHistory.add({ id: crypto.randomUUID(), book_id: id, time: Date.now(), nodes, source, ...(meta ? { meta } : {}) })
 }
 
-export async function applyKnowledgeBaseRemote(remote: KnowledgeBaseRemote) {
+export async function applyKnowledgeBaseRemote(remote: KnowledgeBaseRemote, reconcile = false) {
   await db.transaction('rw', [...knowledgeBaseTables(), db.notes, db.outbox, db.history], async () => {
     const id = remote.book.id
     const local = await db.knowledgeBases.get(id)
     if (remote.book.deleted) {
       const ids = remote.deleted_note_ids ?? []
+      for (const noteId of ids) {
+        const local = await db.notes.get(noteId)
+        const pending = await db.outbox.where('note_id').equals(noteId).toArray()
+        if (local?.body.trim() && pending.some(task => task.kind === 'body' || task.kind === 'create')) await createConflictCopy(local, local.body)
+      }
       await db.notes.bulkDelete(ids)
       await db.history.where('note_id').anyOf(ids).delete()
       await db.outbox.where('note_id').anyOf(ids).delete()
@@ -151,15 +156,19 @@ export async function applyKnowledgeBaseRemote(remote: KnowledgeBaseRemote) {
     const metaTask = await db.knowledgeBaseOutbox.get(taskId(id, 'meta'))
     const tocTask = await db.knowledgeBaseOutbox.get(taskId(id, 'toc'))
     const toc = await db.knowledgeBaseTocs.get(id)
+    if (reconcile && local && toc && (JSON.stringify(toc.nodes) !== JSON.stringify(remote.toc.nodes) || JSON.stringify(metadata(local)) !== JSON.stringify(metadata(remote.book)))) {
+      const previous = await db.knowledgeBaseTocHistory.where('book_id').equals(id).toArray()
+      if (!previous.some(row => row.source === 'conflict' && JSON.stringify(row.nodes) === JSON.stringify(toc.nodes) && JSON.stringify(row.meta) === JSON.stringify(metadata(local)))) await snapshotIn(id, toc.nodes, 'conflict', metadata(local))
+    }
     // A pull never resolves or overwrites an unacknowledged local change.
-    if (!metaTask && (!local || remote.book.meta_version >= local.meta_version)) {
+    if (!metaTask && (reconcile || !local || remote.book.meta_version >= local.meta_version)) {
       await db.knowledgeBases.put({ ...remote.book, toc_version: tocTask ? local?.toc_version ?? 0 : remote.toc.version,
         // A remote removal cannot silently turn a pending local edit into an
         // intentional archived write. Keep it visible until the CAS conflict.
         invalid: tocTask && local?.invalid === 0 && remote.book.invalid === 1 ? 0 : remote.book.invalid,
       })
     }
-    if (!tocTask && (!toc || remote.toc.version >= toc.version)) {
+    if (!tocTask && (reconcile || !toc || remote.toc.version >= toc.version)) {
       await db.knowledgeBaseTocs.put(remote.toc)
       await db.knowledgeBases.update(id, { toc_version: remote.toc.version })
     }

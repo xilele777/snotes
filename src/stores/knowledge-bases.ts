@@ -20,6 +20,14 @@ export const useKnowledgeBasesStore = defineStore('knowledge-bases', () => {
       error(e) { error.value = e instanceof Error ? e.message : String(e) },
     })
   }
+  // 普通笔记只需要归属目录；不要为顶栏加载笔记本中的全部正文。
+  function subscribeMembership() {
+    return liveQuery(async () => ({ books: await db.knowledgeBases.toArray(), tocs: await db.knowledgeBaseTocs.toArray() }))
+      .subscribe({
+        next(data) { books.value = data.books; tocs.value = data.tocs },
+        error(e) { error.value = e instanceof Error ? e.message : String(e) },
+      })
+  }
   function subscribe() {
     return liveQuery(async () => {
       const [books, tocs, tasks, noteStates] = await Promise.all([
@@ -32,5 +40,5 @@ export const useKnowledgeBasesStore = defineStore('knowledge-bases', () => {
     }).subscribe({ next(data) { books.value = data.books; tocs.value = data.tocs; tasks.value = data.tasks; notes.value = data.notes; noteStates.value = data.noteStates; error.value = null },
       error(e) { error.value = e instanceof Error ? e.message : String(e) } })
   }
-  return { books, tocs, tasks, notes, noteStates, error, subscribe, subscribeCatalog }
+  return { books, tocs, tasks, notes, noteStates, error, subscribe, subscribeCatalog, subscribeMembership }
 })

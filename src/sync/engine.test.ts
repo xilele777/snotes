@@ -11,11 +11,14 @@ const pullOnce = vi.hoisted(() => vi.fn())
 const saveConflictCopies = vi.hoisted(() => vi.fn())
 const syncKnowledgeBases = vi.hoisted(() => vi.fn())
 const retryKnowledgeBases = vi.hoisted(() => vi.fn())
+const prepareKnowledgeBaseSync = vi.hoisted(() => vi.fn())
+const needsReconciliation = vi.hoisted(() => vi.fn())
+vi.mock('./checkpoint', () => ({ needsReconciliation, completeRecoveryPreflight: vi.fn() }))
 
 vi.mock('./push', () => ({ pushOnce }))
 vi.mock('./pull', () => ({ pullOnce, SYNC_CURSOR_KEY: 'sync_cursor' }))
 vi.mock('./conflict', () => ({ saveConflictCopies, CONFLICT_SUFFIX: '（冲突副本）' }))
-vi.mock('./knowledge-bases', () => ({ syncKnowledgeBases, retryKnowledgeBases }))
+vi.mock('./knowledge-bases', () => ({ syncKnowledgeBases, retryKnowledgeBases, prepareKnowledgeBaseSync }))
 
 let stop: (() => void) | undefined
 
@@ -43,7 +46,9 @@ beforeEach(async () => {
   pullOnce.mockReset().mockResolvedValue({ pages: 1, applied: 0, bodies: 0 })
   saveConflictCopies.mockReset().mockResolvedValue([])
   syncKnowledgeBases.mockReset().mockResolvedValue({ error: null, failed: 0 })
+  prepareKnowledgeBaseSync.mockReset().mockResolvedValue(undefined)
   retryKnowledgeBases.mockReset().mockResolvedValue(undefined)
+  needsReconciliation.mockReset().mockResolvedValue(false)
 })
 
 afterEach(() => {
@@ -54,7 +59,55 @@ afterEach(() => {
 })
 
 describe('syncNow', () => {
-  it('手动同步清除网络退避，并保留不可自动重试的失败任务', async () => {
+  it('checks and reconciles a restored server before sending pending writes', async () => {
+    vi.useRealTimers()
+    needsReconciliation.mockResolvedValue(true)
+    const order: string[] = []
+    pullOnce.mockImplementation(async (full?: boolean) => { order.push(full ? 'reconcile' : 'pull'); return { pages: 1, applied: 0, bodies: 0 } })
+    pushOnce.mockImplementation(async () => { order.push('push'); return { sent: 0, failed: 0, failedTotal: 0, conflicts: [] } })
+    await syncNow()
+    expect(order).toEqual(['reconcile', 'push', 'pull'])
+  })
+  it('does not push if the required reconciliation fails', async () => {
+    vi.useRealTimers()
+    needsReconciliation.mockResolvedValue(true)
+    pullOnce.mockRejectedValue(new Error('inventory interrupted'))
+    await syncNow()
+    expect(pushOnce).not.toHaveBeenCalled()
+    expect(useUiStore().lastSyncError).toContain('inventory interrupted')
+  })
+  it('网络恢复只解除临时退避，不重复激活永久失败任务', async () => {
+    vi.useRealTimers()
+    await db.outbox.bulkAdd([
+      { note_id: 'pending', kind: 'body', payload: {}, retry: 4, next_at: 999, failed: 0, seq: 1 },
+      { note_id: 'failed', kind: 'body', payload: {}, retry: 4, next_at: 999, failed: 1, seq: 1 },
+    ])
+    await retrySyncNow(false)
+    expect((await db.outbox.where('note_id').equals('pending').first())!.next_at).toBe(0)
+    expect(await db.outbox.where('note_id').equals('failed').first()).toMatchObject({ failed: 1, next_at: 999 })
+    expect(retryKnowledgeBases).not.toHaveBeenCalled()
+  })
+
+  it('跨标签页锁等待期间不发送请求，拿到锁后才执行整轮同步', async () => {
+    let enter!: () => Promise<void>
+    let release!: () => void
+    const request = vi.fn((_name, run: () => Promise<void>) => {
+      enter = run
+      return new Promise<void>(resolve => { release = resolve })
+    })
+    Object.defineProperty(navigator, 'locks', { configurable: true, value: { request } })
+    try {
+      const pending = syncNow()
+      expect(request).toHaveBeenCalledWith('snotes-sync', expect.any(Function))
+      expect(pushOnce).not.toHaveBeenCalled()
+      await enter()
+      release()
+      await pending
+      expect(pushOnce).toHaveBeenCalledTimes(1)
+      expect(pullOnce).toHaveBeenCalledTimes(1)
+    } finally { Reflect.deleteProperty(navigator, 'locks') }
+  })
+  it('手动同步清除网络退避，并重新激活失败任务', async () => {
     vi.useRealTimers()
     await db.outbox.bulkAdd([
       { note_id: 'pending', kind: 'create', payload: {}, retry: 4, next_at: Date.now() + 600_000, failed: 0, seq: 1 },
@@ -63,7 +116,7 @@ describe('syncNow', () => {
     await retrySyncNow()
     const tasks = await db.outbox.toArray()
     expect(tasks.find(t => t.note_id === 'pending')?.next_at).toBe(0)
-    expect(tasks.find(t => t.note_id === 'failed')?.failed).toBe(1)
+    expect(tasks.find(t => t.note_id === 'failed')?.failed).toBe(0)
     expect(retryKnowledgeBases).toHaveBeenCalledTimes(1)
     expect(pushOnce).toHaveBeenCalledTimes(1)
   })
@@ -117,7 +170,7 @@ describe('syncNow', () => {
 
     const first = syncNow()
     const second = syncNow()
-
+    await vi.advanceTimersByTimeAsync(0)
     resolvePush!()
     await Promise.all([first, second])
 

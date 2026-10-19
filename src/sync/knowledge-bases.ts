@@ -2,12 +2,13 @@ import type { KnowledgeBase, KnowledgeBaseAck, KnowledgeBaseRemote } from '../..
 import { validateToc } from '../../shared/knowledge-base'
 import { ApiError, apiFetch } from '../api/client'
 import { db } from '../db/schema'
-import { acknowledgeKnowledgeBaseTask, applyKnowledgeBaseRemote, blockKnowledgeBaseConflict, taskId } from '../db/knowledge-base-repo'
+import { acknowledgeKnowledgeBaseTask, applyKnowledgeBaseRemote, blockKnowledgeBaseConflict, createKnowledgeBase, knowledgeBaseTables, metadata, snapshotIn, taskId } from '../db/knowledge-base-repo'
 import type { KnowledgeBaseTask } from '../db/knowledge-base-types'
 import { emitRemoteApplied } from './signal'
 
 export const KNOWLEDGE_BASE_CURSOR = 'knowledge_base_cursor'
 export const KNOWLEDGE_BASE_RECONCILED = 'knowledge_base_reconciled_at'
+export const KNOWLEDGE_BASE_CHECKPOINT = 'knowledge_base_checkpoint'
 
 /** Keep the exact submitted request durable until ack, including after a reload. */
 async function prepareTask(id: string, preserveMissing = false, archivedVersion?: number): Promise<KnowledgeBaseTask | undefined> {
@@ -57,6 +58,7 @@ async function push(): Promise<void> {
       emitRemoteApplied()
     } catch (error) {
       if (error instanceof ApiError && error.status === 401) throw error
+      if (error instanceof ApiError && error.status === 409 && (error.data as { error?: string })?.error === 'sync_reset_required') throw error
       const conflict = error instanceof ApiError && (error.status === 409 || error.status === 410) ? (error.data as { current?: KnowledgeBaseRemote })?.current : undefined
       if (conflict) { await blockKnowledgeBaseConflict(task, conflict); continue }
       await db.transaction('rw', db.knowledgeBaseOutbox, async () => {
@@ -72,41 +74,94 @@ async function push(): Promise<void> {
   }
 }
 
-async function pull(): Promise<void> {
+async function pull(reconcile = false): Promise<void> {
   const lastFull = (await db.meta.get(KNOWLEDGE_BASE_RECONCILED))?.value as number | undefined
-  const full = !lastFull || Date.now() - lastFull > 24 * 60 * 60 * 1000
+  const full = reconcile || !lastFull || Date.now() - lastFull > 24 * 60 * 60 * 1000
   let since = full ? 0 : (await db.meta.get(KNOWLEDGE_BASE_CURSOR))?.value as number ?? 0
   let after = since
   let until: number | undefined
   let changed = false
+  const originals = full ? await db.knowledgeBases.toArray() : []
+  const seen = new Set<string>()
+  const checkpoint = (await db.meta.get(KNOWLEDGE_BASE_CHECKPOINT))?.value ?? null
+  let receipt: string | undefined
+  let afterId: string | undefined
   for (;;) {
-    let page: { books: KnowledgeBase[]; until: number; next_after: number | null }
+    let page: { books: KnowledgeBase[]; until: number; next_after: number | null; next_id?: string | null; checkpoint?: string }
     try {
-      page = await apiFetch('/api/knowledge-bases/sync/pull', { method: 'POST', body: JSON.stringify({ since, after, until }) })
+      page = await apiFetch('/api/knowledge-bases/sync/pull', { method: 'POST', body: JSON.stringify({ since, after, until, checkpoint, inventory: full, after_id: afterId }) })
     } catch (error) {
       // A server restored from backup may have a smaller clock. Reconcile anew.
-      if (since && error instanceof ApiError && error.status === 400 && (error.data as { error?: string })?.error === 'invalid_cursor') {
-        since = after = 0; until = undefined; continue
+      if (since && error instanceof ApiError && [400, 409].includes(error.status) && ['invalid_cursor', 'sync_reset_required'].includes((error.data as { error?: string })?.error ?? '')) {
+        return pull(true)
       }
       throw error
     }
-    until ??= page.until
+    if (until === undefined) { until = page.until; receipt = page.checkpoint }
     for (const book of page.books) {
+      seen.add(book.id)
       const remote = await apiFetch<KnowledgeBaseRemote>(`/api/knowledge-bases/${book.id}/toc`)
       validateToc(remote.toc.nodes)
-      await applyKnowledgeBaseRemote(remote)
+      if (reconcile) {
+        const pending = await db.knowledgeBaseOutbox.where('book_id').equals(book.id).toArray()
+        for (const task of pending) await blockKnowledgeBaseConflict(task, remote)
+      }
+      await applyKnowledgeBaseRemote(remote, reconcile)
       changed = true
     }
-    if (page.next_after === null) break
-    after = page.next_after
+    if (page.next_id === null || page.next_id === undefined && page.next_after === null) break
+    afterId = page.next_id ?? undefined
+    after = page.next_after ?? after
   }
-  // Only commit the independent cursor after every page and TOC has been saved.
-  await db.meta.put({ key: KNOWLEDGE_BASE_CURSOR, value: until ?? since })
-  if (full) await db.meta.put({ key: KNOWLEDGE_BASE_RECONCILED, value: Date.now() })
+  // A complete inventory must still describe the same instance and revision.
+  // Legacy servers have no receipt, so never infer missing rows from them.
+  if (full && receipt) {
+    const current = await apiFetch<{ valid: boolean }>('/api/knowledge-bases/sync/checkpoint', {
+      method: 'POST', body: JSON.stringify({ since: until, checkpoint: receipt, require_current: true }),
+    })
+    if (!current.valid) throw new Error('笔记本对账期间远端发生变化，请重试同步')
+  }
+  await db.transaction('rw', [...knowledgeBaseTables(), db.meta], async () => {
+    if (full && receipt) for (const original of originals) {
+      if (seen.has(original.id) || original.deleted || !original.meta_version) continue
+      const local = await db.knowledgeBases.get(original.id)
+      if (!local || local.deleted) continue
+      const toc = await db.knowledgeBaseTocs.get(local.id)
+      await snapshotIn(local.id, toc?.nodes ?? [], 'conflict', metadata(local))
+      // Absence is ambiguous after restore. Preserve a separate, syncable
+      // recovery library rather than silently resurrecting the old identity.
+      await db.knowledgeBases.update(local.id, { deleted: 1, invalid: 1 })
+      await db.knowledgeBaseOutbox.where('book_id').equals(local.id).delete()
+      await createKnowledgeBase({ ...metadata(local), name: `${local.name.slice(0, 90)}（恢复副本）` }, crypto.randomUUID(), toc?.nodes ?? [], true)
+      changed = true
+    }
+    await db.meta.put({ key: KNOWLEDGE_BASE_CURSOR, value: until ?? since })
+    if (receipt) await db.meta.put({ key: KNOWLEDGE_BASE_CHECKPOINT, value: receipt })
+    if (full) await db.meta.put({ key: KNOWLEDGE_BASE_RECONCILED, value: Date.now() })
+  })
   if (changed) emitRemoteApplied()
 }
 
+export async function prepareKnowledgeBaseSync(): Promise<void> {
+  const since = (await db.meta.get(KNOWLEDGE_BASE_CURSOR))?.value as number | undefined
+  if (since !== undefined && !(await db.meta.get('sync_reconcile_libraries'))?.value) {
+    try {
+      const result = await apiFetch<{ valid: boolean }>('/api/knowledge-bases/sync/checkpoint', {
+        method: 'POST', body: JSON.stringify({ since, checkpoint: (await db.meta.get(KNOWLEDGE_BASE_CHECKPOINT))?.value ?? null }),
+      })
+      if (result.valid === false) await db.meta.put({ key: 'sync_reconcile_libraries', value: true })
+    } catch (error) { if (!(error instanceof ApiError && error.status === 404)) throw error }
+  }
+  if ((await db.meta.get('sync_reconcile_libraries'))?.value) {
+    // Reconcile before replaying requests against a restored server. Keep the
+    // marker on failure so reloading cannot accidentally resume stale uploads.
+    await pull(true)
+    await db.meta.delete('sync_reconcile_libraries')
+  }
+}
+
 export async function syncKnowledgeBases(): Promise<{ error: string | null; failed: number }> {
+  await prepareKnowledgeBaseSync()
   await push()
   let error: string | null = null
   try { await pull() } catch (e) {

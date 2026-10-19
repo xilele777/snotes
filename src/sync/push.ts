@@ -3,6 +3,7 @@ import type { OutboxTask } from '../../shared/types'
 import { ApiError, apiFetch } from '../api/client'
 import { db } from '../db/schema'
 import { deleteHistoryIn } from '../db/history'
+import { createConflictCopy } from '../db/repo'
 
 export interface ConflictInfo {
   note_id: string
@@ -86,21 +87,53 @@ function clearBit(dirty: string, kind: OutboxTask['kind']): string {
   return dirty === cleared ? 'none' : dirty
 }
 
-async function applyAck(task: OutboxTask, ack: ServerAck) {
-  const note = await db.notes.get(task.note_id)
-  if (!note) return
+/** 在同一个事务内确认 seq、写入 ACK，并删除已确认的 outbox 行。 */
+async function finalizeAck(task: OutboxTask, ack: ServerAck): Promise<boolean> {
+  return db.transaction('rw', db.notes, db.outbox, async () => {
+    const current = task.id === undefined ? undefined : await db.outbox.get(task.id)
+    // 请求在途期间如果本地又写入，mergeTask 会递增 seq。旧 ACK 只能算发送成功，
+    // 不能清理新任务，也不能把新正文标记成远端版本。
+    if (!current) return false
+    const unchanged = current.seq === task.seq
 
-  const fields: Record<string, unknown> = { dirty: clearBit(note.dirty, task.kind) }
-  if (typeof ack.version === 'number') {
-    fields.version = ack.version
-    // 本地正文此刻就等于服务端这个版本。不写 body_version，
-    // 下一轮 pull 会认为远端更新而把正文再拉回来覆盖掉刚推上去的内容。
-    if (task.kind === 'body' || task.kind === 'create') fields.body_version = ack.version
-  }
-  if (typeof ack.prop_version === 'number') fields.prop_version = ack.prop_version
-  if (typeof ack.update_time === 'number') fields.update_time = ack.update_time
+    const note = await db.notes.get(task.note_id)
+    if (note) {
+      const otherTasks = await db.outbox.where('note_id').equals(task.note_id).toArray()
+      const newerBody = otherTasks.some(t => (t.kind === 'body' || t.kind === 'create') && (t.id !== task.id || !unchanged))
+      const newerProp = otherTasks.some(t => t.kind !== 'body' && (t.id !== task.id || !unchanged))
+      const fields: Record<string, unknown> = { dirty: unchanged ? clearBit(note.dirty, task.kind) : note.dirty }
+      if (newerBody) fields.dirty = newerProp ? 'both' : 'body'
+      else if (newerProp) fields.dirty = 'prop'
+      if (typeof ack.version === 'number') {
+        fields.version = Math.max(note.version, ack.version)
+        if (!newerBody && (task.kind === 'body' || task.kind === 'create')) fields.body_version = ack.version
+      }
+      if (typeof ack.prop_version === 'number') fields.prop_version = Math.max(note.prop_version, ack.prop_version)
+      if (unchanged && !newerBody && !newerProp && typeof ack.update_time === 'number') fields.update_time = ack.update_time
+      await db.notes.update(task.note_id, fields)
+    }
+    if (unchanged) await db.outbox.delete(task.id)
+    return unchanged
+  })
+}
 
-  await db.notes.update(task.note_id, fields)
+async function deleteIfCurrent(task: OutboxTask): Promise<boolean> {
+  if (task.id === undefined) return false
+  return db.transaction('rw', db.outbox, async () => {
+    const current = await db.outbox.get(task.id)
+    if (!current || current.seq !== task.seq) return false
+    await db.outbox.delete(task.id)
+    return true
+  })
+}
+
+/** 旧请求的错误也不能把请求在途期间新合并的任务标成永久失败。 */
+async function failIfCurrent(task: OutboxTask, fields: Partial<OutboxTask>) {
+  if (task.id === undefined) return
+  await db.transaction('rw', db.outbox, async () => {
+    const current = await db.outbox.get(task.id!)
+    if (current?.seq === task.seq) await db.outbox.update(task.id!, fields)
+  })
 }
 
 export async function pushOnce(): Promise<PushResult> {
@@ -133,19 +166,16 @@ export async function pushOnce(): Promise<PushResult> {
         result.conflicts.push({ note_id: task.note_id, body: ack.previous_content })
       }
 
-      await applyAck(task, ack)
-
-      if (task.id !== undefined) {
-        // 请求在途期间用户可能又改了同一条，enqueue 会把新 payload 合并进这一行并递增 seq。
-        // 直接 delete 就等于把那次改动静默丢掉，所以先比对 seq。
-        const current = await db.outbox.get(task.id)
-        if (current && current.seq === task.seq) await db.outbox.delete(task.id)
-      }
+      await finalizeAck(task, ack)
       result.sent++
     } catch (error) {
       if (task.kind === 'create') blocked.add(task.note_id)
 
       const status = error instanceof ApiError ? error.status : 0
+      // Recovery fencing must stop the entire round without changing task
+      // state. The next preflight will reconcile before replaying any write.
+      if (status === 409 && (error as ApiError).data && ((error as ApiError).data as { error?: string }).error === 'sync_reset_required') throw error
+      const failure = { last_error: `${status ? `HTTP ${status}: ` : ''}${error instanceof Error ? error.message : String(error)}`, failed_at: Date.now() }
 
       // 401 不消耗任务：令牌修复后应能续传。
       // 同时必须 break：clearToken 已经把令牌清了，剩下每条任务再发也是注定 401。
@@ -156,13 +186,13 @@ export async function pushOnce(): Promise<PushResult> {
         break
       }
 
-      // 404 not_found = 服务端已经物理删掉这条笔记/分组的行（墓碑过了保留期、
-      // 或从未建成）。任务永远没有成功可能，标记 failed 只会让「改动未推送」的
-      // 红点永远消不掉；按 worker/db.ts 的既有约定直接丢弃任务，不卡死。
-      // 只删这一行，不动本地笔记副本——同一轮 pull 的墓碑路径会负责清本地。
+      // 服务端缺失正文目标时保留任务，供用户导出/恢复，不能静默丢掉离线编辑。
       if (status === 404 || status === 410) {
         if (status === 410) {
           await db.transaction('rw', [db.notes, db.outbox, db.history, db.knowledgeBaseNoteStates], async () => {
+            const local = await db.notes.get(task.note_id)
+            const queued = await db.outbox.where('note_id').equals(task.note_id).toArray()
+            if (local?.body.trim() && queued.some(row => row.kind === 'body' || row.kind === 'create')) await createConflictCopy(local, local.body)
             await db.notes.delete(task.note_id)
             await deleteHistoryIn([task.note_id])
             await db.outbox.where('note_id').equals(task.note_id).delete()
@@ -170,25 +200,23 @@ export async function pushOnce(): Promise<PushResult> {
           })
           continue
         }
-        if (task.id !== undefined) {
-          const current = await db.outbox.get(task.id)
-          if (current && current.seq === task.seq) await db.outbox.delete(task.id)
-        }
+        if (task.kind === 'body') {
+          await failIfCurrent(task, { failed: 1, ...failure })
+          result.failed++
+        } else await deleteIfCurrent(task)
         continue
       }
 
       // 不可重试的 4xx 标记失败留在库里。丢弃等于静默吞掉用户的一次写入，
       // 用户既看不到也救不回来。留着才能提示、才能手动重试。
       if (status >= 400 && status < 500 && !isRetriableStatus(status)) {
-        if (task.id !== undefined) await db.outbox.update(task.id, { failed: 1 })
+        await failIfCurrent(task, { failed: 1, ...failure })
         result.failed++
         continue
       }
 
       const retry = task.retry + 1
-      if (task.id !== undefined) {
-        await db.outbox.update(task.id, { retry, next_at: Date.now() + backoffDelay(retry - 1) })
-      }
+      await failIfCurrent(task, { retry, next_at: Date.now() + backoffDelay(retry - 1), ...failure })
       result.failed++
     }
   }

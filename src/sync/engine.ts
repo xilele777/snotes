@@ -5,8 +5,9 @@ import { pullOnce } from './pull'
 import { pushOnce } from './push'
 import { onLocalWrite } from './signal'
 import { flushOpensSync, syncOpens } from './opens'
-import { retryKnowledgeBases, syncKnowledgeBases } from './knowledge-bases'
+import { prepareKnowledgeBaseSync, retryKnowledgeBases, syncKnowledgeBases } from './knowledge-bases'
 import { db } from '../db/schema'
+import { completeRecoveryPreflight, needsReconciliation } from './checkpoint'
 
 export const POLL_INTERVAL_MS = 30_000
 export const LOCAL_WRITE_DEBOUNCE_MS = 800
@@ -14,15 +15,18 @@ export const LOCAL_WRITE_DEBOUNCE_MS = 800
 let inFlight: Promise<void> | null = null
 let retryInFlight: Promise<void> | null = null
 
-/** Reconnecting invalidates network backoff, but never unblocks a structure conflict. */
-export function retrySyncNow(): Promise<void> {
+/** 显式重试重新激活失败任务；网络恢复只解除临时退避。 */
+export function retrySyncNow(includeFailed = true): Promise<void> {
   if (retryInFlight) return retryInFlight
   retryInFlight = (async () => {
     // An old offline request must finish before resetting its retry delay.
     if (inFlight) await inFlight
     if (!hasToken.value) return
-    await db.outbox.where('failed').equals(0).modify({ next_at: 0 })
-    await retryKnowledgeBases()
+    // 用户明确点击重试时，永久失败任务也必须重新进入发送队列。
+    // 失败原因和 payload 仍保留在 outbox，便于失败面板展示和放弃操作。
+    if (includeFailed) await db.outbox.toCollection().modify({ failed: 0, next_at: 0 })
+    else await db.outbox.where('failed').equals(0).modify({ next_at: 0 })
+    if (includeFailed) await retryKnowledgeBases()
     await syncNow()
   })().finally(() => { retryInFlight = null })
   return retryInFlight
@@ -37,25 +41,40 @@ export function syncNow(): Promise<void> {
     ui.syncing = true
 
     try {
-      const result = await pushOnce()
-      ui.failedCount = result.failedTotal
+      const synchronize = async () => {
+        if (!hasToken.value) return
+        if (await needsReconciliation()) {
+          await db.meta.put({ key: 'sync_reconcile_libraries', value: true })
+          await pullOnce(true)
+          // The notebook clock is independent; force its next pull as well.
+          await db.meta.delete('knowledge_base_reconciled_at')
+          await db.meta.delete('knowledge_base_cursor')
+        }
+        await prepareKnowledgeBaseSync()
+        await completeRecoveryPreflight()
+        const result = await pushOnce()
+        ui.failedCount = result.failedTotal
 
-      if (result.conflicts.length > 0) {
-        await saveConflictCopies(result.conflicts)
+        if (result.conflicts.length > 0) {
+          await saveConflictCopies(result.conflicts)
+        }
+
+        // 401 会清掉令牌，此时不再发送注定失败的 pull。
+        if (!hasToken.value) return
+
+        const pulled = await pullOnce()
+        if (pulled.trashRetentionDays !== undefined) ui.trashRetentionDays = pulled.trashRetentionDays
+        ui.lastSyncError = result.failed > 0 ? '部分本地改动尚未同步，将保留并重试。' : null
+        if (hasToken.value) {
+          const libraries = await syncKnowledgeBases()
+          ui.knowledgeBaseSyncError = libraries.error
+          ui.failedCount += libraries.failed
+        }
       }
-
-      // Bug 1：push 途中若收到 401，client 已 clearToken + markTokenInvalid，
-      // hasToken 此刻为 false，界面也在切回 TokenGate——别再发注定失败的 pull。
-      if (!hasToken.value) return
-
-      const pulled = await pullOnce()
-      if (pulled.trashRetentionDays !== undefined) ui.trashRetentionDays = pulled.trashRetentionDays
-      ui.lastSyncError = null
-      if (hasToken.value) {
-        const libraries = await syncKnowledgeBases()
-        ui.knowledgeBaseSyncError = libraries.error
-        ui.failedCount += libraries.failed
-      }
+      // 同源标签页共用 IndexedDB/outbox；锁覆盖 push、冲突落库和 pull 整轮。
+      // 不支持 Web Locks 的浏览器仍使用模块内 inFlight 和事务 seq 保护。
+      if (navigator.locks?.request) await navigator.locks.request('snotes-sync', synchronize)
+      else await synchronize()
     } catch (error) {
       ui.lastSyncError = error instanceof Error ? error.message : String(error)
     } finally {
@@ -74,7 +93,7 @@ export function startSyncEngine(): () => void {
     else void flushOpensSync().catch(() => undefined)
   }
 
-  const onOnline = () => void retrySyncNow()
+  const onOnline = () => void retrySyncNow(false)
 
   document.addEventListener('visibilitychange', onVisible)
   window.addEventListener('online', onOnline)

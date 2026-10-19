@@ -11,6 +11,24 @@ const meta = { name: '笔记本', description: '', icon: '📚', ord: 0, invalid
 const folder = (id: string): TocNode => ({ id, parent_id: null, kind: 'folder', ord: 0, note_id: null, title: id })
 beforeEach(async () => { await db.delete(); await db.open(); fetchMock.mockReset() })
 const emptyPull = { books: [], until: 0, next_after: null }
+it('preserves a missing confirmed library as a recovery copy only after a stable complete inventory', async () => {
+  const book = await createKnowledgeBase(meta, 'missing-book', [folder('local-folder')])
+  await db.knowledgeBases.update(book.id, { meta_version: 3, toc_version: 3 })
+  await db.knowledgeBaseOutbox.clear()
+  await db.meta.put({ key: 'sync_reconcile_libraries', value: true })
+  let stable = false
+  fetchMock.mockImplementation(async path => path.endsWith('/sync/checkpoint') ? { valid: stable } : { ...emptyPull, checkpoint: 'receipt', next_id: null })
+  await expect(syncKnowledgeBases()).rejects.toThrow('远端发生变化')
+  expect((await db.knowledgeBases.get(book.id))?.deleted).toBeUndefined()
+  expect(await db.meta.get(KNOWLEDGE_BASE_CURSOR)).toBeUndefined()
+  stable = true
+  await syncKnowledgeBases()
+  expect((await db.knowledgeBases.get(book.id))?.deleted).toBe(1)
+  const recovered = (await db.knowledgeBases.toArray()).find(b => b.id !== book.id)!
+  expect(recovered.name).toContain('恢复副本')
+  expect((await db.knowledgeBaseTocs.get(recovered.id))?.nodes[0].title).toBe('local-folder')
+  expect(await db.knowledgeBaseTocHistory.where('book_id').equals(book.id).count()).toBe(1)
+})
 async function confirmedBook() {
   const book = await createKnowledgeBase(meta)
   fetchMock.mockImplementation(async path => path.endsWith('/sync/pull') ? emptyPull : { meta_version: 1, toc_version: 0, update_time: 1 })
@@ -65,7 +83,7 @@ it('creates libraries before TOCs and waits until newly referenced notes have be
   await db.outbox.clear()
   paths.length = 0
   await syncKnowledgeBases()
-  expect(paths[0]).toBe(`/api/knowledge-bases/${book.id}/toc`)
+  expect(paths).toContain(`/api/knowledge-bases/${book.id}/toc`)
   expect(await db.knowledgeBaseOutbox.count()).toBe(0)
 })
 
@@ -151,7 +169,31 @@ it('protects pending metadata and directories from pull, and advances no cursor 
   expect((await db.knowledgeBases.get(book.id))?.name).toBe('local metadata')
   expect((await db.knowledgeBaseTocs.get(book.id))?.nodes[0].title).toBe('local')
   expect((await db.meta.get(KNOWLEDGE_BASE_CURSOR))?.value).toBe(3)
-  fetchMock.mockImplementation(async path => { if (path.endsWith('/sync/pull')) return { books: [current.book], until: 4, next_after: null }; throw new Error('offline') })
+  fetchMock.mockImplementation(async path => { if (path.endsWith('/sync/checkpoint')) return { valid: true }; if (path.endsWith('/sync/pull')) return { books: [current.book], until: 4, next_after: null }; throw new Error('offline') })
   await syncKnowledgeBases()
   expect((await db.meta.get(KNOWLEDGE_BASE_CURSOR))?.value).toBe(3)
+})
+
+it('reconciles restored notebook versions before replaying local work and keeps a difference snapshot', async () => {
+  const book = await confirmedBook()
+  await db.knowledgeBases.update(book.id, { meta_version: 9, toc_version: 9, name: '备份后的名称' })
+  await db.knowledgeBaseTocs.update(book.id, { version: 9, nodes: [folder('after-backup')] })
+  await db.meta.put({ key: 'sync_reconcile_libraries', value: true })
+  const current = remote(book.id, 1)
+  fetchMock.mockImplementation(async path => path.endsWith('/sync/pull') ? { books: [current.book], until: 2, next_after: null } : current)
+  await syncKnowledgeBases()
+  expect((await db.knowledgeBases.get(book.id))?.meta_version).toBe(1)
+  expect((await db.knowledgeBaseTocs.get(book.id))?.version).toBe(1)
+  expect((await db.knowledgeBaseTocHistory.toArray())[0].meta?.name).toBe('备份后的名称')
+  expect(await db.meta.get('sync_reconcile_libraries')).toBeUndefined()
+})
+
+it('retains the recovery marker and sends no writes when notebook reconciliation is interrupted', async () => {
+  const book = await confirmedBook()
+  await updateKnowledgeBase(book.id, { name: '离线名称' })
+  await db.meta.put({ key: 'sync_reconcile_libraries', value: true })
+  fetchMock.mockRejectedValue(new Error('offline inventory'))
+  await expect(syncKnowledgeBases()).rejects.toThrow('offline inventory')
+  expect(fetchMock.mock.calls.at(-1)?.[0]).toBe('/api/knowledge-bases/sync/pull')
+  expect((await db.meta.get('sync_reconcile_libraries'))?.value).toBe(true)
 })

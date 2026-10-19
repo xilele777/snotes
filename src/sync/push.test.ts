@@ -18,13 +18,21 @@ beforeEach(async () => {
 })
 
 describe('pushOnce', () => {
-  it('清除永久删除拒绝的迟到创建、本地正文与历史，避免持续重试', async () => {
+  it('stops a fenced recovery write without failing or consuming pending work', async () => {
+    await createNote('恢复前本地输入')
+    const before = await db.outbox.toArray()
+    apiFetch.mockRejectedValue(new ApiError(409, 'reset', { error: 'sync_reset_required' }))
+    await expect(pushOnce()).rejects.toThrow('reset')
+    expect(await db.outbox.toArray()).toEqual(before)
+  })
+  it('永久删除拒绝的迟到创建先留恢复副本，再清除原任务与历史', async () => {
     const note = await createNote('迟到的正文')
     await db.history.add({ note_id: note.id, body: '旧正文', time: 1 })
     apiFetch.mockRejectedValue(new ApiError(410, 'permanently_deleted'))
     const result = await pushOnce()
     expect(result.failedTotal).toBe(0)
-    expect(await db.outbox.count()).toBe(0)
+    expect(await db.outbox.count()).toBe(1)
+    expect((await db.notes.toArray())[0].body).toContain('迟到的正文')
     expect(await db.notes.get(note.id)).toBeUndefined()
     expect(await db.history.count()).toBe(0)
     expect((await db.knowledgeBaseNoteStates.get(note.id))?.state).toBe('purged')
@@ -47,6 +55,22 @@ describe('pushOnce', () => {
 
     expect(await db.outbox.count()).toBe(0)
     expect((await db.notes.get(note.id))!.dirty).toBe('none')
+  })
+
+  it('ACK 返回期间的新正文任务不会被旧 ACK 删除', async () => {
+    const note = await createNote('初稿')
+    let resolve!: (value: unknown) => void
+    apiFetch.mockImplementationOnce(() => new Promise(done => { resolve = done }))
+    const pushing = pushOnce()
+    await vi.waitFor(() => expect(apiFetch).toHaveBeenCalledTimes(1))
+
+    await updateBody(note.id, 'ACK 期间的新正文')
+    resolve({ version: 2, prop_version: 1, update_time: 2 })
+    await pushing
+
+    const task = await db.outbox.where('kind').equals('body').first()
+    expect(task).toBeDefined()
+    expect((await db.notes.get(note.id))!.body).toBe('ACK 期间的新正文')
   })
 
   it('只清掉本次任务对应的那一位 dirty', async () => {
@@ -244,7 +268,7 @@ describe('pushOnce', () => {
     expect(await db.outbox.count()).toBe(2)
   })
 
-  it('404 not_found（服务端已物理删除）丢弃残留任务，不标 failed', async () => {
+  it('404 not_found 保留离线正文任务供人工恢复', async () => {
     const note = await createNote('a')
     await pushOnce()
     apiFetch.mockClear()
@@ -255,10 +279,10 @@ describe('pushOnce', () => {
 
     const result = await pushOnce()
 
-    // 任务永远没有成功可能，丢弃让它别卡死「改动未推送」的红点；不算 failed
-    expect(await db.outbox.count()).toBe(0)
-    expect(result.failed).toBe(0)
-    expect(result.failedTotal).toBe(0)
+    expect(await db.outbox.count()).toBe(1)
+    expect(result.failed).toBe(1)
+    expect(result.failedTotal).toBe(1)
+    expect((await db.outbox.toArray())[0].payload).toMatchObject({ content: '又编辑了一版' })
   })
 
   it('404 丢弃也尊重 seq——请求在途时被合并就不删，新 payload 下轮再发', async () => {
@@ -425,6 +449,18 @@ describe('pushOnce 冲突副本取被覆盖的服务端正文', () => {
 })
 
 describe('pushOnce 在 create 未成功时挂起同一笔记的后续任务', () => {
+  it.each([400, 503])('旧请求 %s 错误不能标记或退避在途期间合并的新任务', async status => {
+    const note = await createNote('original')
+    await pushOnce()
+    await updateBody(note.id, 'first')
+    apiFetch.mockImplementationOnce(async () => {
+      await updateBody(note.id, 'latest')
+      throw new ApiError(status, 'request failed')
+    })
+    await pushOnce()
+    const pending = await db.outbox.where('[note_id+kind]').equals([note.id, 'body']).first()
+    expect(pending).toMatchObject({ failed: 0, retry: 0, next_at: 0, payload: { content: 'latest' } })
+  })
   it('create 暂时失败时 body 任务本轮不发，create 成功后再补发', async () => {
     const note = await createNote('初始')
     await updateBody(note.id, '后续编辑')

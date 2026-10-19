@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { NoteMeta, PullResponse } from '../../shared/types'
 import { ApiError } from '../api/client'
-import { getMeta, updateBody } from '../db/repo'
+import { createNote, getMeta, setMeta, updateBody } from '../db/repo'
 import { db } from '../db/schema'
 import { SYNC_CURSOR_KEY, pullOnce } from './pull'
 import { onRemoteApplied } from './signal'
@@ -44,15 +44,78 @@ const page = (over: Partial<PullResponse> = {}): PullResponse => ({
 })
 
 function mockPull(...responses: PullResponse[]) {
-  const bodies = { bodies: [{ note_id: 'r1', content: '远端正文', version: 1 }] }
-
-  apiFetch.mockImplementation((path: string) => {
-    if (path === '/api/sync/bodies') return Promise.resolve(bodies)
+  apiFetch.mockImplementation((path: string, options: RequestInit) => {
+    if (path === '/api/sync/checkpoint') return Promise.resolve({ valid: true })
+    if (path === '/api/sync/bodies') return Promise.resolve({ bodies: (JSON.parse(options.body as string).ids as string[]).map(id => ({ note_id: id, content: '远端正文', version: 1 })) })
     return Promise.resolve(responses.shift() ?? page())
   })
 }
 
 describe('pullOnce', () => {
+  it('a changing full inventory cannot remove local records or advance the receipt', async () => {
+    await db.notes.add({ ...meta({ id: 'gone' }), body: '保留正文', body_version: 1, dirty: 'none' })
+    await setMeta(SYNC_CURSOR_KEY, 999)
+    apiFetch.mockResolvedValueOnce(page({ checkpoint: 'new' })).mockResolvedValueOnce({ valid: false })
+    await expect(pullOnce(true)).rejects.toThrow('远端内容发生变化')
+    expect(await db.notes.get('gone')).toBeDefined()
+    expect(await getMeta(SYNC_CURSOR_KEY)).toBe(999)
+  })
+  it('confirmed server tombstones do not recreate already-deleted text during reconciliation', async () => {
+    await db.notes.add({ ...meta(), body: '已删除正文', body_version: 1, dirty: 'none' })
+    mockPull(page({ notes: [meta({ invalid: 2 })] }))
+    await pullOnce(true)
+    expect(await db.notes.count()).toBe(0)
+    expect(await db.outbox.count()).toBe(0)
+  })
+  it('full reconciliation recovers missing confirmed text but keeps unsent local creations', async () => {
+    await db.notes.add({ ...meta({ id: 'gone' }), body: '离线旧正文', body_version: 1, dirty: 'none' })
+    const unsent = await createNote('本机新建')
+    mockPull(page({ checkpoint: 'new-receipt' }))
+    await pullOnce(true)
+    expect(await db.notes.get('gone')).toBeUndefined()
+    expect(await db.notes.get(unsent.id)).toBeDefined()
+    expect((await db.notes.toArray()).some(note => note.body.includes('离线旧正文'))).toBe(true)
+    expect(await getMeta('sync_checkpoint')).toBe('new-receipt')
+  })
+  it('full reconciliation accepts rolled-back versions and retains the previous text in history', async () => {
+    await db.notes.add({ ...meta({ version: 9, prop_version: 9 }), body: '备份之后写的正文', body_version: 9, dirty: 'none' })
+    mockPull(page({ notes: [meta({ version: 1 })] }))
+    await pullOnce(true)
+    expect(await db.notes.get('r1')).toMatchObject({ body: '远端正文', body_version: 1, version: 1, prop_version: 1 })
+    expect((await db.history.toArray()).some(row => row.body === '备份之后写的正文')).toBe(true)
+  })
+  it('an interrupted full inventory never removes missing local rows or advances its receipt', async () => {
+    await db.notes.add({ ...meta({ id: 'gone' }), body: '保留正文', body_version: 1, dirty: 'none' })
+    await setMeta(SYNC_CURSOR_KEY, 999)
+    await setMeta('sync_checkpoint', 'previous')
+    apiFetch.mockResolvedValueOnce(page({ next_cursor: 'next' })).mockRejectedValueOnce(new Error('offline'))
+    await expect(pullOnce(true)).rejects.toThrow('offline')
+    expect(await db.notes.get('gone')).toBeDefined()
+    expect(await getMeta(SYNC_CURSOR_KEY)).toBe(999)
+    expect(await getMeta('sync_checkpoint')).toBe('previous')
+  })
+  it('a reset response restarts from zero and replaces the receipt only on success', async () => {
+    await setMeta(SYNC_CURSOR_KEY, 999)
+    apiFetch.mockRejectedValueOnce(new ApiError(409, 'reset', { error: 'sync_reset_required' }))
+      .mockResolvedValueOnce(page({ checkpoint: 'new' }))
+      .mockResolvedValueOnce({ valid: true })
+    await pullOnce()
+    expect(JSON.parse(apiFetch.mock.calls[1][1].body).since).toBe(0)
+    expect(await getMeta('sync_checkpoint')).toBe('new')
+  })
+  it('full reconciliation protects input typed while body download is in flight', async () => {
+    await db.notes.add({ ...meta({ version: 9 }), body: '旧正文', body_version: 9, dirty: 'none' })
+    apiFetch.mockImplementation(async path => {
+      if (path === '/api/sync/bodies') {
+        await updateBody('r1', '下载期间输入')
+        return { bodies: [{ note_id: 'r1', content: '远端正文', version: 1 }] }
+      }
+      return page({ notes: [meta()] })
+    })
+    await pullOnce(true)
+    expect(await db.notes.get('r1')).toMatchObject({ body: '下载期间输入', version: 0 })
+    expect(await db.outbox.count()).toBe(1)
+  })
   it('首次拉取用 since=0', async () => {
     mockPull(page())
 
@@ -155,8 +218,8 @@ describe('pullOnce', () => {
 
   it('正文按 50 条一批拉取', async () => {
     const notes = Array.from({ length: 120 }, (_, i) => meta({ id: `n${i}` }))
-    apiFetch.mockImplementation((path: string) => {
-      if (path === '/api/sync/bodies') return Promise.resolve({ bodies: [] })
+    apiFetch.mockImplementation((path: string, options: RequestInit) => {
+      if (path === '/api/sync/bodies') return Promise.resolve({ bodies: (JSON.parse(options.body as string).ids as string[]).map(id => ({ note_id: id, content: '正文', version: 1 })) })
       return Promise.resolve(page({ notes }))
     })
 
@@ -200,6 +263,13 @@ describe('pullOnce', () => {
 
     await expect(pullOnce()).rejects.toBeInstanceOf(ApiError)
     expect(await getMeta<number>(SYNC_CURSOR_KEY)).toBeUndefined()
+  })
+  it('正文批次缺项也不能推进游标，后续同步仍会重试缺失正文', async () => {
+    await setMeta(SYNC_CURSOR_KEY, 10)
+    apiFetch.mockImplementation(async (path: string) => path === '/api/sync/bodies' ? { bodies: [] } : page({ notes: [meta()] }))
+    await expect(pullOnce()).rejects.toThrow('部分正文尚不可用')
+    expect(await getMeta(SYNC_CURSOR_KEY)).toBe(10)
+    expect((await db.notes.get('r1'))?.body_version).toBe(0)
   })
 
   it('本地有未推送修改时，远端旧版本不会覆盖它', async () => {
@@ -267,6 +337,10 @@ describe('pullOnce', () => {
     expect(await db.outbox.where('note_id').equals('r1').count()).toBe(0)
     // 本地正文历史也连带清掉
     expect(await db.history.where('note_id').equals('r1').count()).toBe(0)
+    const copies = await db.notes.toArray()
+    expect(copies).toHaveLength(1)
+    expect(copies[0].body).toContain('本地副本')
+    expect(await db.outbox.where('note_id').equals(copies[0].id).count()).toBe(1)
   })
 
   it('远端墓碑不会无谓删掉本地不存在的笔记', async () => {
@@ -279,7 +353,7 @@ describe('pullOnce', () => {
     expect(await getMeta<number>(SYNC_CURSOR_KEY)).toBe(5000)
   })
 
-  it('失败态的任务不再挡住 pull——否则那条笔记永远收不到远端更新', async () => {
+  it('失败态正文仍保留本地输入，不能在重试前被远端正文覆盖', async () => {
     await db.notes.add({ ...meta(), body: '本地写的', body_version: 1, dirty: 'body' })
     await db.outbox.add({
       note_id: 'r1',
@@ -294,7 +368,8 @@ describe('pullOnce', () => {
 
     await pullOnce()
 
-    expect((await db.notes.get('r1'))!.body).toBe('远端正文')
+    expect((await db.notes.get('r1'))!.body).toBe('本地写的')
+    expect(await db.outbox.where('note_id').equals('r1').count()).toBe(1)
   })
 
   it('同一页里出现重复 id 不会让整轮崩掉', async () => {

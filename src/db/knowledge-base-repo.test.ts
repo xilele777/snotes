@@ -166,7 +166,7 @@ it('cleans purged references in a deleted chapter while retaining recoverable no
   expect((await db.knowledgeBaseTocs.get(book.id))?.nodes.find(n => n.id === liveNode)?.parent_id).toBe(chapter)
 })
 
-it('permanent remote deletion overrides pending work, clears histories and resists a delayed old pull', async () => {
+it('permanent remote deletion preserves unsynced text in a copy and resists a delayed old pull', async () => {
   const note = await createNote('# 即将删除')
   const book = await createKnowledgeBase(meta)
   await addKnowledgeBaseNode(book.id, { kind: 'note', note_id: note.id, title: null })
@@ -176,7 +176,8 @@ it('permanent remote deletion overrides pending work, clears histories and resis
   const deletion = { book: { ...book, invalid: 1 as const, deleted: 1 as const, meta_version: 2, toc_version: 2 }, toc: { ...old.toc, nodes: [], version: 2 }, note_states: {}, deleted_note_ids: [note.id] }
   await applyKnowledgeBaseRemote(deletion)
   expect(await db.notes.get(note.id)).toBeUndefined()
-  expect(await db.outbox.count()).toBe(0)
+  expect(await db.outbox.count()).toBe(1)
+  expect((await db.notes.toArray())[0].body).toContain('即将删除')
   expect(await db.history.count()).toBe(0)
   expect(await db.knowledgeBaseOutbox.count()).toBe(0)
   expect(await db.knowledgeBaseTocHistory.count()).toBe(0)

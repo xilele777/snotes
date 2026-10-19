@@ -2,7 +2,7 @@ import { execFileSync } from 'node:child_process'
 import { resolve } from 'node:path'
 import { createRequire } from 'node:module'
 
-const TABLES = ['agent_operation', 'agent_token', 'knowledge_base_deleted_image', 'knowledge_base_deleted_note', 'knowledge_base_operation', 'knowledge_base_toc_history', 'knowledge_base_toc', 'knowledge_base', 'note_open', 'note_history', 'note_body', 'image', 'note', 'note_group'] as const
+const TABLES = ['sync_checkpoint', 'agent_operation', 'agent_token', 'knowledge_base_deleted_image', 'knowledge_base_deleted_note', 'knowledge_base_operation', 'knowledge_base_toc_history', 'knowledge_base_toc', 'knowledge_base', 'note_open', 'note_history', 'note_body', 'image', 'note', 'note_group'] as const
 
 /** 清空本地 D1。必须在每个用例开始前调用，否则用例之间会通过服务端互相污染。 */
 export function resetServer(): void {

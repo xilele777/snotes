@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { ApiError, apiFetch } from './client'
+import { ApiError, apiBlob, apiFetch } from './client'
 import {
   authNotice,
   clearToken,
@@ -194,5 +194,53 @@ describe('apiFetch', () => {
     } finally {
       vi.useRealTimers()
     }
+  })
+
+  it('响应 headers 已返回但 body 挂起时仍由超时中止', async () => {
+    vi.useFakeTimers()
+    try {
+      setToken('tok')
+      let signal!: AbortSignal
+      vi.stubGlobal('fetch', vi.fn((_input, init) => {
+        signal = init.signal
+        return Promise.resolve(new Response(new ReadableStream({ start(controller) {
+          controller.enqueue(new TextEncoder().encode('{"ok":'))
+        } })))
+      }))
+      const promise = apiFetch('/api/stalled-body')
+      void promise.catch(() => undefined)
+      await vi.advanceTimersByTimeAsync(15_000)
+      expect(signal.aborted).toBe(true)
+      await expect(promise).rejects.toThrow()
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('保留调用方 AbortSignal，用户取消不会被覆盖', async () => {
+    const caller = new AbortController()
+    let signal!: AbortSignal
+    vi.stubGlobal('fetch', vi.fn((_input, init) => {
+      signal = init.signal
+      return new Promise((_resolve, reject) => init.signal.addEventListener('abort', () => reject(new DOMException('Aborted', 'AbortError'))))
+    }))
+    const promise = apiFetch('/api/cancel', { signal: caller.signal })
+    caller.abort()
+    await expect(promise).rejects.toThrow()
+    expect(signal.aborted).toBe(true)
+  })
+
+  it.each([200, 400, 429])('状态 %s 的 body 挂起也会在超时后释放请求', async status => {
+    vi.useFakeTimers()
+    try {
+      vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(new ReadableStream({ start(controller) {
+        controller.enqueue(new TextEncoder().encode('unfinished'))
+      } }), { status })))
+      const pending = status === 200 ? apiBlob('/api/stalled-image') : apiFetch('/api/stalled-error')
+      void pending.catch(() => undefined)
+      await vi.advanceTimersByTimeAsync(15_001)
+      await expect(pending).rejects.toMatchObject({ name: 'TimeoutError' })
+      expect(vi.getTimerCount()).toBe(0)
+    } finally { vi.useRealTimers() }
   })
 })

@@ -8,7 +8,7 @@ export interface MetaRow {
   value: unknown
 }
 
-/** 本地正文历史的一条快照：纯本地，不同步、不导出。 */
+/** 本地正文历史的一条快照：纯本地，不同步；格式 3 备份包含。 */
 export interface HistoryRow {
   id?: number
   note_id: string
