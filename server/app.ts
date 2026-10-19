@@ -1,6 +1,7 @@
 import { serveStatic } from '@hono/node-server/serve-static'
 import { Hono } from 'hono'
 import { bodyLimit } from 'hono/body-limit'
+import { compress } from 'hono/compress'
 import { extname, join, resolve } from 'node:path'
 import { createApp } from '../worker/app'
 import { ownerAuthorized } from '../worker/auth'
@@ -35,6 +36,8 @@ export function createServerApp(assetDirectory: string, limiter = new LoginLimit
   // 未知 API 不能被 SPA 的 index.html 吞掉。
   app.all('/api/*', (c) => c.json({ error: 'not_found' }, 404))
   app.all('/api', (c) => c.json({ error: 'not_found' }, 404))
+  // 静态 JS（尤其是 Lute）必须压缩，直接 Node 部署也不依赖反向代理。
+  app.use('*', compress())
   app.use('*', async (c, next) => {
     if (c.req.path.split('/').some((part) => part.startsWith('.'))) return c.notFound()
     await next()
