@@ -1,0 +1,32 @@
+{
+  "origin": "https://snotes-acceptance-20261019.2519175810.workers.dev",
+  "started": "2026-10-19T15:54:18.423Z",
+  "cases": [
+    {
+      "name": "full-time-travel-restore",
+      "bookmark": "00000004-00000004-00005109-98961866f0384ead5ef87e8a8aab6921",
+      "restore": {
+        "bookmark": "00000004-00000004-00005109-98961866f0384ead5ef87e8a8aab6921",
+        "previous_bookmark": "00000004-ffffffff-00005109-d0d887b319afc5484b1eff5c8bbb40e8",
+        "message": "Resetting Durable Object to restore database to bookmark: 00000004-00000004-00005109-98961866f0384ead5ef87e8a8aab6921"
+      },
+      "before_epoch": "9cda6f98478b748a1f0fa81b12628451:20dc3f39046120ff75888887e882e483",
+      "after_epoch": "8d76a96f-ce45-4db1-99e3-c374de1286d3:20dc3f39046120ff75888887e882e483",
+      "stale_both_domain_receipts": "rejected",
+      "old_writes": "rejected",
+      "status": "passed",
+      "later_watermark": 3
+    },
+    {
+      "name": "same-watermark-notebook-only-replacement",
+      "note_watermark": 1792425079517,
+      "book_watermark": 2,
+      "status": "passed"
+    },
+    {
+      "name": "completely-missing-notebook-inventory",
+      "status": "passed"
+    }
+  ],
+  "finished": "2026-10-19T15:54:51.670Z"
+}

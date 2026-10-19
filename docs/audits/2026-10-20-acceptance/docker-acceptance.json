@@ -1,0 +1,14 @@
+{
+  "started": "2026-10-19T16:06:08.303Z",
+  "image": "snotes:acceptance-20261019",
+  "checks": [
+    "health, authenticated note/image roundtrip, anonymous image 401",
+    "Docker HTTP gzip, Vary, immutable/no-cache and build byte hashes",
+    "restart persistence and stable epoch",
+    "offline full backup/restore: local history, unreferenced trash/images, cleared receipts, rotated epoch, strict missing/stale epoch 409, new epoch writes 200"
+  ],
+  "image_id": "sha256:524d6b9712edc5b96315917143ccbc79788787c9bfe4da32d21dc59423f4cc4e",
+  "finished": "2026-10-19T16:06:13.079Z",
+  "status": "passed",
+  "cleanup": "Only acceptance containers/volumes removed; built image retained"
+}

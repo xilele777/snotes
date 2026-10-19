@@ -1,0 +1,58 @@
+{
+  "origin": "https://snotes-acceptance-20261019.2519175810.workers.dev",
+  "at": "2026-10-19T16:07:44.990Z",
+  "results": [
+    {
+      "path": "/assets/index-DxouC67E.js",
+      "status": 200,
+      "headers": {
+        "content-encoding": "gzip",
+        "cache-control": "public, max-age=31536000, immutable",
+        "vary": "Accept-Encoding",
+        "cf-cache-status": "HIT",
+        "content-type": "text/javascript"
+      },
+      "decoded_bytes": 299850,
+      "hash_equal": true
+    },
+    {
+      "path": "/vendor/vditor/4.0.0/dist/js/lute/lute.min.js",
+      "status": 200,
+      "headers": {
+        "content-encoding": "gzip",
+        "cache-control": "public, max-age=31536000, immutable",
+        "vary": "Accept-Encoding",
+        "cf-cache-status": "MISS",
+        "content-type": "text/javascript"
+      },
+      "decoded_bytes": 3743299,
+      "hash_equal": true
+    },
+    {
+      "path": "/",
+      "status": 200,
+      "headers": {
+        "content-encoding": "gzip",
+        "cache-control": "no-cache",
+        "vary": "Accept-Encoding",
+        "cf-cache-status": "HIT",
+        "content-type": "text/html"
+      },
+      "decoded_bytes": 2377,
+      "hash_equal": true
+    },
+    {
+      "path": "/sw.js",
+      "status": 200,
+      "headers": {
+        "content-encoding": "gzip",
+        "cache-control": "no-cache",
+        "vary": "Accept-Encoding",
+        "cf-cache-status": "HIT",
+        "content-type": "text/javascript"
+      },
+      "decoded_bytes": 3719,
+      "hash_equal": true
+    }
+  ]
+}
