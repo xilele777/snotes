@@ -1,10 +1,11 @@
 <div align="center">
   
-<img src="public/snotes.svg" alt="snotes 蓝色书签图标" width="88" height="88" />
+<img src="https://socialify.git.ci/xilele777/snotes/image?custom_description=%E4%B8%80%E4%B8%AA%E6%9C%AC%E5%9C%B0%E4%BC%98%E5%85%88%E3%80%81%E8%BD%BB%E9%87%8F%E5%BF%AB%E9%80%9F%E3%80%81%E6%94%AF%E6%8C%81%E7%A6%BB%E7%BA%BF%E5%90%8C%E6%AD%A5%E7%9A%84%E8%87%AA%E9%83%A8%E7%BD%B2%E5%A4%9A%E5%B9%B3%E5%8F%B0%E7%AC%94%E8%AE%B0%E5%BA%94%E7%94%A8&description=1&font=JetBrains+Mono&language=1&name=1&theme=Light" alt="snotes" width="640" height="320" />
 
-# snotes
 
-**轻量的个人 Markdown 笔记应用，支持部署到 Cloudflare 或自己的服务器。**
+**Your notes. Your server. Every device. Even offline.**
+
+我们非常重视打开时的快速和无感~
 
 [![Release](https://img.shields.io/github/v/release/xilele777/snotes)](https://github.com/xilele777/snotes/releases/latest)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
