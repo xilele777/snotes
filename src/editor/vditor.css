@@ -8,8 +8,7 @@
 .snotes-vditor .vditor-toolbar--pin { position: sticky; top: 0; }
 .snotes-vditor .vditor-content { min-height: 320px; overflow: visible; }
 .snotes-vditor :is(.vditor-ir, .vditor-wysiwyg, .vditor-sv, .vditor-preview) { min-width: 0; overflow: visible; background: var(--bg-surface); }
-.snotes-vditor :is(.vditor-reset, .vditor-sv) { box-sizing: border-box; width: 100%; max-width: var(--editor-max-width); margin: 0 auto; padding: 20px 40px 56px !important; color: var(--text-primary); font-size: var(--editor-font-size) !important; line-height: var(--editor-line-height) !important; overflow-wrap: anywhere; }
-.snotes-vditor .vditor-reset > :first-child { margin-top: 0 !important; }
+.snotes-vditor :is(.vditor-reset, .vditor-sv) { box-sizing: border-box; width: 100%; max-width: var(--editor-max-width); margin: 0 auto; padding: 36px 40px 56px !important; color: var(--text-primary); font-size: var(--editor-font-size) !important; line-height: var(--editor-line-height) !important; overflow-wrap: anywhere; }
 .snotes-vditor :is(.vditor-ir, .vditor-wysiwyg) > .vditor-reset { margin: 0 auto; overflow: visible; min-height: 65vh; }
 .snotes-vditor .vditor-sv { resize: none; min-height: 65vh; white-space: pre-wrap; }
 .snotes-vditor .vditor-preview { padding: 0; }
@@ -33,7 +32,7 @@
 .snotes-vditor.vditor--fullscreen { min-height: 100dvh; overflow: auto; z-index: 90; }
 .snotes-vditor.vditor--fullscreen .vditor-content { flex: 1; overflow: auto; }
 @media (max-width: 720px) {
-  .snotes-vditor :is(.vditor-reset, .vditor-sv) { padding: 16px 22px 56px !important; font-size: 16px !important; }
+  .snotes-vditor :is(.vditor-reset, .vditor-sv) { padding: 28px 22px 56px !important; font-size: 16px !important; }
   .snotes-vditor .vditor-outline { flex-basis: 160px; width: 160px; max-width: 160px; }
   .snotes-vditor .vditor-toolbar__item { flex-shrink: 0; }
 }

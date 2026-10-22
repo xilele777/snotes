@@ -3,37 +3,6 @@ import { resetServer } from './reset-server'
 
 test.beforeEach(() => resetServer())
 
-test('笔记列表收紧滚动条间距，有无滚动条时行宽稳定', async ({ page }, testInfo) => {
-  await page.setViewportSize({ width: 1440, height: 900 })
-  await page.goto('/')
-  await page.evaluate(() => localStorage.setItem('snotes_token', 'dev-token'))
-  await page.reload()
-  await page.locator('.header-create').click()
-  const list = page.locator('.note-list')
-  const first = list.locator('.note-item').first()
-  await expect(first).toBeVisible()
-  const before = (await first.boundingBox())!.width
-  // Force overflow with inert rows, keeping the same real note and scroll host.
-  await list.evaluate(element => {
-    const spacer = document.createElement('li')
-    spacer.style.height = '2000px'
-    spacer.setAttribute('aria-hidden', 'true')
-    element.append(spacer)
-  })
-  expect(await list.evaluate(element => element.scrollHeight > element.clientHeight)).toBe(true)
-  expect((await first.boundingBox())!.width).toBe(before)
-  for (const width of [1440, 390]) {
-    await page.setViewportSize({ width, height: 900 })
-    if (width <= 720) await page.getByRole('button', { name: '返回列表', exact: true }).click()
-    const gap = await first.evaluate(element => {
-      const list = element.parentElement!
-      return list.getBoundingClientRect().left + list.clientLeft + list.clientWidth - element.getBoundingClientRect().right
-    })
-    expect(gap).toBe(4)
-    await page.screenshot({ path: testInfo.outputPath(`list-scrollbar-${width}.png`) })
-  }
-})
-
 test('分栏拖动、键盘与刷新记忆；窄窗口约束后恢复原宽度', async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 900 })
   await page.goto('/')

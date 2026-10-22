@@ -93,53 +93,6 @@ test('原生三种编辑模式、Markdown 往返与本设备模式记忆', async
   await expect(body(page)).toHaveValue(/兼容性笔记/)
 })
 
-for (const mode of ['wysiwyg', 'ir', 'sv']) test(`${mode} 链接支持直接和 Ctrl 点击跳转`, async ({ page, context }) => {
-  await context.route('https://example.com/**', route => route.fulfill({ body: '<p>链接已打开</p>', contentType: 'text/html; charset=utf-8' }))
-  await switchMode(page, 'sv')
-  const markdown = '# 链接测试\n\n[参考资料](https://example.com/reference)'
-  await body(page).fill(markdown)
-  await expect.poll(() => saved(page)).toContain('链接测试')
-  if (mode !== 'sv') await switchMode(page, mode)
-  const link = mode === 'sv' ? page.locator('.vditor-preview a').filter({ hasText: '参考资料' })
-    : body(page).locator('a, [data-type="a"]').filter({ hasText: '参考资料' })
-  for (const ctrl of [false, true]) {
-    const popup = context.waitForEvent('page')
-    await link.click({ modifiers: ctrl ? ['Control'] : [] })
-    const opened = await popup
-    await expect(opened).toHaveURL('https://example.com/reference')
-    await expect(opened.locator('body')).toHaveText('链接已打开')
-    expect(await opened.evaluate(() => window.opener)).toBeNull()
-    await opened.close()
-    await page.bringToFront()
-  }
-  expect(await saved(page)).toContain(markdown)
-})
-
-test('首行标题和段落保持紧凑顶部留白，后续标题保留段间距', async ({ page }, testInfo) => {
-  for (const width of [1440, 390]) {
-    await page.setViewportSize({ width, height: 900 })
-    for (const firstLine of ['# 首行标题', '首行段落']) {
-      await switchMode(page, 'sv')
-      await body(page).fill(`${firstLine}\n\n正文\n\n## 后续标题`)
-      for (const mode of ['wysiwyg', 'ir', 'sv']) {
-        await switchMode(page, mode)
-        const content = mode === 'sv' ? page.locator('.vditor-preview .vditor-reset') : body(page)
-        await expect(content).toContainText(firstLine.replace(/^# /, ''))
-        const top = await content.evaluate(element => {
-          const first = element.firstElementChild!
-          return { gap: first.getBoundingClientRect().top - element.getBoundingClientRect().top,
-            margin: getComputedStyle(first).marginTop }
-        })
-        expect(top.margin).toBe('0px')
-        expect(top.gap).toBe(width > 720 ? 20 : 16)
-        expect(await content.locator('h2').evaluate(element => parseFloat(getComputedStyle(element).marginTop))).toBeGreaterThan(0)
-      }
-    }
-    await switchMode(page, 'wysiwyg')
-    await page.screenshot({ path: testInfo.outputPath(`editor-spacing-${width}.png`) })
-  }
-})
-
 test('快速切换笔记保留最后按键，撤销不跨文档', async ({ page }) => {
   await page.keyboard.insertText('第一篇最后按键')
   await page.locator('.header-create').click()

@@ -500,9 +500,8 @@ function onClick(event: MouseEvent) {
       })
     }
   }
-  // IR renders links as data-type="a" spans rather than native anchors.
-  const anchor = event.target instanceof Element ? event.target.closest('a, [data-type="a"]') : null
-  if (anchor?.closest('.vditor-reset')) {
+  const anchor = event.target instanceof Element ? event.target.closest('a') : null
+  if (anchor && (event.ctrlKey || event.metaKey || props.editable === false || anchor.closest('.vditor-preview'))) {
     const href = normalizeHref(anchor.getAttribute('href') ?? anchor.querySelector('.vditor-ir__marker--link')?.textContent ?? '')
     event.preventDefault()
     event.stopPropagation()
@@ -615,8 +614,12 @@ async function initialize() {
     },
     image: { isPreview: true, preview: element => openImage(element) },
     link: {
-      // The capture handler opens links consistently in every rendered mode.
       isOpen: false,
+      // Vditor returns early on anchor clicks, before refreshing the popover.
+      // Reuse its keyboard selection refresh to show the native link editor.
+      click: element => {
+        if (editor?.getCurrentMode() === 'wysiwyg') element.dispatchEvent(new KeyboardEvent('keyup', { key: 'ArrowRight', bubbles: true }))
+      },
     },
     input: value => { capture(value); rememberMode() },
     blur: () => { flush(); rememberMode() },
