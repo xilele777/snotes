@@ -176,8 +176,8 @@ kbd { font-family: inherit; font-size: 10px; line-height: 20px; white-space: now
 .search-clear:hover { background: var(--bg-press); }
 .list-caption { display: flex; align-items: center; gap: 6px; min-height: 28px; padding: 0 22px 8px; color: var(--text-tertiary); font-size: 11px; flex: none; }
 .list-caption button { margin-left: auto; padding: 2px 0; background: transparent; border: 0; color: var(--accent); font-size: 11px; }
-.note-list { list-style: none; flex: 1; min-height: 0; margin: 0; padding: 0 0 12px; overflow-y: auto; overscroll-behavior: contain; }
-.note-item { position: relative; min-width: 0; height: 96px; margin: 0 8px 2px; border-radius: 7px; overflow: hidden; transition: background-color 120ms; }
+.note-list { list-style: none; flex: 1; min-height: 0; margin: 0; padding: 0 0 12px; overflow-y: auto; scrollbar-gutter: stable; overscroll-behavior: contain; }
+.note-item { position: relative; min-width: 0; height: 96px; margin: 0 4px 2px 8px; border-radius: 7px; overflow: hidden; transition: background-color 120ms; }
 .note-item:hover { background: var(--bg-hover); }
 .note-item.is-active { background: var(--selected-bg); box-shadow: inset 0 0 0 1px var(--focus-ring); }
 .note-item.is-active .note-title { color: var(--selected-text); }
@@ -448,7 +448,7 @@ textarea.dialog-input { height: auto; min-height: 112px; padding: 10px 12px; lin
   .note-search input { height: 38px; font-size: 16px; }
   .note-search kbd { display: none; }
   .list-caption { padding: 0 22px 8px; }
-  .note-item { height: 104px; margin: 0 8px 2px; }
+  .note-item { height: 104px; }
   .note-select { padding: 14px; }
   .note-title { font-size: 15px; height: 22px; line-height: 22px; }
   .note-summary { font-size: 13px; margin-top: 5px; }
