@@ -45,6 +45,15 @@ let observedMode: string | undefined
 let historyValue = ''
 let forwardingPaste = false
 const tableOpen = ref(false)
+// Preview URLs live outside Vditor's DOM, so autosave/undo never serialize them.
+const imageUploads = ref<{ key: number; preview: string; name: string; complete: boolean }[]>([])
+let uploadKey = 0
+let uploadGeneration = 0
+function clearImageUploads() {
+  uploadGeneration++
+  for (const item of imageUploads.value) URL.revokeObjectURL(item.preview)
+  imageUploads.value = []
+}
 // 弹窗打开时编辑器会失焦，先记住插入位置，提交后再还原。
 let tableSelection: Range | undefined
 let tableTextarea: { start: number; end: number } | undefined
@@ -102,6 +111,7 @@ watch(() => [props.noteId, props.modelValue] as const, ([id, value]) => {
     flush()
   }
   lifetime++
+  clearImageUploads()
   documentId = id
   base = value
   pending = undefined
@@ -115,6 +125,7 @@ function applyEditable() {
   if (!ready || !editor) return
   root.value?.classList.toggle('is-readonly', props.editable === false)
   if (props.editable === false) {
+    clearImageUploads()
     flush()
     editor.disabled()
   } else editor.enable()
@@ -246,6 +257,7 @@ async function insertImages(files: File[]): Promise<null> {
   const instance = editor
   const id = documentId
   const generation = lifetime
+  const uploadsGeneration = uploadGeneration
   const mode = instance.getCurrentMode()
   const selection = window.getSelection()
   const range = selection?.rangeCount && root.value?.contains(selection.anchorNode)
@@ -254,22 +266,36 @@ async function insertImages(files: File[]): Promise<null> {
   const start = textarea?.selectionStart
   const end = textarea?.selectionEnd
   const valid = () => !disposed && generation === lifetime && id === documentId
-    && props.editable !== false && editor === instance
+    && uploadsGeneration === uploadGeneration && props.editable !== false && editor === instance
   const rejected = files.filter(file => !isAllowedImage(file))
   if (rejected.length) emit('notice', `有 ${rejected.length} 个文件未插入：仅支持 10MB 以内的 JPG、PNG、GIF、WebP 图片`)
-  const uploaded: string[] = []
-  for (const file of files.filter(isAllowedImage)) {
-    if (!valid()) break
-    try {
-      const { url } = await uploadImage(file, id)
-      if (!valid()) break
-      // Insert only permanent URLs; pending uploads never leak blob: into sync.
-      uploaded.push(`![](<${url.replace(/[<>\s]/g, c => encodeURIComponent(c))}>)`)
-    } catch (error) {
-      if (valid()) emit('notice', `图片上传失败：${error instanceof Error ? error.message : String(error)}`)
+  const accepted = files.filter(isAllowedImage)
+  if (!accepted.length) return null
+  const items = accepted.map(file => ({ key: ++uploadKey, preview: URL.createObjectURL(file), name: file.name, complete: false }))
+  imageUploads.value.push(...items)
+  const keys = new Set(items.map(item => item.key))
+  const uploaded: string[] = new Array(accepted.length).fill('')
+  let cursor = 0
+  async function uploadNext() {
+    while (valid() && cursor < accepted.length) {
+      const index = cursor++
+      try {
+        const { url } = await uploadImage(accepted[index], id)
+        if (!valid()) return
+        // Preserve clipboard order even when the second upload finishes first.
+        uploaded[index] = `![](<${url.replace(/[<>\s]/g, c => encodeURIComponent(c))}>)`
+      } catch (error) {
+        if (valid()) emit('notice', `图片上传失败：${error instanceof Error ? error.message : String(error)}`)
+      } finally {
+        const item = imageUploads.value.find(item => item.key === items[index].key)
+        if (item) item.complete = true
+      }
     }
   }
-  if (!valid() || !uploaded.length) return null
+  await Promise.all(Array.from({ length: Math.min(2, accepted.length) }, uploadNext))
+  for (const item of imageUploads.value.filter(item => keys.has(item.key))) URL.revokeObjectURL(item.preview)
+  imageUploads.value = imageUploads.value.filter(item => !keys.has(item.key))
+  if (!valid() || !uploaded.some(Boolean)) return null
   if (instance.getCurrentMode() === mode) {
     if (mode === 'sv' && textarea && start !== undefined && end !== undefined) {
       textarea.focus()
@@ -279,7 +305,7 @@ async function insertImages(files: File[]): Promise<null> {
       selection?.addRange(range)
     }
   }
-  instance.insertMD(uploaded.join('\n\n'))
+  instance.insertMD(uploaded.filter(Boolean).join('\n\n'))
   capture()
   return null
 }
@@ -679,6 +705,7 @@ onBeforeUnmount(() => {
   rememberMode()
   disposed = true
   lifetime++
+  clearImageUploads()
   clearTimer()
   cancelLongPress()
   observer?.disconnect()
@@ -705,5 +732,13 @@ defineExpose({ flush, focus, insertImages })
     @input="onInput" @keydown.capture="onHistoryKeydown" @paste.capture="onPaste" @click.capture="onClick" @touchstart.capture="onToolbarTouch" @change.capture="onLinkChange" @keyup="rememberMode" @dblclick.capture="onDoubleClick" @pointerdown.capture="onPointerDown"
     @pointerup="cancelLongPress" @pointercancel="cancelLongPress" @pointermove="cancelLongPress" />
   <TableDialog :open="tableOpen" @submit="insertTable" @close="tableOpen = false" />
+  <Teleport to="body">
+    <aside v-if="imageUploads.length" class="image-upload-status" aria-label="图片上传">
+      <p role="status">正在上传图片…（{{ imageUploads.filter(item => item.complete).length }}/{{ imageUploads.length }}）</p>
+      <div class="image-upload-previews">
+        <img v-for="item in imageUploads" :key="item.key" :src="item.preview" :alt="item.name || '待上传图片'" />
+      </div>
+    </aside>
+  </Teleport>
   </div>
 </template>

@@ -424,6 +424,39 @@ test('移除阅读和专注入口，保留原生全屏，回收站仍禁止修�
   await expect(checkbox).toBeDisabled()
 })
 
+for (const mode of ['wysiwyg', 'ir', 'sv']) test(`${mode} 粘贴图片立即预览，上传完成前不保存临时地址`, async ({ page, context }) => {
+  await switchMode(page, mode)
+  await page.keyboard.insertText('粘贴前正文')
+  await expect.poll(() => saved(page)).toContain('粘贴前正文')
+  let release!: () => void
+  const gate = new Promise<void>(resolve => { release = resolve })
+  await context.route('**/api/images/upload', async route => { await gate; await route.continue() })
+  try {
+    await body(page).evaluate(element => {
+      const bytes = Uint8Array.from(atob('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=='), c => c.charCodeAt(0))
+      const clipboardData = new DataTransfer()
+      clipboardData.items.add(new File([bytes], 'pasted.png', { type: 'image/png' }))
+      element.dispatchEvent(new ClipboardEvent('paste', { clipboardData, bubbles: true, cancelable: true }))
+    })
+    const preview = page.locator('.image-upload-previews img')
+    await expect(preview).toBeVisible({ timeout: 1000 })
+    await expect.poll(() => preview.evaluate(img => (img as HTMLImageElement).naturalWidth)).toBeGreaterThan(0)
+    await expect(page.locator('.image-upload-status')).toContainText('正在上传图片')
+    await expect(page.locator('.snotes-vditor img[src^="blob:"]')).toHaveCount(0)
+    await page.keyboard.insertText('上传期间继续编辑')
+    await expect.poll(() => saved(page)).toContain('上传期间继续编辑')
+    expect(await saved(page)).not.toMatch(/blob:|data:image/)
+    release()
+    await expect(page.locator('.image-upload-status')).toHaveCount(0)
+    await expect.poll(() => saved(page)).toContain('/api/images/')
+    const image = page.locator('.snotes-vditor img[src^="/api/images/"]:visible').first()
+    await expect(image).toBeVisible()
+    await expect.poll(() => image.evaluate(img => (img as HTMLImageElement).naturalWidth)).toBeGreaterThan(0)
+    expect(await saved(page)).not.toMatch(/blob:|data:image/)
+    expect(await saved(page)).toContain('上传期间继续编辑')
+  } finally { release(); await context.unrouteAll({ behavior: 'wait' }) }
+})
+
 test('原生图片选择器沿用上传鉴权，双击使用项目灯箱', async ({ page }) => {
   await switchMode(page, 'wysiwyg')
   const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==', 'base64')

@@ -17,8 +17,14 @@ async function create(body = '原文', editable = true) {
   return { wrapper, editor: MockVditor.instances.at(-1)! }
 }
 
-beforeEach(() => { MockVditor.instances = []; vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] }); localStorage.clear() })
-afterEach(() => { mounted.splice(0).forEach(wrapper => wrapper.unmount()); vi.useRealTimers(); vi.clearAllMocks() })
+beforeEach(() => {
+  MockVditor.instances = []
+  vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+  localStorage.clear()
+  vi.spyOn(URL, 'createObjectURL').mockImplementation(() => `blob:preview-${Math.random()}`)
+  vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => {})
+})
+afterEach(() => { mounted.splice(0).forEach(wrapper => wrapper.unmount()); vi.useRealTimers(); vi.clearAllMocks(); vi.restoreAllMocks() })
 
 describe('Vditor 保存与同步边界', () => {
   it('初始化及只读切换保留 Vditor 的主题和全屏样式类', async () => {
@@ -194,6 +200,32 @@ describe('Vditor 图片与原生功能适配', () => {
     expect(editor.insertMD).toHaveBeenCalledWith('![](<\/api/images/i>)')
     wrapper.vm.flush()
     expect(JSON.stringify(wrapper.emitted('flush'))).not.toContain('blob:')
+    expect(document.querySelector('.image-upload-status')).toBeNull()
+    expect(URL.revokeObjectURL).toHaveBeenCalledTimes(1)
+  })
+
+  it('等待上传时立即显示独立预览，最多并行两张且按粘贴顺序插入', async () => {
+    const { wrapper, editor } = await create()
+    const resolvers: ((value: { file_key: string; url: string }) => void)[] = []
+    vi.mocked(uploadImage).mockImplementation(() => new Promise(resolve => { resolvers.push(resolve) }))
+    const uploading = wrapper.vm.insertImages(['a', 'b', 'c'].map(name => new File(['x'], `${name}.png`, { type: 'image/png' })))
+    await flushPromises()
+    expect(uploadImage).toHaveBeenCalledTimes(2)
+    expect(document.querySelectorAll('.image-upload-previews img')).toHaveLength(3)
+    expect(document.querySelector('.snotes-vditor img')).toBeNull()
+    wrapper.vm.flush()
+    expect(JSON.stringify(wrapper.emitted())).not.toContain('blob:')
+    expect(editor.insertMD).not.toHaveBeenCalled()
+    resolvers[1]({ file_key: 'b', url: '/api/images/b' })
+    await flushPromises()
+    expect(uploadImage).toHaveBeenCalledTimes(3)
+    resolvers[2]({ file_key: 'c', url: '/api/images/c' })
+    resolvers[0]({ file_key: 'a', url: '/api/images/a' })
+    await uploading
+    await flushPromises()
+    expect(editor.insertMD).toHaveBeenCalledWith('![](<\/api/images/a>)\n\n![](<\/api/images/b>)\n\n![](<\/api/images/c>)')
+    expect(document.querySelector('.image-upload-status')).toBeNull()
+    expect(URL.revokeObjectURL).toHaveBeenCalledTimes(3)
   })
 
   it.each(['switch', 'remote', 'readonly', 'unmount'])('上传中 %s 后不往当前文档插入图片', async action => {
@@ -203,8 +235,13 @@ describe('Vditor 图片与原生功能适配', () => {
     const uploading = wrapper.vm.insertImages([new File(['x'], 'a.png', { type: 'image/png' })])
     if (action === 'switch') await wrapper.setProps({ noteId: 'b', modelValue: 'B' })
     if (action === 'remote') await wrapper.setProps({ modelValue: '远端版本' })
-    if (action === 'readonly') await wrapper.setProps({ editable: false })
+    if (action === 'readonly') {
+      await wrapper.setProps({ editable: false })
+      await wrapper.setProps({ editable: true })
+    }
     if (action === 'unmount') wrapper.unmount()
+    expect(document.querySelector('.image-upload-status')).toBeNull()
+    expect(URL.revokeObjectURL).toHaveBeenCalledTimes(1)
     resolve({ file_key: 'i', url: '/api/images/i' })
     await uploading
     expect(editor.insertMD).not.toHaveBeenCalled()
@@ -217,6 +254,7 @@ describe('Vditor 图片与原生功能适配', () => {
     expect(uploadImage).toHaveBeenCalledTimes(1)
     expect(editor.value).toBe('原文')
     expect(wrapper.emitted('notice')).toHaveLength(2)
+    expect(document.querySelector('.image-upload-status')).toBeNull()
   })
 
   it('原生表格按钮先弹行列弹窗，禁用态保持原生行为', async () => {

@@ -32,6 +32,10 @@
 .snotes-vditor.is-readonly :is(.vditor-panel, .vditor-hint) { display: none !important; }
 .snotes-vditor.vditor--fullscreen { min-height: 100dvh; overflow: auto; z-index: 90; }
 .snotes-vditor.vditor--fullscreen .vditor-content { flex: 1; overflow: auto; }
+.image-upload-status { position: fixed; bottom: 20px; right: 20px; z-index: 110; box-sizing: border-box; max-width: min(340px, calc(100vw - 40px)); padding: 12px; border: 1px solid var(--border-light); border-radius: 10px; background: var(--bg-surface); color: var(--text-primary); box-shadow: 0 4px 20px #0002; }
+.image-upload-status p { margin: 0 0 8px; font-size: 13px; }
+.image-upload-previews { display: flex; gap: 8px; overflow-x: auto; }
+.image-upload-previews img { width: 80px; height: 80px; flex: 0 0 auto; object-fit: contain; border-radius: 4px; background: var(--bg-surface); }
 @media (max-width: 720px) {
   .snotes-vditor :is(.vditor-reset, .vditor-sv) { padding: 20px 22px 56px !important; font-size: 16px !important; }
   .snotes-vditor .vditor-outline { flex-basis: 160px; width: 160px; max-width: 160px; }
@@ -45,6 +49,7 @@
   .snotes-vditor :is(.vditor-reset, .vditor-sv) { padding-inline: 24px !important; }
 }
 @media print {
+  .image-upload-status { display: none; }
   .snotes-vditor :is(.vditor-toolbar, .vditor-outline, .vditor-resize, .vditor-counter, .vditor-tip, .vditor-panel, .vditor-hint) { display: none !important; }
   .snotes-vditor :is(.vditor-reset, .vditor-sv) { max-width: none; padding: 0 !important; font-size: 12pt !important; line-height: 1.6 !important; }
   .snotes-vditor :is(.vditor-ir__marker, .vditor-ir__marker--pre) { display: none !important; }
