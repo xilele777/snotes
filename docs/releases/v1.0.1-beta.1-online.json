@@ -1,0 +1,64 @@
+{
+  "origin": "https://note.alover.me",
+  "at": "2026-10-22T00:41:33.529Z",
+  "app_version": "1.0.1-beta.1",
+  "checks": [
+    {
+      "path": "/api/health",
+      "status": 200,
+      "ok": true
+    },
+    {
+      "path": "/",
+      "status": 200,
+      "sha256": "40626484c10c755b1d93e433970c61034095568553943ad6c6cb997b49da2d6b",
+      "hash_equal": true,
+      "cache_control": "no-cache",
+      "content_encoding": "gzip"
+    },
+    {
+      "path": "/assets/index-COdJVIfX.js",
+      "status": 200,
+      "sha256": "f5390d030ed7b7fea5af5de94faa35acb513b495f61121b37e4a5919afbe8fd4",
+      "hash_equal": true,
+      "cache_control": "public, max-age=31536000, immutable",
+      "content_encoding": "gzip"
+    },
+    {
+      "path": "/assets/VditorEditor-DgfA6jrA.js",
+      "status": 200,
+      "sha256": "ff3204c5e768f3cf0ce29c84b13f5dc647e70b8900c5256c53fd728a09e43c39",
+      "hash_equal": true,
+      "cache_control": "public, max-age=31536000, immutable",
+      "content_encoding": "gzip"
+    },
+    {
+      "path": "/assets/VditorEditor-DGt3H-Ce.css",
+      "status": 200,
+      "sha256": "8b5f72f3534275fbacebcfed8224a99fe4264fb0b0d3d37e3de877b2460f76fc",
+      "hash_equal": true,
+      "cache_control": "public, max-age=31536000, immutable",
+      "content_encoding": "gzip"
+    },
+    {
+      "path": "/sw.js",
+      "status": 200,
+      "sha256": "ae29644c6bbd3299318af0f972b76ee9b3be0c836ccc0f2e0f352b4f50b74013",
+      "hash_equal": true,
+      "cache_control": "no-cache",
+      "content_encoding": "gzip"
+    },
+    {
+      "path": "/vendor/vditor/4.0.0/dist/js/lute/lute.min.js",
+      "status": 200,
+      "sha256": "53b61b051a3dfd9ee5a5010c873233679e139d8e62c49da08b4c2f2c195587cb",
+      "hash_equal": true,
+      "cache_control": "public, max-age=31536000, immutable",
+      "content_encoding": "gzip"
+    },
+    {
+      "path": "/api/sync/instance",
+      "status": 401
+    }
+  ]
+}
