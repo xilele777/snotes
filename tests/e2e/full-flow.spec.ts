@@ -757,7 +757,7 @@ test('原生编辑工具栏写入标题、加粗、清单和表格', async ({ pa
   await expect.poll(() => savedBody(page)).toContain('| - | - | - |')
 })
 
-test('原生链接浮层编辑地址，Mod 点击安全打开，取消链接保留文字', async ({ page }) => {
+test('链接直接及 Mod 点击安全打开，键盘定位可编辑地址，取消链接保留文字', async ({ page }) => {
   await createNote(page)
   const editor = page.getByRole('textbox', { name: '笔记正文' })
   await expect(editor).toBeFocused()
@@ -776,11 +776,18 @@ test('原生链接浮层编辑地址，Mod 点击安全打开，取消链接保�
     ;(window as unknown as Record<string, unknown>).__opened = opened
     window.open = (...args: Parameters<typeof window.open>) => { opened.push(args); return null }
   })
-  await anchor.dispatchEvent('click', { ctrlKey: true })
-  expect(await page.evaluate(() => (window as unknown as { __opened: unknown[] }).__opened))
-    .toEqual([['https://example.com', '_blank', 'noopener,noreferrer']])
-
+  await anchor.click({ modifiers: ['Control'] })
   await anchor.click()
+  expect(await page.evaluate(() => (window as unknown as { __opened: unknown[] }).__opened))
+    .toEqual([
+      ['https://example.com', '_blank', 'noopener,noreferrer'],
+      ['https://example.com', '_blank', 'noopener,noreferrer'],
+    ])
+
+  // Clicking now follows the link. Move the caret into it to edit its address.
+  await editor.focus()
+  await page.keyboard.press('Control+Home')
+  await page.keyboard.press('ArrowRight')
   const editAddress = page.locator('.vditor-wysiwyg .vditor-panel input[placeholder="链接"]')
   await expect(editAddress).toBeVisible()
   await editAddress.fill('/笔记/1')
