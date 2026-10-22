@@ -131,7 +131,7 @@ test('首行标题和段落保持紧凑顶部留白，后续标题保留段间�
             margin: getComputedStyle(first).marginTop }
         })
         expect(top.margin).toBe('0px')
-        expect(top.gap).toBe(width > 720 ? 20 : 16)
+        expect(top.gap).toBe(width > 720 ? 24 : 20)
         expect(await content.locator('h2').evaluate(element => parseFloat(getComputedStyle(element).marginTop))).toBeGreaterThan(0)
       }
     }
