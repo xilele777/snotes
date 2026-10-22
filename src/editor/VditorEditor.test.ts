@@ -135,6 +135,44 @@ describe('Vditor 保存与同步边界', () => {
 })
 
 describe('Vditor 图片与原生功能适配', () => {
+  it.each([
+    ['wysiwyg', false, false], ['wysiwyg', true, false], ['wysiwyg', false, true],
+    ['ir', false, false], ['ir', true, false], ['ir', false, true],
+    ['preview', false, false], ['readonly', false, false],
+  ] as const)('%s 链接直接点击或带修饰键都打开规范化地址（Ctrl=%s，Meta=%s）', async (mode, ctrlKey, metaKey) => {
+    const { wrapper } = await create('原文', mode !== 'readonly')
+    const open = vi.spyOn(window, 'open').mockImplementation(() => null)
+    const root = wrapper.get('.snotes-vditor').element
+    root.insertAdjacentHTML('beforeend', `<div class="vditor-reset ${mode === 'preview' ? 'vditor-preview' : ''}">${mode === 'ir'
+      ? '<span data-type="a"><span>参考资料</span><span class="vditor-ir__marker--link">example.com</span></span>'
+      : '<a href="example.com"><strong>参考资料</strong></a>'}</div>`)
+    const link = root.querySelector('.vditor-reset strong, [data-type="a"] > span')!
+    const click = new MouseEvent('click', { bubbles: true, cancelable: true, ctrlKey, metaKey })
+    try {
+      link.dispatchEvent(click)
+      expect(click.defaultPrevented).toBe(true)
+      expect(open).toHaveBeenCalledExactlyOnceWith('https://example.com', '_blank', 'noopener,noreferrer')
+      expect(wrapper.emitted('update:modelValue')).toBeUndefined()
+    } finally { open.mockRestore() }
+  })
+
+  it.each(['javascript:alert(1)', 'data:text/html,test', 'java\nscript:alert(1)'])('链接点击不执行危险地址 %s', async href => {
+    const { wrapper } = await create()
+    const open = vi.spyOn(window, 'open').mockImplementation(() => null)
+    const content = document.createElement('div')
+    content.className = 'vditor-reset'
+    const link = document.createElement('a')
+    link.setAttribute('href', href)
+    content.append(link)
+    wrapper.get('.snotes-vditor').element.append(content)
+    try {
+      const click = new MouseEvent('click', { bubbles: true, cancelable: true })
+      link.dispatchEvent(click)
+      expect(click.defaultPrevented).toBe(true)
+      expect(open).not.toHaveBeenCalled()
+    } finally { open.mockRestore() }
+  })
+
   it('上传结束后插入正式图片地址，正文中不出现临时地址', async () => {
     const { wrapper, editor } = await create()
     vi.mocked(uploadImage).mockResolvedValue({ file_key: 'i', url: '/api/images/i' })

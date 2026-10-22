@@ -93,6 +93,28 @@ test('原生三种编辑模式、Markdown 往返与本设备模式记忆', async
   await expect(body(page)).toHaveValue(/兼容性笔记/)
 })
 
+for (const mode of ['wysiwyg', 'ir', 'sv']) test(`${mode} 链接支持直接和 Ctrl 点击跳转`, async ({ page, context }) => {
+  await context.route('https://example.com/**', route => route.fulfill({ body: '<p>链接已打开</p>', contentType: 'text/html; charset=utf-8' }))
+  await switchMode(page, 'sv')
+  const markdown = '# 链接测试\n\n[参考资料](https://example.com/reference)'
+  await body(page).fill(markdown)
+  await expect.poll(() => saved(page)).toContain('链接测试')
+  if (mode !== 'sv') await switchMode(page, mode)
+  const link = mode === 'sv' ? page.locator('.vditor-preview a').filter({ hasText: '参考资料' })
+    : body(page).locator('a, [data-type="a"]').filter({ hasText: '参考资料' })
+  for (const ctrl of [false, true]) {
+    const popup = context.waitForEvent('page')
+    await link.click({ modifiers: ctrl ? ['Control'] : [] })
+    const opened = await popup
+    await expect(opened).toHaveURL('https://example.com/reference')
+    await expect(opened.locator('body')).toHaveText('链接已打开')
+    expect(await opened.evaluate(() => window.opener)).toBeNull()
+    await opened.close()
+    await page.bringToFront()
+  }
+  expect(await saved(page)).toContain(markdown)
+})
+
 test('快速切换笔记保留最后按键，撤销不跨文档', async ({ page }) => {
   await page.keyboard.insertText('第一篇最后按键')
   await page.locator('.header-create').click()
