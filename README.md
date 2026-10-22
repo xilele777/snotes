@@ -11,10 +11,12 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Vue 3](https://img.shields.io/badge/Vue-3-4FC08D?logo=vuedotjs&logoColor=white)](https://vuejs.org/)
 
+
 中文 · [English](README.en.md)
 
 [功能特性](#功能特性) · [快速开始](#快速开始) · [部署指南](#部署方式) · [文档](#文档) · [更新日志](CHANGELOG.md)
 
+<img width="640" height="320" alt="image" src="https://github.com/user-attachments/assets/562bae31-b138-4d40-bb0e-b1bdc49ed1cf" />
 </div>
 
 ## 简介
