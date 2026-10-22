@@ -151,6 +151,51 @@ test('快速切换笔记保留最后按键，撤销不跨文档', async ({ page 
   await expect(body(page)).toContainText('第一篇最后按键')
 })
 
+for (const width of [1440, 390]) {
+  for (const mode of ['wysiwyg', 'ir', 'sv']) {
+    test(`${width}px ${mode} 固定工具栏保持实色背景，滚动标题不会透出`, async ({ page }, testInfo) => {
+      await page.setViewportSize({ width, height: 900 })
+      await switchMode(page, 'sv')
+      await body(page).fill('# 滚动时不能透过工具栏的标题\n\n' + '正文段落\n\n'.repeat(60))
+      if (mode !== 'sv') await switchMode(page, mode)
+      const root = page.locator('.snotes-vditor')
+      const toolbar = page.locator('.vditor-toolbar')
+      for (const theme of ['light', 'dark']) {
+        await page.evaluate(theme => { document.documentElement.dataset.theme = theme }, theme)
+        await expect(root).toHaveClass(/(?:^|\s)vditor(?:\s|$)/)
+        if (theme === 'dark') await expect(root).toHaveClass(/\bvditor--dark\b/)
+        else await expect(root).not.toHaveClass(/\bvditor--dark\b/)
+        const expectedColor = theme === 'light' ? 'rgb(255, 255, 255)' : 'rgb(39, 40, 47)'
+        await page.mouse.move(1, 899)
+        await expect(toolbar).toHaveCSS('background-color', expectedColor)
+        const host = page.locator('.editor-body')
+        await host.evaluate(element => { element.scrollTop = 0 })
+        const heading = mode === 'sv' ? page.locator('.vditor-preview h1') : body(page).locator('h1')
+        const barBounds = (await toolbar.boundingBox())!
+        const headingBounds = (await heading.boundingBox())!
+        await host.evaluate((element, distance) => { element.scrollTop = distance }, headingBounds.y - barBounds.y - barBounds.height / 2)
+        const scrolledHeading = (await heading.boundingBox())!
+        expect(scrolledHeading.y).toBeLessThan(barBounds.y + barBounds.height)
+        expect(scrolledHeading.y + scrolledHeading.height).toBeGreaterThan(barBounds.y)
+        expect(await toolbar.evaluate(element => {
+          const rect = element.getBoundingClientRect()
+          for (let x = rect.left + 4; x < rect.right - 4; x += 24) {
+            if (!element.contains(document.elementFromPoint(x, rect.top + rect.height / 2))) return false
+          }
+          return true
+        })).toBe(true)
+        expect((await toolbar.boundingBox())!.y).toBe(barBounds.y)
+        await page.screenshot({ path: testInfo.outputPath(`toolbar-${theme}-${mode}.png`) })
+        await host.evaluate(element => { element.scrollTop = 0 })
+        await tool(page, 'fullscreen').click()
+        await expect(root).toHaveClass(/vditor--fullscreen/)
+        await expect(toolbar).toHaveCSS('background-color', expectedColor)
+        await tool(page, 'fullscreen').click()
+      }
+    })
+  }
+}
+
 test('长文使用分屏快速打开，刷新原文不变，普通笔记仍使用原有模式', async ({ page }) => {
   const markdown = '# 长文性能回归\n\n' + '这是一段中文正文，包含 **加粗** 与 English。\n\n'.repeat(2000)
   const id = crypto.randomUUID()

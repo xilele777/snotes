@@ -21,6 +21,19 @@ beforeEach(() => { MockVditor.instances = []; vi.useFakeTimers({ toFake: ['setTi
 afterEach(() => { mounted.splice(0).forEach(wrapper => wrapper.unmount()); vi.useRealTimers(); vi.clearAllMocks() })
 
 describe('Vditor 保存与同步边界', () => {
+  it('初始化及只读切换保留 Vditor 的主题和全屏样式类', async () => {
+    const { wrapper } = await create()
+    const root = wrapper.get('.snotes-vditor')
+    expect(root.classes()).toContain('vditor')
+    expect(root.classes()).not.toContain('is-initializing')
+    root.element.classList.add('vditor--dark', 'vditor--fullscreen')
+    await wrapper.setProps({ editable: false })
+    expect(root.classes()).toEqual(expect.arrayContaining(['vditor', 'vditor--dark', 'vditor--fullscreen', 'is-readonly']))
+    await wrapper.setProps({ editable: true })
+    expect(root.classes()).toEqual(expect.arrayContaining(['vditor', 'vditor--dark', 'vditor--fullscreen']))
+    expect(root.classes()).not.toContain('is-readonly')
+  })
+
   it('长文优先源码分屏，保留普通笔记的设备偏好且打开不改写正文', async () => {
     localStorage.setItem('snotes_editor_mode', 'ir')
     const value = '# 长文\n\n' + '正文段落。\n\n'.repeat(8000)

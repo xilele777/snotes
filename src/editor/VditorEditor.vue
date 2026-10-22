@@ -113,6 +113,7 @@ watch(() => [props.noteId, props.modelValue] as const, ([id, value]) => {
 
 function applyEditable() {
   if (!ready || !editor) return
+  root.value?.classList.toggle('is-readonly', props.editable === false)
   if (props.editable === false) {
     flush()
     editor.disabled()
@@ -624,6 +625,7 @@ async function initialize() {
       if (disposed) { editor?.destroy(); return }
       ready = true
       initialized.value = true
+      root.value?.classList.remove('is-initializing')
       const instance = editor?.vditor
       if (instance?.undo) {
         const record = instance.undo.addToUndoStack.bind(instance.undo)
@@ -697,7 +699,8 @@ defineExpose({ flush, focus, insertImages })
   <div v-if="loadError" class="editor-loading" role="alert">{{ loadError }}<button type="button" @click="initialize">重试</button></div>
   <EditorLoading v-else-if="!initialized" />
   <p v-if="initialized && longDocumentNotice" class="long-document-notice" role="status">长文已使用分屏模式快速打开，可在工具栏切换编辑模式。</p>
-  <div ref="root" class="snotes-vditor" :class="{ 'is-readonly': editable === false, 'is-initializing': !initialized }" :inert="!initialized" :aria-hidden="!initialized"
+  <!-- Vditor owns runtime classes (theme/fullscreen). Keep Vue's host class static. -->
+  <div ref="root" class="snotes-vditor vditor is-initializing" :inert="!initialized" :aria-hidden="!initialized"
     @mouseover="onOutlineHover"
     @input="onInput" @keydown.capture="onHistoryKeydown" @paste.capture="onPaste" @click.capture="onClick" @touchstart.capture="onToolbarTouch" @change.capture="onLinkChange" @keyup="rememberMode" @dblclick.capture="onDoubleClick" @pointerdown.capture="onPointerDown"
     @pointerup="cancelLongPress" @pointercancel="cancelLongPress" @pointermove="cancelLongPress" />

@@ -1,5 +1,5 @@
 .snotes-vditor.vditor { border: 0; border-radius: 0; min-height: 100%; color: var(--text-primary); background: var(--bg-surface); --panel-background-color: var(--bg-surface); --toolbar-background-color: var(--bg-surface); --textarea-background-color: var(--bg-surface); --border-color: var(--border-light); --second-color: var(--text-secondary); --toolbar-icon-color: var(--text-secondary); --toolbar-icon-hover-color: var(--accent); --toolbar-height: 36px; }
-.snotes-vditor .vditor-toolbar { display: flex; align-items: center; justify-content: flex-start; flex-wrap: nowrap; gap: 3px; overflow-x: auto; scrollbar-width: thin; padding: 6px 18px !important; border-bottom: 1px solid var(--border-light); z-index: 10; }
+.snotes-vditor .vditor-toolbar { display: flex; align-items: center; justify-content: flex-start; flex-wrap: nowrap; gap: 3px; overflow-x: auto; scrollbar-width: thin; padding: 6px 18px !important; background: var(--bg-surface); border-bottom: 1px solid var(--border-light); z-index: 10; }
 .snotes-vditor .vditor-toolbar > .vditor-toolbar__item { float: none; flex: 0 0 auto; padding: 0; }
 .snotes-vditor .vditor-toolbar > .vditor-toolbar__item > .vditor-tooltipped { width: 28px; border-radius: 5px; }
 .snotes-vditor .vditor-toolbar__item input[type='file'] { width: 100%; }
