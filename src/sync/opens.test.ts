@@ -116,3 +116,55 @@ describe('syncOpens 补齐未知的聚合值', () => {
     expect(sentBody().want).toEqual([])
   })
 })
+
+describe('opens 点名队列（不再每轮全表扫描）', () => {
+  const note = (id: string, over: Record<string, unknown> = {}) => ({
+    id, group_id: null, title: '', summary: '', thumbnail: null, version: 1, prop_version: 1,
+    star: 0, top: 0, skin_color: null, invalid: 0, create_time: 1, update_time: 1, body: '',
+    body_version: 1, dirty: 'none', open_count: 0, last_open_time: 0, ...over,
+  })
+
+  it('新建笔记直接进队列，无需回填扫描', async () => {
+    const { createNote } = await import('../db/repo')
+    const created = await createNote('新笔记')
+    expect(((await db.meta.get('opens_unknown'))?.value as string[])).toContain(created.id)
+  })
+
+  it('队列未建立时一次性回填旧笔记：未知的问、已知的不问、墓碑不问，回答后出队', async () => {
+    await db.notes.bulkAdd([note('a'), note('b', { open_others: 1, open_others_time: 1 }), note('t', { invalid: 2 })] as never[])
+    await setMeta('device_id', 'device-a')
+    apiFetch.mockResolvedValue({ opens: [{ note_id: 'a', others_count: 0, others_last_open_time: 0 }], server_time: 9 })
+
+    await syncOpens()
+
+    const first = JSON.parse((apiFetch.mock.calls[0][1] as RequestInit).body as string)
+    expect(first.want).toEqual(['a'])
+    // 服务端已回答 a，队列清空；这之后不再有全表扫描
+    expect(((await db.meta.get('opens_unknown'))?.value as string[])).toEqual([])
+  })
+
+  it('回答过的笔记从队列出队；未被回答的（旧服务端）保留下一轮再问', async () => {
+    await db.notes.bulkAdd([note('a'), note('b')] as never[])
+    await setMeta('device_id', 'device-a')
+    await setMeta('opens_unknown', ['a', 'b'])
+    apiFetch.mockResolvedValue({ opens: [{ note_id: 'a', others_count: 0, others_last_open_time: 0 }], server_time: 9 })
+
+    await syncOpens()
+
+    expect(((await db.meta.get('opens_unknown'))?.value as string[])).toEqual(['b'])
+  })
+
+  it('问询前发现已被本地删除的笔记直接丢弃，不再点名', async () => {
+    // 队列里的 gone 没有对应笔记行（已被物理删除）
+    await db.notes.add(note('kept') as never)
+    await setMeta('device_id', 'device-a')
+    await setMeta('opens_unknown', ['gone', 'kept'])
+    apiFetch.mockResolvedValue({ opens: [{ note_id: 'kept', others_count: 0, others_last_open_time: 0 }], server_time: 9 })
+
+    await syncOpens()
+
+    const first = JSON.parse((apiFetch.mock.calls[0][1] as RequestInit).body as string)
+    expect(first.want).toEqual(['kept'])
+    expect(((await db.meta.get('opens_unknown'))?.value as string[])).toEqual([])
+  })
+})

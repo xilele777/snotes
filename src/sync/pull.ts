@@ -13,6 +13,7 @@ import { createConflictCopy, getMeta, setMeta } from '../db/repo'
 import { deleteHistoryIn } from '../db/history'
 import { db } from '../db/schema'
 import { emitRemoteApplied } from './signal'
+import { enqueueOpensUnknownIn } from './opens'
 import { SYNC_CHECKPOINT_KEY } from './checkpoint'
 
 export const SYNC_CURSOR_KEY = 'sync_cursor'
@@ -156,7 +157,11 @@ export async function pullOnce(reconcile = false): Promise<PullResult> {
     if (plan.insert.length > 0) {
       // 必须是 bulkPut：since 用的是 >=，同一条笔记本就可能在一页里重复出现，
       // bulkAdd 会抛 ConstraintError 让整轮失败，游标永不推进，同步彻底卡死。
-      await db.notes.bulkPut(plan.insert.map(toLocalNote))
+      // 新笔记的 open_others 未知，与插入同事务进 opens 点名队列。
+      await db.transaction('rw', db.notes, db.meta, async () => {
+        await db.notes.bulkPut(plan.insert.map(toLocalNote))
+        await enqueueOpensUnknownIn(plan.insert.map((note) => note.id))
+      })
     }
 
     for (const note of plan.updateProp) {
@@ -183,7 +188,7 @@ export async function pullOnce(reconcile = false): Promise<PullResult> {
     }
 
     if (plan.deleteLocal.length > 0) {
-      await db.transaction('rw', db.notes, db.outbox, db.history, db.knowledgeBaseNoteStates, async () => {
+      await db.transaction('rw', db.notes, db.outbox, db.history, db.knowledgeBaseNoteStates, db.meta, async () => {
         for (const removed of plan.deleteLocal) {
           const local = await db.notes.get(removed.id)
           const pending = await db.outbox.where('note_id').equals(removed.id).toArray()

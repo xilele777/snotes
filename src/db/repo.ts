@@ -3,7 +3,7 @@ import { homeHiddenGroupIds, isHiddenFromHome } from '../../shared/home-feed'
 import { mergeTask } from '../../shared/outbox'
 import type { LocalNote, NoteMeta, OutboxTask } from '../../shared/types'
 import { emitLocalWrite } from '../sync/signal'
-import { scheduleOpensSync } from '../sync/opens'
+import { enqueueOpensUnknownIn, scheduleOpensSync } from '../sync/opens'
 import { db } from './schema'
 import { deleteHistoryIn, getHistoryEntry, maybeSnapshotIn, recordSnapshotIn } from './history'
 
@@ -83,9 +83,11 @@ function buildNote(content: string, options: CreateOptions): LocalNote {
   }
 }
 
-/** 事务内部用：写入笔记行并入队 create 任务，调用方负责把它包进 db.transaction */
+/** 事务内部用：写入笔记行并入队 create 任务，调用方负责把它包进 db.transaction（须含 db.meta） */
 async function insertNoteIn(note: LocalNote): Promise<void> {
   await db.notes.add(note)
+  // 新笔记的 open_others 未知，进 opens 点名队列（见 sync/opens.ts）
+  await enqueueOpensUnknownIn([note.id])
   await enqueueIn(
     newTask({
       note_id: note.id,
@@ -110,7 +112,7 @@ async function insertNoteIn(note: LocalNote): Promise<void> {
 export async function createNote(content: string, options: CreateOptions = {}): Promise<LocalNote> {
   const note = buildNote(content, options)
 
-  await db.transaction('rw', db.notes, db.outbox, () => insertNoteIn(note))
+  await db.transaction('rw', db.notes, db.outbox, db.meta, () => insertNoteIn(note))
 
   emitLocalWrite()
   return note
@@ -151,7 +153,7 @@ export async function createConflictCopy(
 export async function updateBody(id: string, content: string, base?: string): Promise<boolean> {
   const { title, summary, thumbnail } = derive(content)
 
-  const conflictCreated = await db.transaction('rw', db.notes, db.outbox, db.history, async () => {
+  const conflictCreated = await db.transaction('rw', db.notes, db.outbox, db.history, db.meta, async () => {
     const note = await db.notes.get(id)
     if (!note) return false
 

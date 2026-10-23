@@ -480,7 +480,7 @@ export async function importBackup(
     if (!noteFits(h.body)) throw new Error('图片地址替换后历史正文超过 1 MiB')
   }
 
-  await db.transaction('rw', [db.notes, db.groups, db.outbox, db.history, ...knowledgeBaseTables()], async () => {
+  await db.transaction('rw', [db.notes, db.groups, db.outbox, db.history, db.meta, ...knowledgeBaseTables()], async () => {
 
     // 分组按名字对齐：本机已有同名分组就直接复用，没有才新建。
     // 重复导入同一个备份、或备份里的分组与本机重名，都不该再多出一个同名分组。

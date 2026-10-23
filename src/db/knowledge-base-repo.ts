@@ -131,7 +131,7 @@ export async function snapshotIn(id: string, nodes: TocNode[], source: 'conflict
 }
 
 export async function applyKnowledgeBaseRemote(remote: KnowledgeBaseRemote, reconcile = false) {
-  await db.transaction('rw', [...knowledgeBaseTables(), db.notes, db.outbox, db.history], async () => {
+  await db.transaction('rw', [...knowledgeBaseTables(), db.notes, db.outbox, db.history, db.meta], async () => {
     const id = remote.book.id
     const local = await db.knowledgeBases.get(id)
     if (remote.book.deleted) {
