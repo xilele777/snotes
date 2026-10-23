@@ -160,8 +160,13 @@ export async function prepareKnowledgeBaseSync(): Promise<void> {
   }
 }
 
-export async function syncKnowledgeBases(): Promise<{ error: string | null; failed: number }> {
-  await prepareKnowledgeBaseSync()
+/**
+ * prepared：调用方（同步引擎）本轮已经跑过 prepareKnowledgeBaseSync 时传 true，
+ * 跳过重复的 checkpoint 校验请求。同一轮里校验两次没有意义——期间真有异常，
+ * 笔记本写入自身还有 base 版本 CAS 与 epoch 头兜底，下一轮 prepare 也能对账。
+ */
+export async function syncKnowledgeBases(prepared = false): Promise<{ error: string | null; failed: number }> {
+  if (!prepared) await prepareKnowledgeBaseSync()
   await push()
   let error: string | null = null
   try { await pull() } catch (e) {

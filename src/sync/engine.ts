@@ -66,7 +66,8 @@ export function syncNow(): Promise<void> {
         if (pulled.trashRetentionDays !== undefined) ui.trashRetentionDays = pulled.trashRetentionDays
         ui.lastSyncError = result.failed > 0 ? '部分本地改动尚未同步，将保留并重试。' : null
         if (hasToken.value) {
-          const libraries = await syncKnowledgeBases()
+          // 本轮开头已 prepareKnowledgeBaseSync，这里跳过重复校验，省一个往返
+          const libraries = await syncKnowledgeBases(true)
           ui.knowledgeBaseSyncError = libraries.error
           ui.failedCount += libraries.failed
         }
