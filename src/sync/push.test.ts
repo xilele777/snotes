@@ -255,17 +255,47 @@ describe('pushOnce', () => {
     expect(await db.outbox.count()).toBe(1)
   })
 
-  it('401 短路整轮——clearToken 后剩余任务注定 401，break 不空转', async () => {
+  it('401 短路整轮——clearToken 后剩余任务注定 401，停止起链不空转', async () => {
     await createNote('a')
     await createNote('b')
     apiFetch.mockRejectedValue(new ApiError(401, 'unauthorized'))
 
     const result = await pushOnce()
 
-    // 只发第一条就被 401 打断；outbox 里两条都原样留着，登录后首轮续推
-    expect(apiFetch).toHaveBeenCalledTimes(1)
-    expect(result.failed).toBe(1)
+    // 并行窗口内两个链同时起跑，各自收到一次 401；再多任务也只会漏出
+    // PUSH_CONCURRENCY 个请求，而不是整队空转。outbox 里两条都原样留着，登录后首轮续推
+    expect(apiFetch).toHaveBeenCalledTimes(2)
+    expect(result.failed).toBe(2)
     expect(await db.outbox.count()).toBe(2)
+  })
+
+  it('不同笔记的链并行发送，同一笔记的任务仍按序串行', async () => {
+    for (let i = 0; i < 5; i++) await createNote(`n${i}`)
+    let inFlight = 0
+    let maxInFlight = 0
+    const gates: Array<() => void> = []
+    apiFetch.mockImplementation(() => {
+      inFlight++
+      maxInFlight = Math.max(maxInFlight, inFlight)
+      return new Promise(resolve => {
+        gates.push(() => { inFlight--; resolve({ version: 1, prop_version: 1, update_time: 1, conflicted: false }) })
+      })
+    })
+
+    const pushing = pushOnce()
+    // 池大小 3：先起 3 条链，另外 2 条在排队
+    await vi.waitFor(() => expect(gates).toHaveLength(3))
+    expect(maxInFlight).toBe(3)
+    gates.splice(0).forEach(gate => gate())
+
+    // 放行后剩下的链继续起跑并发完
+    await vi.waitFor(() => expect(gates).toHaveLength(2))
+    gates.splice(0).forEach(gate => gate())
+    const result = await pushing
+
+    expect(result.sent).toBe(5)
+    expect(maxInFlight).toBeLessThanOrEqual(3)
+    expect(await db.outbox.count()).toBe(0)
   })
 
   it('404 not_found 保留离线正文任务供人工恢复', async () => {

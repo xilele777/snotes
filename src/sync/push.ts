@@ -136,91 +136,134 @@ async function failIfCurrent(task: OutboxTask, fields: Partial<OutboxTask>) {
   })
 }
 
+/**
+ * 并行发送上限。与拉正文的批次并发数保持一致：独立请求共享浏览器对同域的
+ * 少量连接，开得再多也只是排队，还会挤占正文批次的连接。
+ */
+const PUSH_CONCURRENCY = 3
+
 export async function pushOnce(): Promise<PushResult> {
   const now = Date.now()
   const result: PushResult = { sent: 0, failed: 0, failedTotal: 0, conflicts: [] }
 
   const tasks = await db.outbox.orderBy('id').toArray()
 
-  // create 尚未成功（本轮被退避跳过、请求失败或已标记 failed）的笔记 / 分组，
-  // 它名下排在后面的 body/prop/trash… 任务这一轮一律挂起：服务端还没有这一行，
-  // 发出去只会 404，而 404 路径会把任务当作「服务端已物理删除」丢弃——
-  // 等 create 重试成功后，这些编辑就再也推不上去了。
-  const blocked = new Set<string>()
-
+  // 同一条笔记（分组任务的 note_id 就是 group_id）的任务串成一条链，链内严格按
+  // 入队顺序：create → body/prop/trash 的因果不能颠倒。不同链之间互不依赖，
+  // 用小并发池并行——批量导入、恢复备份或重试全部时不再一条条等往返。
+  const chains: OutboxTask[][] = []
+  const byNote = new Map<string, OutboxTask[]>()
   for (const task of tasks) {
-    if (blocked.has(task.note_id)) continue
+    let chain = byNote.get(task.note_id)
+    if (!chain) { chain = []; byNote.set(task.note_id, chain); chains.push(chain) }
+    chain.push(task)
+  }
 
-    if (task.failed === 1 || task.next_at > now) {
-      if (task.kind === 'create') blocked.add(task.note_id)
-      continue
-    }
+  // unauthorized：令牌已失效（clearToken 已发生），剩余任务注定 401，停止起链、
+  // 在途请求各自收尾。reset：恢复围栏命中，必须终止整轮并在结束时向上抛出。
+  let stop: 'none' | 'unauthorized' | 'reset' = 'none'
+  let stopError: unknown
+  // 读取走函数：stop 只在 runChain 闭包里被改写，直接读会被 TS 收窄成 'none'
+  const stopState = () => stop
 
-    try {
-      const ack = await send(task)
+  async function runChain(chain: OutboxTask[]): Promise<void> {
+    // create 尚未成功（本轮被退避跳过、请求失败或已标记 failed）的笔记 / 分组，
+    // 它名下排在后面的 body/prop/trash… 任务这一轮一律挂起：服务端还没有这一行，
+    // 发出去只会 404，而 404 路径会把任务当作「服务端已物理删除」丢弃——
+    // 等 create 重试成功后，这些编辑就再也推不上去了。
+    let blocked = false
 
-      // 后写者胜：本地这版已经成了服务端正文，再存它一份只会得到两条一样的笔记。
-      // 真正会丢的是被覆盖的那一版——服务端随 conflicted 把它带回来，副本存它。
-      // 只有正文冲突才带 previous_content；属性被覆盖不值得多出一条笔记。
-      if (ack.conflicted && typeof ack.previous_content === 'string') {
-        result.conflicts.push({ note_id: task.note_id, body: ack.previous_content })
+    for (const task of chain) {
+      if (blocked || stop !== 'none') return
+
+      if (task.failed === 1 || task.next_at > now) {
+        if (task.kind === 'create') blocked = true
+        continue
       }
 
-      await finalizeAck(task, ack)
-      result.sent++
-    } catch (error) {
-      if (task.kind === 'create') blocked.add(task.note_id)
+      try {
+        const ack = await send(task)
 
-      const status = error instanceof ApiError ? error.status : 0
-      // Recovery fencing must stop the entire round without changing task
-      // state. The next preflight will reconcile before replaying any write.
-      if (status === 409 && (error as ApiError).data && ((error as ApiError).data as { error?: string }).error === 'sync_reset_required') throw error
-      const failure = { last_error: `${status ? `HTTP ${status}: ` : ''}${error instanceof Error ? error.message : String(error)}`, failed_at: Date.now() }
+        // 后写者胜：本地这版已经成了服务端正文，再存它一份只会得到两条一样的笔记。
+        // 真正会丢的是被覆盖的那一版——服务端随 conflicted 把它带回来，副本存它。
+        // 只有正文冲突才带 previous_content；属性被覆盖不值得多出一条笔记。
+        if (ack.conflicted && typeof ack.previous_content === 'string') {
+          result.conflicts.push({ note_id: task.note_id, body: ack.previous_content })
+        }
 
-      // 401 不消耗任务：令牌修复后应能续传。
-      // 同时必须 break：clearToken 已经把令牌清了，剩下每条任务再发也是注定 401。
-      // 不 break 的话，outbox 里几百条任务就是几百个空转请求，白烧流量、还拖慢界面
-      // 切回 TokenGate。break 后这些任务原样留在库里，重新登录后的首轮继续推。
-      if (status === 401) {
-        result.failed++
-        break
-      }
+        await finalizeAck(task, ack)
+        result.sent++
+      } catch (error) {
+        if (task.kind === 'create') blocked = true
 
-      // 服务端缺失正文目标时保留任务，供用户导出/恢复，不能静默丢掉离线编辑。
-      if (status === 404 || status === 410) {
-        if (status === 410) {
-          await db.transaction('rw', [db.notes, db.outbox, db.history, db.knowledgeBaseNoteStates], async () => {
-            const local = await db.notes.get(task.note_id)
-            const queued = await db.outbox.where('note_id').equals(task.note_id).toArray()
-            if (local?.body.trim() && queued.some(row => row.kind === 'body' || row.kind === 'create')) await createConflictCopy(local, local.body)
-            await db.notes.delete(task.note_id)
-            await deleteHistoryIn([task.note_id])
-            await db.outbox.where('note_id').equals(task.note_id).delete()
-            await db.knowledgeBaseNoteStates.put({ id: task.note_id, state: 'purged' })
-          })
+        const status = error instanceof ApiError ? error.status : 0
+        // Recovery fencing must stop the entire round without changing task
+        // state. The next preflight will reconcile before replaying any write.
+        if (status === 409 && (error as ApiError).data && ((error as ApiError).data as { error?: string }).error === 'sync_reset_required') {
+          stop = 'reset'
+          stopError = error
+          return
+        }
+        const failure = { last_error: `${status ? `HTTP ${status}: ` : ''}${error instanceof Error ? error.message : String(error)}`, failed_at: Date.now() }
+
+        // 401 不消耗任务：令牌修复后应能续传。同时必须停掉其余链：
+        // clearToken 已经把令牌清了，剩下每条任务再发也是注定 401。
+        // 不停的话，outbox 里几百条任务就是几百个空转请求，白烧流量、还拖慢界面
+        // 切回 TokenGate。停掉后这些任务原样留在库里，重新登录后的首轮继续推。
+        if (status === 401) {
+          result.failed++
+          stop = 'unauthorized'
+          return
+        }
+
+        // 服务端缺失正文目标时保留任务，供用户导出/恢复，不能静默丢掉离线编辑。
+        if (status === 404 || status === 410) {
+          if (status === 410) {
+            await db.transaction('rw', [db.notes, db.outbox, db.history, db.knowledgeBaseNoteStates, db.meta], async () => {
+              const local = await db.notes.get(task.note_id)
+              const queued = await db.outbox.where('note_id').equals(task.note_id).toArray()
+              if (local?.body.trim() && queued.some(row => row.kind === 'body' || row.kind === 'create')) await createConflictCopy(local, local.body)
+              await db.notes.delete(task.note_id)
+              await deleteHistoryIn([task.note_id])
+              await db.outbox.where('note_id').equals(task.note_id).delete()
+              await db.knowledgeBaseNoteStates.put({ id: task.note_id, state: 'purged' })
+            })
+            continue
+          }
+          if (task.kind === 'body') {
+            await failIfCurrent(task, { failed: 1, ...failure })
+            result.failed++
+          } else await deleteIfCurrent(task)
           continue
         }
-        if (task.kind === 'body') {
+
+        // 不可重试的 4xx 标记失败留在库里。丢弃等于静默吞掉用户的一次写入，
+        // 用户既看不到也救不回来。留着才能提示、才能手动重试。
+        if (status >= 400 && status < 500 && !isRetriableStatus(status)) {
           await failIfCurrent(task, { failed: 1, ...failure })
           result.failed++
-        } else await deleteIfCurrent(task)
-        continue
-      }
+          continue
+        }
 
-      // 不可重试的 4xx 标记失败留在库里。丢弃等于静默吞掉用户的一次写入，
-      // 用户既看不到也救不回来。留着才能提示、才能手动重试。
-      if (status >= 400 && status < 500 && !isRetriableStatus(status)) {
-        await failIfCurrent(task, { failed: 1, ...failure })
+        const retry = task.retry + 1
+        await failIfCurrent(task, { retry, next_at: Date.now() + backoffDelay(retry - 1), ...failure })
         result.failed++
-        continue
       }
-
-      const retry = task.retry + 1
-      await failIfCurrent(task, { retry, next_at: Date.now() + backoffDelay(retry - 1), ...failure })
-      result.failed++
     }
   }
 
+  let next = 0
+  const worker = async (): Promise<void> => {
+    for (;;) {
+      if (stop !== 'none') return
+      const index = next++
+      if (index >= chains.length) return
+      await runChain(chains[index])
+    }
+  }
+  await Promise.all(Array.from({ length: Math.min(PUSH_CONCURRENCY, chains.length) }, worker))
+
+  if (stopState() === 'reset') throw stopError
   result.failedTotal = await db.outbox.where('failed').equals(1).count()
   return result
 }
