@@ -12,6 +12,8 @@ import { db } from '../db/schema'
 import { addKnowledgeBaseNode } from '../db/knowledge-base-repo'
 import { workspacePreferences } from '../workspace-preferences'
 import { notify } from '../notify'
+import { hasToken } from '../api/token'
+import { refreshNoteBodyOnOpen } from '../sync/note-body'
 import { unsavedDrafts } from '../editor/save-session'
 
 export const useNotesStore = defineStore('notes', () => {
@@ -162,6 +164,11 @@ export const useNotesStore = defineStore('notes', () => {
     if (currentId.value === id) return
     pendingCount = true
     currentId.value = id
+    // WPS §7 打开笔记点位：后台对一次正文版本校验（带本地 body_version），
+    // 服务端更新了才回填。离线/未登录/有未确认编辑时静默跳过，不产生请求风暴。
+    if (hasToken.value && !hasUnsavedDraft(id)) {
+      void refreshNoteBodyOnOpen(id).then((fresh) => { if (fresh) applyRemoteBody(id, fresh) }).catch(() => undefined)
+    }
   }
 
   /**
