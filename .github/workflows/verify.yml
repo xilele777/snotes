@@ -27,6 +27,7 @@ jobs:
       fail-fast: false
       matrix:
         backend: [worker, server]
+        shard: [1, 2]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -34,15 +35,22 @@ jobs:
           node-version: 24
           cache: npm
       - run: npm ci
+      # 浏览器二进制按 lockfile 哈希缓存；命中后 --with-deps 只补系统库，省去每次 ~150MB 下载
+      - uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
       - run: npx playwright install --with-deps chromium
+      # e2e 内部保持 workers:1 串行（测试共享服务端状态），跨机器按文件分片并行：
+      # 每片各自起全新的 webServer 与本地 D1，spec 文件自带 resetServer，互不依赖
       - if: matrix.backend == 'worker'
-        run: npm run test:e2e
+        run: npm run test:e2e -- --shard=${{ matrix.shard }}/2
       - if: matrix.backend == 'server'
-        run: npm run test:e2e:server
+        run: npm run test:e2e:server -- --shard=${{ matrix.shard }}/2
       - uses: actions/upload-artifact@v4
         if: failure()
         with:
-          name: playwright-${{ matrix.backend }}
+          name: playwright-${{ matrix.backend }}-shard${{ matrix.shard }}
           path: |
             test-results/
             playwright-report/
