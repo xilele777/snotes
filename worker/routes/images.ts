@@ -55,7 +55,9 @@ imagesRoutes.post('/api/images/upload', async (c) => {
   }
 
   if (await c.env.DB.prepare('SELECT note_id FROM knowledge_base_deleted_note WHERE note_id = ?').bind(noteId).first()) {
-    await c.env.R2.delete(fileKey)
+    // 数据库行从未暴露给客户端；对象删除失败只会留下一个无人引用的惰性对象
+    //（已提交图片本就暂缓回收），仍按删除判定返回 410，不能让 500 盖过结论。
+    try { await c.env.R2.delete(fileKey) } catch { /* 判定不变 */ }
     return c.json({ error: 'permanently_deleted' }, 410)
   }
 

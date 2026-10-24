@@ -1,4 +1,5 @@
 import { Hono } from 'hono'
+import { bodyLimit } from 'hono/body-limit'
 import { auth } from './auth'
 import { groupsRoutes } from './routes/groups'
 import { knowledgeBasesRoutes } from './routes/knowledge-bases'
@@ -21,6 +22,11 @@ export function createApp() {
 
   app.route('/', agentRoutes)
   app.use('/api/*', auth)
+  // 与 server 版的全局上限对齐（server/app.ts 的 12MB）：owner 路由此前没有请求体
+  // 上限，畸形客户端可推超大 JSON，在 zod/noteFits 拒绝前先整包解析进内存。
+  // agent 路由的链路在前面就已终止、不受这条影响（自带 2MB）；knowledge-bases
+  // 自带更紧的上限，与这条叠加仍以更紧者为准；/api/images/upload 的 10MB 在 12MB 之内。
+  app.use('/api/*', bodyLimit({ maxSize: 12 * 1024 * 1024, onError: c => c.json({ error: 'payload_too_large' }, 413) }))
   app.use('/api/*', async (c, next) => {
     // Reads used for recovery remain available with a stale epoch. Mutations
     // from an old tab must stop until that tab completes reconciliation.

@@ -49,6 +49,29 @@ describe('auth 中间件', () => {
   })
 })
 
+describe('全局请求体上限', () => {
+  // owner 路由统一 12MB（与 server 版对齐）：超大 JSON 在进入路由处理前被拒，
+  // 不会先整包解析进内存再被 zod/noteFits 拒绝。
+  it('超过 12MB 的请求体回 413 payload_too_large', async () => {
+    const res = await app.request('/api/sync/pull', {
+      method: 'POST',
+      headers: { ...OK, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ since: 0, pad: 'x'.repeat(12 * 1024 * 1024) }),
+    }, env)
+    expect(res.status).toBe(413)
+    expect(await res.json<{ error?: string }>()).toMatchObject({ error: 'payload_too_large' })
+  })
+
+  it('未认证的超大请求体仍先回 401（鉴权在前，不解析请求体）', async () => {
+    const res = await app.request('/api/sync/pull', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: 'x'.repeat(12 * 1024 * 1024 + 1024),
+    }, env)
+    expect(res.status).toBe(401)
+  })
+})
+
 describe('图片专用 Cookie 分支', () => {
   const cookie = (v: string) => ({ Cookie: `${IMAGE_COOKIE}=${v}` })
 

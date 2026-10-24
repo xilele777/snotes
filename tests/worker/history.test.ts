@@ -1,6 +1,7 @@
 import { env } from 'cloudflare:test'
 import { beforeEach, describe, expect, it } from 'vitest'
 import { HISTORY_KEEP } from '../../shared/history-rules'
+import { MAX_NOTE_BYTES } from '../../shared/limits'
 import type { NoteHistoryResponse } from '../../shared/types'
 import { api, json, noteReq, resetDb } from './helpers'
 
@@ -77,6 +78,22 @@ describe('云端正文历史', () => {
 
     const rows = await history(req.id)
     expect(rows).toEqual([expect.objectContaining({ body: '# 当前', time })])
+  })
+
+  it('POST /history 拒绝超过正文上限的快照；time 范围外的值回落到当前行的 update_time', async () => {
+    const req = await seedNote('# 当前')
+    const note = await env.DB.prepare('SELECT update_time FROM note WHERE id = ?').bind(req.id).first<{ update_time: number }>()
+
+    const oversized = await json(`/api/notes/${req.id}/history`, 'POST', { body: 'x'.repeat(MAX_NOTE_BYTES + 1) })
+    expect(oversized.status).toBe(413)
+
+    let res = await json(`/api/notes/${req.id}/history`, 'POST', { body: '# 快照一', time: -5 })
+    expect(await res.json()).toEqual({ ok: true, recorded: true })
+    res = await json(`/api/notes/${req.id}/history`, 'POST', { body: '# 快照二', time: Date.now() + 10 * 60_000 })
+    expect(await res.json()).toEqual({ ok: true, recorded: true })
+
+    const rows = await history(req.id)
+    expect(rows.map((r) => r.time)).toEqual([note!.update_time, note!.update_time])
   })
 
   it('彻底删除时连带清理历史；墓碑与不存在的笔记回 404', async () => {

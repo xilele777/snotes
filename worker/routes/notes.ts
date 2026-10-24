@@ -341,13 +341,20 @@ notesRoutes.post('/api/notes/:id/history', async (c) => {
   const id = c.req.param('id')
   const req = await c.req.json<{ body?: unknown; time?: unknown }>().catch(() => null)
   if (!req || typeof req.body !== 'string') return c.json({ error: 'invalid_body' }, 400)
+  // 快照与正文同一份大小契约（noteFits）：不设限的话，畸形客户端可把任意大小的
+  // 字符串写进 note_history——修剪只限条数（20 条）不限单条大小。
+  if (!noteFits(req.body)) return c.json({ error: 'content_too_large', max_bytes: 1024 * 1024 }, 413)
   const current = await readCurrent(c.env, id)
   if (!current) return c.json({ error: 'not_found' }, 404)
   if (!req.body.trim()) return c.json({ ok: true, recorded: false })
   const last = await latestNoteHistory(c.env, id)
   if (last?.body === req.body) return c.json({ ok: true, recorded: false })
-  const time = typeof req.time === 'number' && Number.isFinite(req.time) ? req.time : current.update_time
-  await recordNoteHistory(c.env, id, req.body, time)
+  // time 表示「这版正文最后落库的时刻」。范围外的值不可信：远期未来时间会永远
+  // 排在最前并躲过按龄修剪。按未知处理，回落到当前行的 update_time（容忍 1 分钟时钟偏差）。
+  const saneTime = typeof req.time === 'number' && Number.isSafeInteger(req.time)
+    && req.time >= 0 && req.time <= nowMs() + 60_000
+    ? req.time : current.update_time
+  await recordNoteHistory(c.env, id, req.body, saneTime)
   return c.json({ ok: true, recorded: true })
 })
 

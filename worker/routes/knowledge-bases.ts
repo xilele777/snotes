@@ -78,7 +78,10 @@ knowledgeBasesRoutes.post('/api/knowledge-bases/sync/pull', async c => {
   const req = await c.req.json().catch(() => null)
   const since = req?.since ?? 0
   const after = req?.after ?? since
-  const clock = (await c.env.DB.prepare('SELECT seq FROM knowledge_base_clock WHERE id = 1').first<{ seq: number }>())!.seq
+  // 与 notes 版 pull 同款报错：迁移未应用时给出明确原因，而不是 TypeError 变 500。
+  const clockRow = await c.env.DB.prepare('SELECT seq FROM knowledge_base_clock WHERE id = 1').first<{ seq: number }>()
+  if (!clockRow) throw new Error('Missing knowledge base clock; apply database migrations')
+  const clock = clockRow.seq
   const until = req?.until ?? clock
   // 先校验再发 checkpoint：非整数的 until 此前会先写进 checkpoint 表，只能等 TTL 清理
   if (![since, after, until].every(n => Number.isSafeInteger(n) && n >= 0) || after < since || until > clock || since > until) {
