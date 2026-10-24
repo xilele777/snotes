@@ -136,3 +136,31 @@ export function flattenToc(nodes: TocNode[]): { node: TocNode; depth: number; pa
   visit(null, [])
   return rows
 }
+
+/**
+ * 目录里「对用户可见」的节点：引用了回收站/已彻底删除笔记的条目隐藏；
+ * 某章节下的笔记条目全部被隐藏时，整个章节子树一并隐藏。
+ * 本机有笔记行时以 invalid 为准；没有行时（尚未同步/已物理回收）看远端状态缓存。
+ * KnowledgeBaseHome 与 KnowledgeBaseWorkspace 共用一份判定。
+ */
+export function visibleTocNodes(
+  nodes: TocNode[],
+  noteInvalid: (noteId: string) => number | undefined,
+  remoteState: (noteId: string) => string | undefined,
+): TocNode[] {
+  const hidden = new Set(
+    nodes
+      .filter((node) => {
+        if (!node.note_id) return false
+        const invalid = noteInvalid(node.note_id)
+        return invalid !== undefined ? invalid !== 0 : ['trash', 'purged'].includes(remoteState(node.note_id) ?? '')
+      })
+      .map((node) => node.id),
+  )
+  for (const folder of nodes.filter((node) => node.kind === 'folder')) {
+    const subtree = descendantsOf(nodes, folder.id)
+    const refs = nodes.filter((node) => subtree.has(node.id) && node.kind === 'note')
+    if (refs.length && refs.every((node) => hidden.has(node.id))) for (const id of subtree) hidden.add(id)
+  }
+  return nodes.filter((node) => !hidden.has(node.id))
+}

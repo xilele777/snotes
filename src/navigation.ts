@@ -2,7 +2,6 @@ import { useNotesStore } from './stores/notes'
 import { useUiStore } from './stores/ui'
 import type { WorkspacePage, SettingsTab, UiView, WorkspacePosition } from './stores/ui'
 import type { ListView } from './db/repo'
-import { getNote, isNoteHiddenFromHome } from './db/repo'
 import { nextTick, watch, type WatchStopHandle } from 'vue'
 import { db } from './db/schema'
 import { notify } from './notify'
@@ -147,31 +146,6 @@ export async function openNotebookLink(bookId: string, noteId: string | null) {
   ui.mobilePane = 'editor'
 }
 
-/** A management link replaces the settings layer so Back returns to its original workspace. */
-export async function openManagedView(target: 'hidden' | 'trash') {
-  navigationGeneration++
-  const ui = useUiStore()
-  const notes = useNotesStore()
-  if (!ui.workspacePage) pushNav()
-  ui.workspacePage = null
-  ui.drawerOpen = false
-  ui.restorePosition = null
-  ui.query = ''
-  ui.activeGroupId = null
-  ui.activeKnowledgeBaseId = null
-  ui.activeTocNodeId = null
-  ui.knowledgeBaseFilter = 'active'
-  ui.view = target
-  notes.currentId = null
-  ui.mobilePane = 'list'
-  await notes.load()
-  if (!ui.workspacePage && ui.view === target) {
-    replaceSnapshot()
-    await nextTick()
-    document.querySelector<HTMLElement>('.list-pane .header-title, .kb-header h2')?.focus({ preventScroll: true })
-  }
-}
-
 /**
  * 统计、设置作为独立工作区页面，保留原笔记位置和编辑器实例。
  * 页面之间切换替换当前条目，返回按钮和浏览器返回都回到原工作区。
@@ -194,40 +168,6 @@ export function closeWorkspacePage() {
   if (!ui.workspacePage) return
   if (navigationDepth > 0 && history.state?.workspacePage) popNav()
   else ui.workspacePage = null
-}
-
-/** @deprecated 保留给旧调用点；等同于 openWorkspacePage('stats') */
-export function openStats() {
-  openWorkspacePage('stats')
-}
-
-/** @deprecated 等同于 closeWorkspacePage() */
-export function closeStats() {
-  closeWorkspacePage()
-}
-
-/** 榜单中的笔记是一次明确跳转，用目标笔记替换统计页这层历史。 */
-export async function openStatsNote(id: string) {
-  const generation = ++navigationGeneration
-  const ui = useUiStore()
-  const notes = useNotesStore()
-  ui.workspacePage = null
-  ui.drawerOpen = false
-  ui.restorePosition = null
-  ui.query = ''
-  // 不上首页的笔记不在「全部笔记」里，直接跳过去会被 load() 的
-  // 「选中项必须在当前列表里」不变量清掉，落到别的笔记上。
-  const target = await getNote(id)
-  const hidden = target ? await isNoteHiddenFromHome(target) : false
-  if (generation !== navigationGeneration) return
-  ui.activeKnowledgeBaseId = null
-  ui.activeTocNodeId = null
-  ui.view = hidden ? 'hidden' : 'all'
-  ui.activeGroupId = null
-  notes.open(id)
-  ui.mobilePane = 'editor'
-  await notes.load()
-  if (ui.view === (hidden ? 'hidden' : 'all') && notes.currentId === id) replaceSnapshot()
 }
 
 /** <720px 的移动端布局：只有在这里，「进详情」才是一层真正的界面切换 */

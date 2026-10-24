@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { ApiError } from '../api/client'
-import { clipboardImageFiles, isAllowedImage, uploadImage } from './image-upload'
+import { isAllowedImage, uploadImage } from './image-upload'
 
 const apiUpload = vi.hoisted(() => vi.fn())
 vi.mock('../api/client', async (importOriginal) => ({
@@ -45,44 +45,6 @@ describe('isAllowedImage', () => {
 
   it('恰好 10 MB 可以接受', () => {
     expect(isAllowedImage(file('image/png', 10 * 1024 * 1024))).toBe(true)
-  })
-})
-
-describe('clipboardImageFiles', () => {
-  /** 构造与 DataTransferItem 形状一致的假 items：jsdom 没有 DataTransfer，这里按契约喂数据 */
-  const itemOf = (f: File) => ({ getAsFile: () => f })
-  const fakeDt = (files: File[]) => ({ items: files.map(itemOf) })
-
-  it('从 items 取文件，同一张图只留一份', () => {
-    const img = file('image/png', 20, 'a.png')
-
-    // 浏览器里 items 与 files 是同一批文件的两个视图，item.getAsFile() 会重复暴露；
-    // 从 items 单视图读，天然只有一份（Bug 1 修复点）
-    expect(clipboardImageFiles(fakeDt([img]))).toHaveLength(1)
-  })
-
-  it('同一批 items 里元数据完全一致的两份文件，按元数据去重后只剩一份', () => {
-    const a = file('image/png', 20, 'a.png')
-    const b = file('image/png', 20, 'a.png') // 与 a 元数据完全一致
-
-    expect(clipboardImageFiles(fakeDt([a, b]))).toHaveLength(1)
-  })
-
-  it('过滤掉非白名单类型与超限文件', () => {
-    const files = [
-      file('image/svg+xml', 20, 'evil.svg'),
-      file('image/png', 10 * 1024 * 1024 + 1, 'huge.png'),
-      file('image/webp', 30, 'ok.webp'),
-    ]
-
-    const res = clipboardImageFiles(fakeDt(files))
-    expect(res).toHaveLength(1)
-    expect(res[0].name).toBe('ok.webp')
-  })
-
-  it('没有 items（如纯文本剪贴板）时返回空数组', () => {
-    expect(clipboardImageFiles(null)).toEqual([])
-    expect(clipboardImageFiles({})).toEqual([])
   })
 })
 

@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
-import { descendantsOf, flattenToc } from '../../shared/knowledge-base'
+import { flattenToc, visibleTocNodes } from '../../shared/knowledge-base'
 import { countWords } from '../../shared/derive'
 import type { TocNode } from '../../shared/knowledge-base'
 import { useUiStore } from '../stores/ui'
@@ -37,23 +37,12 @@ watch(
   },
 )
 const visibleNodes = computed(() => {
-  const nodes = toc.value?.nodes ?? []
   const states = new Map(libraries.noteStates.map((note) => [note.id, note.state]))
-  const hidden = new Set(
-    nodes
-      .filter((node) => {
-        if (!node.note_id) return false
-        const note = noteMap.value.get(node.note_id)
-        return note ? note.invalid !== 0 : ['trash', 'purged'].includes(states.get(node.note_id) ?? '')
-      })
-      .map((node) => node.id),
+  return visibleTocNodes(
+    toc.value?.nodes ?? [],
+    (id) => noteMap.value.get(id)?.invalid,
+    (id) => states.get(id),
   )
-  for (const folder of nodes.filter((node) => node.kind === 'folder')) {
-    const subtree = descendantsOf(nodes, folder.id)
-    const refs = nodes.filter((node) => subtree.has(node.id) && node.kind === 'note')
-    if (refs.length && refs.every((node) => hidden.has(node.id))) for (const id of subtree) hidden.add(id)
-  }
-  return nodes.filter((node) => !hidden.has(node.id))
 })
 const rows = computed(() => flattenToc(visibleNodes.value))
 const activeNotes = computed(() =>

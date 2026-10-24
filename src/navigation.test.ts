@@ -1,9 +1,8 @@
 import { createPinia, setActivePinia } from 'pinia'
-import Dexie from 'dexie'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { nextTick } from 'vue'
 import { db } from './db/schema'
-import { backToList, closeWorkspacePage, initNavigation, isMobile, openDrawer, openWorkspacePage, openStatsNote, openManagedView, popNav, pushNav, showKnowledgeBases, showNotes, switchListView } from './navigation'
+import { backToList, closeWorkspacePage, initNavigation, isMobile, openDrawer, openWorkspacePage, popNav, pushNav, showKnowledgeBases, showNotes, switchListView } from './navigation'
 import { useNotesStore } from './stores/notes'
 import { useUiStore } from './stores/ui'
 import { useGroupsStore } from './stores/groups'
@@ -108,44 +107,6 @@ describe('navigation 导航栈', () => {
     expect(ui.view).toBe('all')
     await traverse(() => window.history.forward())
     expect(ui.view).toBe('star')
-  })
-
-  it('延迟的统计笔记查询不会覆盖后来切换的视图', async () => {
-    const ui = useUiStore()
-    const notes = useNotesStore()
-    const note = await notes.create()
-    initNavigation()
-    openWorkspacePage('stats')
-    let release!: () => void
-    const gate = new Promise<void>(resolve => { release = resolve })
-    const lookup = vi.spyOn(db.notes, 'get').mockImplementationOnce(() => Dexie.Promise.resolve(gate).then(() => note))
-    const pending = openStatsNote(note.id)
-    await switchListView('star')
-    release()
-    await pending
-    expect(ui.view).toBe('star')
-    expect(ui.workspacePage).toBeNull()
-    lookup.mockRestore()
-  })
-  it('隐藏笔记入口替换设置层，返回保留原笔记与搜索', async () => {
-    const ui = useUiStore()
-    const notes = useNotesStore()
-    const note = await notes.create()
-    ui.query = '原来的搜索'
-    initNavigation()
-    const previous = window.history.state
-    openWorkspacePage('settings', 'data')
-    const length = window.history.length
-    await openManagedView('hidden')
-    expect(ui.workspacePage).toBeNull()
-    expect(ui.view).toBe('hidden')
-    expect(ui.query).toBe('')
-    expect(window.history.length).toBe(length)
-    expect(window.history.state.view).toBe('hidden')
-    window.dispatchEvent(new PopStateEvent('popstate', { state: previous }))
-    expect(ui.view).toBe('all')
-    expect(notes.currentId).toBe(note.id)
-    expect(ui.query).toBe('原来的搜索')
   })
 
   it('旧版已移除笔记本导航状态回到正常笔记本总览', async () => {
@@ -334,27 +295,6 @@ describe('navigation 导航栈', () => {
     await vi.waitFor(() => expect(ui.workspacePage).toBeNull())
     expect(notes.currentId).toBe(note.id)
     expect(ui.query).toBe('保留查询')
-  })
-
-  it('从统计打开另一条笔记会解除原筛选，返回时恢复原笔记', async () => {
-    const notes = useNotesStore()
-    const first = await notes.create()
-    const second = await notes.create()
-    const ui = useUiStore()
-    notes.currentId = first.id
-    ui.query = '原筛选'
-    initNavigation()
-    openWorkspacePage('stats')
-
-    await openStatsNote(second.id)
-    expect(ui.workspacePage).toBeNull()
-    expect(notes.currentId).toBe(second.id)
-    expect(ui.query).toBe('')
-
-    history.back()
-    await vi.waitFor(() => expect(notes.currentId).toBe(first.id))
-    expect(ui.query).toBe('原筛选')
-    expect(ui.workspacePage).toBeNull()
   })
 
   it('设置页面独占一层历史，可指定分页打开，系统返回关闭并回到原工作区', async () => {

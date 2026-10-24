@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
-import { childrenOf, descendantsOf, flattenToc } from '../../shared/knowledge-base'
+import { childrenOf, descendantsOf, flattenToc, visibleTocNodes } from '../../shared/knowledge-base'
 import type { KnowledgeBase, TocNode } from '../../shared/knowledge-base'
 import type { LocalNote } from '../../shared/types'
 import { addKnowledgeBaseNode, changeToc, createKnowledgeBase, deleteKnowledgeBase, metadata, moveKnowledgeBaseNode, trashKnowledgeBaseNode, resolveKnowledgeBaseConflict, updateKnowledgeBase } from '../db/knowledge-base-repo'
@@ -122,17 +122,7 @@ const visibleNodes = computed(() => {
   // Keep recovery placement in storage. Confirmed deletions must not turn back
   // into visible placeholders when purging removes the local note row.
   const states = new Map(libraries.noteStates.map(n => [n.id, n.state]))
-  const hidden = new Set(nodes.value.filter(n => {
-    if (!n.note_id) return false
-    const note = noteMap.value.get(n.note_id)
-    return note ? note.invalid !== 0 : ['trash', 'purged'].includes(states.get(n.note_id) ?? '')
-  }).map(n => n.id))
-  for (const folder of nodes.value.filter(n => n.kind === 'folder')) {
-    const subtree = descendantsOf(nodes.value, folder.id)
-    const refs = nodes.value.filter(n => subtree.has(n.id) && n.kind === 'note')
-    if (refs.length && refs.every(n => hidden.has(n.id))) for (const id of subtree) hidden.add(id)
-  }
-  return nodes.value.filter(n => !hidden.has(n.id))
+  return visibleTocNodes(nodes.value, (id) => noteMap.value.get(id)?.invalid, (id) => states.get(id))
 })
 const rows = computed(() => {
   const flat = flattenToc(visibleNodes.value)
