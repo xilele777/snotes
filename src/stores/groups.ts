@@ -59,16 +59,21 @@ export const useGroupsStore = defineStore('groups', () => {
   /**
    * 同一分组连续改多个属性（先改名再改色）要累积成一个 payload：
    * mergeTask 只保留最新 payload，不合并的话先改的那项在推送时就丢了。
+   * 事务内部用：读旧 payload 与写入必须同事务，调用方的 db.transaction 需包含 db.outbox。
    */
-  async function enqueueProp(groupId: string, changes: GroupPatch) {
+  async function enqueuePropIn(groupId: string, changes: GroupPatch) {
     const existing = await db.outbox.where('[note_id+kind]').equals([groupId, 'prop']).first()
     const previous = (existing?.payload as Record<string, unknown> | undefined) ?? {}
     await enqueue(groupTask(groupId, 'prop', { ...previous, ...changes }))
   }
 
   async function patch(groupId: string, changes: GroupPatch) {
-    await db.groups.update(groupId, { ...changes, update_time: Date.now() })
-    await enqueueProp(groupId, changes)
+    // 写库与入队同一个事务（与 repo.ts 的笔记操作同款约束）：任一步失败整体回滚，
+    // 否则崩溃窗口内「本地已改但永不同步」——分组没有 dirty 标记，无法自愈。
+    await db.transaction('rw', db.groups, db.outbox, async () => {
+      await db.groups.update(groupId, { ...changes, update_time: Date.now() })
+      await enqueuePropIn(groupId, changes)
+    })
     await load()
   }
 
@@ -103,20 +108,20 @@ export const useGroupsStore = defineStore('groups', () => {
     if (changed.length === 0) return
 
     const now = Date.now()
-    await db.transaction('rw', db.groups, () =>
-      Promise.all(changed.map(({ group, ord }) => db.groups.update(group.group_id, { ord, update_time: now })))
-    )
-    for (const { group, ord } of changed) await enqueueProp(group.group_id, { ord })
+    await db.transaction('rw', db.groups, db.outbox, async () => {
+      await Promise.all(changed.map(({ group, ord }) => db.groups.update(group.group_id, { ord, update_time: now })))
+      for (const { group, ord } of changed) await enqueuePropIn(group.group_id, { ord })
+    })
     await load()
   }
 
   async function remove(groupId: string) {
-    await db.transaction('rw', db.groups, db.notes, async () => {
+    await db.transaction('rw', db.groups, db.notes, db.outbox, async () => {
       await db.groups.update(groupId, { invalid: 1, update_time: Date.now() })
       // 组内笔记回到未分组（规格 §7.3），不级联删除笔记
       await db.notes.where('group_id').equals(groupId).modify({ group_id: null })
+      await enqueue(groupTask(groupId, 'trash', {}))
     })
-    await enqueue(groupTask(groupId, 'trash', {}))
     await load()
   }
 
