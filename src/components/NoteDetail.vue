@@ -375,27 +375,27 @@ const trashNotice = computed(() => {
 })
 
 /** 当前笔记字数统计（实时随正文变化） */
-const wordCount = computed(() => countWords(notes.current?.body ?? ''))
+const wordCount = computed(() => countWords(notes.currentBody ?? ''))
 
 function noteTitle(): string {
   return notes.current?.title || '无标题'
 }
 
 async function runCopy() {
-  if (!notes.current) return
-  const copied = await copyMarkdown(notes.current.body)
+  if (!notes.current || notes.currentBody === null) return
+  const copied = await copyMarkdown(notes.currentBody)
   notify(copied ? '已复制 Markdown' : '复制失败，请在正文里手动选择')
 }
 
 function runDownload() {
-  if (!notes.current) return
-  downloadMarkdown(noteTitle(), notes.current.body)
+  if (!notes.current || notes.currentBody === null) return
+  downloadMarkdown(noteTitle(), notes.currentBody)
   notify('已开始下载 .md')
 }
 
 async function runShare() {
-  if (!notes.current) return
-  const outcome = await shareMarkdown(noteTitle(), notes.current.body)
+  if (!notes.current || notes.currentBody === null) return
+  const outcome = await shareMarkdown(noteTitle(), notes.currentBody)
   // 用户取消分享时不再弹提示，那是他刚做出的选择
   if (outcome === 'shared' || outcome === 'copied') notify(outcome === 'shared' ? '已分享' : '已复制 Markdown')
 }
@@ -560,12 +560,13 @@ async function runShare() {
         <AppIcon name="note" :size="40" class="empty-art" />
         <h1>选择一条笔记</h1>
       </div>
+      <!-- 正文按需加载：currentBody 还没取到（或远端正文尚未下载）时停在骨架 -->
       <VditorEditor
-        v-else-if="notes.current && (notes.current.body_version > 0 || notes.current.dirty === 'body' || notes.current.dirty === 'both')"
+        v-else-if="notes.current && notes.currentBody !== null"
         ref="editorRef"
-        :key="editorSessionKey(notes.current.id, notes.current.body)"
+        :key="editorSessionKey(notes.current.id, notes.currentBody)"
         :note-id="notes.current.id"
-        :model-value="notes.current.body"
+        :model-value="notes.currentBody"
         :editable="canEdit"
         @update:model-value="onBody"
         @flush="onFlush"

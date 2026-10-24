@@ -263,7 +263,7 @@ watch(
       <button type="button" class="header-refresh" :title="refreshBusy ? '正在刷新' : '刷新笔记'" aria-label="刷新笔记" :aria-busy="refreshBusy" :disabled="refreshBusy" @click="refreshNotes"><AppIcon name="refresh" :size="16" :class="{ 'sync-spinner': refreshBusy }" /></button>
     </div>
     <div v-if="ui.query.trim()" class="list-caption" aria-live="polite">
-      <span>找到 {{ notes.visible.length }} 条笔记</span><button @click="ui.query = ''">清除筛选</button>
+      <span>找到 {{ notes.visible.length }} 条笔记{{ notes.searchingBodies ? '，正在搜索正文…' : '' }}</span><button @click="ui.query = ''">清除筛选</button>
     </div>
 
     <ListSkeleton v-if="notes.stale" />
@@ -288,6 +288,7 @@ watch(
         :swiped="swipedId === note.id"
         :query="ui.query"
         :home-hidden="homeHiddenOf(note)"
+        :excerpt="notes.searchExcerptOf(note.id)"
         :group-name="note.group_id ? groupNames.get(note.group_id) : undefined"
         @click="selectNote(note.id)"
         @contextmenu.prevent="openNoteMenu(note, $event)"

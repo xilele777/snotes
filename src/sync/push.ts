@@ -219,11 +219,13 @@ export async function pushOnce(): Promise<PushResult> {
         // 服务端缺失正文目标时保留任务，供用户导出/恢复，不能静默丢掉离线编辑。
         if (status === 404 || status === 410) {
           if (status === 410) {
-            await db.transaction('rw', [db.notes, db.outbox, db.history, db.knowledgeBaseNoteStates, db.meta], async () => {
+            await db.transaction('rw', [db.notes, db.bodies, db.outbox, db.history, db.knowledgeBaseNoteStates, db.meta], async () => {
               const local = await db.notes.get(task.note_id)
+              const localBody = (await db.bodies.get(task.note_id))?.body
               const queued = await db.outbox.where('note_id').equals(task.note_id).toArray()
-              if (local?.body.trim() && queued.some(row => row.kind === 'body' || row.kind === 'create')) await createConflictCopy(local, local.body)
+              if (local && localBody?.trim() && queued.some(row => row.kind === 'body' || row.kind === 'create')) await createConflictCopy(local, localBody)
               await db.notes.delete(task.note_id)
+              await db.bodies.delete(task.note_id)
               await deleteHistoryIn([task.note_id])
               await db.outbox.where('note_id').equals(task.note_id).delete()
               await db.knowledgeBaseNoteStates.put({ id: task.note_id, state: 'purged' })

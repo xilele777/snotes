@@ -63,7 +63,7 @@ const activeNotes = computed(() =>
   }),
 )
 const noteCount = computed(() => activeNotes.value.length)
-const wordCount = computed(() => activeNotes.value.reduce((total, note) => total + countWords(note.body).words, 0))
+const wordCount = computed(() => activeNotes.value.reduce((total, note) => total + countWords(libraries.bodyText.get(note.id) ?? '').words, 0))
 const folderCount = computed(() => rows.value.filter(({ node }) => node.kind === 'folder').length)
 const number = (value: number) => value.toLocaleString('zh-CN')
 const date = (time: number) => {

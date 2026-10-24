@@ -1,7 +1,7 @@
 import { IMAGE_URL_PREFIX } from '../../shared/derive'
 import { noteFits } from '../../shared/limits'
 import { archiveFilter, MAX_ARCHIVE_BYTES } from './archive'
-import type { LocalNote, NoteBody } from '../../shared/types'
+import type { LocalNote, LocalNoteWithBody, NoteBody } from '../../shared/types'
 import type { Zippable } from 'fflate'
 import { apiBlob, apiFetch } from '../api/client'
 import { db } from '../db/schema'
@@ -167,14 +167,18 @@ export function mimeOfFile(name: string): string | null {
 }
 
 /**
- * 本地没有正文（pull 下来但从未打开）的笔记补拉一次正文。
+ * 把本地正文（bodies 表）拼上；本地缺行（上一轮正文批次没拉完等）再向服务端补拉。
  * 备份包里少一条正文等于数据丢了，所以这里失败就冒泡，让调用方提示用户重试。
  */
-async function fillBodies(notes: LocalNote[], report: ProgressReporter): Promise<void> {
-  const missing = notes.filter((n) => n.body_version === 0 && n.dirty !== 'body' && n.dirty !== 'both').map((n) => n.id)
-  if (missing.length === 0) return
+async function fillBodies(notes: LocalNote[], report: ProgressReporter): Promise<LocalNoteWithBody[]> {
+  const filled: LocalNoteWithBody[] = notes.map((note) => ({ ...note, body: '' }))
+  const byId = new Map(filled.map((n) => [n.id, n]))
+  const localRows = await db.bodies.bulkGet(filled.map((n) => n.id))
+  for (const row of localRows) {
+    if (row) byId.get(row.id)!.body = row.body
+  }
 
-  const byId = new Map(notes.map((n) => [n.id, n]))
+  const missing = filled.filter((n) => n.body === '' && n.body_version === 0 && n.dirty !== 'body' && n.dirty !== 'both').map((n) => n.id)
   const BATCH = 50
   for (let i = 0; i < missing.length; i += BATCH) {
     report({ done: i, total: missing.length, label: '正在读取正文' })
@@ -188,6 +192,8 @@ async function fillBodies(notes: LocalNote[], report: ProgressReporter): Promise
     }
     if (missing.slice(i, i + BATCH).some(id => !response.bodies.some(b => b.note_id === id))) throw new Error('部分笔记正文尚未下载，无法完成备份')
   }
+  if (filled.some((n) => n.body === '' && n.body_version > 0)) throw new Error('部分笔记正文尚未下载，无法完成备份')
+  return filled
 }
 
 export interface BackupBundle {
@@ -222,10 +228,10 @@ export async function buildBackup(report: ProgressReporter = () => {}, format: 1
   const groups = snapshot.groups.filter((g) => g.invalid === 0).sort((a, b) => a.ord - b.ord)
 
   report({ done: 0, total: all.length, label: '正在整理笔记' })
-  await fillBodies(all, report)
+  const withBodies = await fillBodies(all, report)
 
   const groupNames = new Map<string, string>(groups.map((g) => [g.group_id, g.name]))
-  const sorted = [...all].sort(
+  const sorted = [...withBodies].sort(
     (a, b) => (a.group_id ?? '').localeCompare(b.group_id ?? '') || a.create_time - b.create_time
   )
   const paths = assignPaths(sorted, groupNames)
@@ -480,7 +486,7 @@ export async function importBackup(
     if (!noteFits(h.body)) throw new Error('图片地址替换后历史正文超过 1 MiB')
   }
 
-  await db.transaction('rw', [db.notes, db.groups, db.outbox, db.history, db.meta, ...knowledgeBaseTables()], async () => {
+  await db.transaction('rw', [db.notes, db.bodies, db.groups, db.outbox, db.history, db.meta, ...knowledgeBaseTables()], async () => {
 
     // 分组按名字对齐：本机已有同名分组就直接复用，没有才新建。
     // 重复导入同一个备份、或备份里的分组与本机重名，都不该再多出一个同名分组。
@@ -522,7 +528,8 @@ export async function importBackup(
       // 已经导入过（或本来就是本机的笔记）就跳过，重复导入不会翻倍。
       const existing = meta ? await db.notes.get(meta.id) : undefined
       if (existing) {
-        if (existing.body !== item.body) {
+        const existingBody = (await db.bodies.get(existing.id))?.body ?? ''
+        if (existingBody !== item.body) {
           const histories = await db.history.where('note_id').equals(existing.id).toArray()
           if (!histories.some(history => history.body === item.body)) {
             await db.history.add({ note_id: existing.id, body: item.body, time: meta!.update_time })

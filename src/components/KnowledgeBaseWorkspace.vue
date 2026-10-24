@@ -139,14 +139,14 @@ const rows = computed(() => {
   const terms = splitTerms(ui.query)
   if (terms.length) return flat.filter(({ node }) => {
     const note = node.note_id ? noteMap.value.get(node.note_id) : undefined
-    return matchesAll(node.kind === 'folder' ? node.title ?? '' : `${note?.title ?? ''}\n${note?.body ?? ''}`, terms)
+    return matchesAll(node.kind === 'folder' ? node.title ?? '' : `${note?.title ?? ''}\n${libraries.bodyText.get(node.note_id!) ?? ''}`, terms)
   })
   const hidden = new Set<string>()
   for (const id of ui.collapsedKnowledgeBaseNodes) for (const child of descendantsOf(nodes.value, id)) if (child !== id) hidden.add(child)
   return flat.filter(({ node }) => !hidden.has(node.id))
 })
 const folders = computed(() => flattenToc(nodes.value).filter(({ node }) => node.kind === 'folder' && (!moving.value || !descendantsOf(nodes.value, moving.value.id).has(node.id))))
-const picker = computed(() => candidates.value.filter(n => matchesAll(`${n.title}\n${n.body}`, splitTerms(pickerQuery.value))))
+const picker = computed(() => candidates.value.filter(n => matchesAll(`${n.title}\n${libraries.bodyText.get(n.id) ?? ''}`, splitTerms(pickerQuery.value))))
 const included = computed(() => new Set(nodes.value.flatMap(n => n.note_id ? [n.note_id] : [])))
 function label(node: TocNode) {
   if (node.kind === 'folder') return node.title || '未命名章节'
@@ -196,7 +196,16 @@ async function saveChapter() {
 }
 async function add(target: string | null = null) {
   // 一条笔记只属于一本笔记本：已经在别人家的笔记不再出现在候选里。
-  await run(async () => { const owned = await notebookOwnedNoteIds(); candidates.value = (await db.notes.toArray()).filter(n => n.invalid === 0 && !owned.has(n.id)); chosen.value = []; pickerQuery.value = ''; createParent.value = target ?? ''; dialog.value = 'add' })
+  await run(async () => {
+    const owned = await notebookOwnedNoteIds()
+    const rows = (await db.notes.toArray()).filter(n => n.invalid === 0 && !owned.has(n.id))
+    candidates.value = rows
+    // 候选笔记的正文只在这一刻取一次：选择器里要按正文搜索
+    const bodies = await db.bodies.bulkGet(rows.map(n => n.id))
+    const picked = new Map(bodies.filter((row): row is NonNullable<typeof row> => !!row).map(row => [row.id, row.body]))
+    for (const [id, text] of picked) libraries.bodyText.set(id, text)
+    chosen.value = []; pickerQuery.value = ''; createParent.value = target ?? ''; dialog.value = 'add'
+  })
 }
 async function saveNotes() {
   await run(async () => {

@@ -98,7 +98,7 @@ describe('restoreFromHistory', () => {
     const [snapshot] = await listHistory(note.id)
     expect(await restoreFromHistory(note.id, snapshot.id)).toBe(true)
 
-    expect((await db.notes.get(note.id))!.body).toBe('第一版')
+    expect((await db.bodies.get(note.id))!.body).toBe('第一版')
     const rows = await listHistory(note.id)
     expect(rows.map((r) => r.body)).toEqual(['第二版', '第一版'])
     const task = await db.outbox.where('[note_id+kind]').equals([note.id, 'body']).first()
@@ -112,7 +112,7 @@ describe('restoreFromHistory', () => {
     const [snapshot] = await listHistory(a.id)
     expect(await restoreFromHistory(b.id, snapshot.id)).toBe(false)
     expect(await restoreFromHistory(a.id, 9999)).toBe(false)
-    expect((await db.notes.get(b.id))!.body).toBe('b1')
+    expect((await db.bodies.get(b.id))!.body).toBe('b1')
   })
 })
 
@@ -121,7 +121,9 @@ describe('物理删除连带清理', () => {
     const a = await createNote('a1')
     const b = await createNote('b1')
     const c = await createNote('c1')
-    for (const n of [a, b, c]) await updateBody(n.id, `${n.body}-2`)
+    await updateBody(a.id, 'a1-2')
+    await updateBody(b.id, 'b1-2')
+    await updateBody(c.id, 'c1-2')
     expect(await db.history.count()).toBe(3)
 
     await purgeNote(a.id)

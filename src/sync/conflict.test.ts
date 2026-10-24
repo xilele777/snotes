@@ -16,7 +16,7 @@ describe('saveConflictCopies', () => {
 
     expect(ids).toHaveLength(1)
     const copy = await db.notes.get(ids[0])
-    expect(copy!.body).toContain('被覆盖的远端内容')
+    expect((await db.bodies.get(copy!.id))!.body).toContain('被覆盖的远端内容')
   })
 
   it('副本标题带冲突后缀', async () => {
@@ -35,7 +35,7 @@ describe('saveConflictCopies', () => {
     const ids = await saveConflictCopies([{ note_id: note.id, body: '远端内容' }])
 
     expect(ids[0]).not.toBe(note.id)
-    expect((await db.notes.get(note.id))!.body).toBe('本地内容')
+    expect((await db.bodies.get(note.id))!.body).toBe('本地内容')
   })
 
   it('副本继承原笔记的分组，便于就地找到', async () => {
@@ -62,7 +62,7 @@ describe('saveConflictCopies', () => {
 
     expect(ids).toHaveLength(1)
     const copy = await db.notes.get(ids[0])
-    expect(copy!.body).toContain('远端内容')
+    expect((await db.bodies.get(copy!.id))!.body).toContain('远端内容')
     expect(copy!.group_id).toBeNull()
   })
 

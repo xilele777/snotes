@@ -11,6 +11,8 @@ export const useKnowledgeBasesStore = defineStore('knowledge-bases', () => {
   const tocs = ref<KnowledgeBaseToc[]>([])
   const tasks = ref<KnowledgeBaseTask[]>([])
   const notes = ref<LocalNote[]>([])
+  /** 目录内笔记的正文（id -> text）：笔记本搜索与字数统计要扫正文，按 id 同表取 */
+  const bodyText = ref<Map<string, string>>(new Map())
   const noteStates = ref<KnowledgeBaseNoteState[]>([])
   const error = ref<string | null>(null)
   // The persistent sidebar only needs metadata; do not load note bodies/history there.
@@ -35,10 +37,14 @@ export const useKnowledgeBasesStore = defineStore('knowledge-bases', () => {
       ])
       const conflictTocs = tasks.flatMap(t => t.conflict ? [t.conflict.toc] : [])
       const ids = [...new Set([...tocs, ...conflictTocs].flatMap(t => t.nodes.flatMap(n => n.note_id ? [n.note_id] : [])))]
-      const notes = (await db.notes.bulkGet(ids)).filter((n): n is LocalNote => !!n)
-      return { books, tocs, tasks, notes, noteStates }
-    }).subscribe({ next(data) { books.value = data.books; tocs.value = data.tocs; tasks.value = data.tasks; notes.value = data.notes; noteStates.value = data.noteStates; error.value = null },
+      const [notes, bodies] = await Promise.all([
+        db.notes.bulkGet(ids).then(rows => rows.filter((n): n is LocalNote => !!n)),
+        db.bodies.bulkGet(ids),
+      ])
+      const bodyText = new Map(bodies.filter((row): row is NonNullable<typeof row> => !!row).map(row => [row.id, row.body]))
+      return { books, tocs, tasks, notes, noteStates, bodyText }
+    }).subscribe({ next(data) { books.value = data.books; tocs.value = data.tocs; tasks.value = data.tasks; notes.value = data.notes; noteStates.value = data.noteStates; bodyText.value = data.bodyText; error.value = null },
       error(e) { error.value = e instanceof Error ? e.message : String(e) } })
   }
-  return { books, tocs, tasks, notes, noteStates, error, subscribe, subscribeCatalog, subscribeMembership }
+  return { books, tocs, tasks, notes, bodyText, noteStates, error, subscribe, subscribeCatalog, subscribeMembership }
 })

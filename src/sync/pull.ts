@@ -36,8 +36,9 @@ function toLocalNote(meta: NoteMeta): LocalNote {
   // 打开统计不属于笔记内容同步，新拉下来的笔记从本设备 0 次起算。
   // open_others 刻意不写：undefined 表示「还没问过服务端」，下一次 opens 同步会
   // 点名补上别的设备的旧计数；写成 0 就等于把这条笔记的聚合值永远钉在 0 了。
+  // 正文不入这一行（bodies 表按需拉取），列表渲染只看元数据。
   return {
-    ...meta, body: '', body_version: 0, dirty: 'none', open_count: 0, last_open_time: 0,
+    ...meta, body_version: 0, dirty: 'none', open_count: 0, last_open_time: 0,
   }
 }
 
@@ -83,11 +84,15 @@ async function applyGroups(groups: Group[]) {
  * 而 outbox 里那条任务随后照常推上去，本地正文和将要上传的内容就不是同一份了。
  */
 function applyBodies(bodies: BodiesResponse['bodies'], reconcile = false): Promise<number> {
-  return db.transaction('rw', db.notes, db.outbox, db.history, async () => {
-    const [rows, pending] = await Promise.all([
-      db.notes.bulkGet(bodies.map(body => body.note_id)), pendingBodyIds(),
+  return db.transaction('rw', db.notes, db.bodies, db.outbox, db.history, async () => {
+    const [rows, bodyRows, pending] = await Promise.all([
+      db.notes.bulkGet(bodies.map(body => body.note_id)),
+      db.bodies.bulkGet(bodies.map(body => body.note_id)),
+      pendingBodyIds(),
     ])
-    const updates: LocalNote[] = []
+    const bodyById = new Map(bodyRows.filter((row): row is NonNullable<typeof row> => !!row).map(row => [row.id, row.body]))
+    const noteUpdates: LocalNote[] = []
+    const bodyWrites: { id: string; body: string }[] = []
     for (const [index, body] of bodies.entries()) {
       const local = rows[index]
       // 同版本可修复缺失正文，但不能替换尚未确认的本地输入。
@@ -96,17 +101,21 @@ function applyBodies(bodies: BodiesResponse['bodies'], reconcile = false): Promi
         if (reconcile) await db.notes.update(local.id, { version: 0 })
         continue
       }
+      const localBody = bodyById.get(body.note_id)
       if (!reconcile && body.version < local.body_version) continue
-      if (reconcile && local.body !== body.content && local.body.trim()) {
-        await db.history.add({ note_id: local.id, body: local.body, time: local.update_time })
+      if (reconcile && localBody !== body.content && localBody?.trim()) {
+        await db.history.add({ note_id: local.id, body: localBody, time: local.update_time })
       }
-      updates.push({
-        ...local, body: body.content, body_version: body.version, version: body.version,
+      if (localBody === body.content && !reconcile && body.version === local.body_version) continue
+      noteUpdates.push({
+        ...local, body_version: body.version, version: body.version,
         ...derive(body.content),
       })
+      bodyWrites.push({ id: body.note_id, body: body.content })
     }
-    if (updates.length) await db.notes.bulkPut(updates)
-    return updates.length
+    if (noteUpdates.length) await db.notes.bulkPut(noteUpdates)
+    if (bodyWrites.length) await db.bodies.bulkPut(bodyWrites)
+    return bodyWrites.length
   })
 }
 
@@ -188,17 +197,19 @@ export async function pullOnce(reconcile = false): Promise<PullResult> {
     }
 
     if (plan.deleteLocal.length > 0) {
-      await db.transaction('rw', db.notes, db.outbox, db.history, db.knowledgeBaseNoteStates, db.meta, async () => {
+      await db.transaction('rw', [db.notes, db.bodies, db.outbox, db.history, db.knowledgeBaseNoteStates, db.meta], async () => {
         for (const removed of plan.deleteLocal) {
           const local = await db.notes.get(removed.id)
+          const localBody = (await db.bodies.get(removed.id))?.body
           const pending = await db.outbox.where('note_id').equals(removed.id).toArray()
-          if (local && pending.some(task => isBodyTask(task.kind)) && local.body.trim()) {
-            await createConflictCopy(local, local.body)
+          if (local && localBody?.trim() && pending.some(task => isBodyTask(task.kind))) {
+            await createConflictCopy(local, localBody)
           }
         }
         await db.knowledgeBaseNoteStates.bulkPut(plan.deleteLocal.map(n => ({ id: n.id, state: 'purged' as const })))
         // 未确认的正文已另存副本，再原子清掉墓碑及其残留任务和历史。
         await db.notes.bulkDelete(plan.deleteLocal.map((n) => n.id))
+        await db.bodies.bulkDelete(plan.deleteLocal.map((n) => n.id))
         await deleteHistoryIn(plan.deleteLocal.map((n) => n.id))
         for (const note of plan.deleteLocal) {
           await db.outbox.where('note_id').equals(note.id).delete()
@@ -261,7 +272,7 @@ export async function pullOnce(reconcile = false): Promise<PullResult> {
   }
 
   // 只有全部分页与全部正文批次都成功，才推进游标。
-  await db.transaction('rw', [db.notes, db.groups, db.outbox, db.history, db.meta, db.knowledgeBaseNoteStates], async () => {
+  await db.transaction('rw', [db.notes, db.bodies, db.groups, db.outbox, db.history, db.meta, db.knowledgeBaseNoteStates], async () => {
     if (reconcile) {
       const pendingGroups = new Set((await db.outbox.toArray()).filter(t => (t.payload as { scope?: string })?.scope === 'group').map(t => t.note_id))
       for (const id of originalGroups) if (!seenGroups.has(id) && !pendingGroups.has(id)) {
@@ -278,8 +289,10 @@ export async function pullOnce(reconcile = false): Promise<PullResult> {
         if (tasks.some(task => task.kind === 'create')) continue
         // An old backup cannot tell us whether a missing row was deleted or
         // created after that backup. Preserve its text in a recovery copy.
-        if (local.body.trim()) await createConflictCopy(local, local.body)
+        const localBody = (await db.bodies.get(id))?.body
+        if (localBody?.trim()) await createConflictCopy(local, localBody)
         await db.notes.delete(id)
+        await db.bodies.delete(id)
         await db.outbox.where('note_id').equals(id).delete()
         await deleteHistoryIn([id])
         await db.knowledgeBaseNoteStates.put({ id, state: 'purged' })

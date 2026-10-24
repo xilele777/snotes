@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import { computeNoteStats } from './stats'
-import type { LocalNote } from './types'
+import type { LocalNoteWithBody } from './types'
 
-function makeNote(over: Partial<LocalNote> & { id: string }): LocalNote {
+function makeNote(over: Partial<LocalNoteWithBody> & { id: string }): LocalNoteWithBody {
   return {
     group_id: null,
     title: '',

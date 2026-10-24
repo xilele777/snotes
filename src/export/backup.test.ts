@@ -159,7 +159,7 @@ describe('导出', () => {
     await db.notes.add({
       id: 'remote', group_id: null, title: '远端的', summary: '', thumbnail: null,
       version: 3, prop_version: 3, star: 0, top: 0, skin_color: null, invalid: 0,
-      create_time: 5, update_time: 6, body: '', body_version: 0, dirty: 'none',
+      create_time: 5, update_time: 6, body_version: 0, dirty: 'none',
       open_count: 0, last_open_time: 0,
     })
     apiFetchMock.mockResolvedValue({ bodies: [{ note_id: 'remote', content: '# 远端的\n\n拉下来的正文', version: 3 }] })
@@ -174,7 +174,7 @@ describe('导出', () => {
     await db.notes.add({
       id: 'remote', group_id: null, title: '远端的', summary: '', thumbnail: null,
       version: 3, prop_version: 3, star: 0, top: 0, skin_color: null, invalid: 0,
-      create_time: 5, update_time: 6, body: '', body_version: 0, dirty: 'none',
+      create_time: 5, update_time: 6, body_version: 0, dirty: 'none',
       open_count: 0, last_open_time: 0,
     })
     apiFetchMock.mockRejectedValue(new Error('offline'))
@@ -189,8 +189,9 @@ it('导入只替换相对图片路径，不破坏同名外部图片地址', asyn
   const bytes = zipSync({ 'note.md': strToU8(`${external}\n![local](../images/abc.jpg)`), 'images/abc.jpg': new Uint8Array([1, 2, 3]) })
   await importBackup([new File([new Uint8Array(bytes)], 'images.zip')])
   const note = (await db.notes.toArray())[0]!
-  expect(note.body).toContain(external)
-  expect(note.body).toContain('![local](/api/images/new/image.jpg)')
+  const body = (await db.bodies.get(note.id))!.body
+  expect(body).toContain(external)
+  expect(body).toContain('![local](/api/images/new/image.jpg)')
   expect(uploadMock).toHaveBeenCalledTimes(1)
 })
 
@@ -205,7 +206,7 @@ it('两篇笔记引用同一包内图片时，各自上传到自己的 owner', a
   const notes = await db.notes.toArray()
   expect(notes).toHaveLength(2)
   expect(uploadMock).toHaveBeenCalledTimes(2)
-  for (const note of notes) expect(note.body).toContain(`/api/images/${note.id}/photo.jpg`)
+  for (const note of notes) expect((await db.bodies.get(note.id))!.body).toContain(`/api/images/${note.id}/photo.jpg`)
 })
 
 it('导入预检查拒绝超限正文，尚未创建任何分组或笔记', async () => {
@@ -246,7 +247,7 @@ describe('导入', () => {
     const file = new File([new Uint8Array(await bundle.blob.arrayBuffer())], 'backup.zip')
     const result = await importBackup([file])
     expect(result.noteConflicts).toBe(1)
-    expect((await db.notes.get(note.id))?.body).toBe('# 现有版本')
+    expect((await db.bodies.get(note.id))?.body).toBe('# 现有版本')
     await importBackup([file])
     expect((await db.history.where('note_id').equals(note.id).toArray()).filter(row => row.body === '# 导入版本')).toHaveLength(1)
   })
@@ -345,7 +346,7 @@ describe('导入', () => {
     const note = (await db.notes.toArray())[0]
     expect(result.noteIds).toEqual([note.id])
     expect(note.title).toBe('会议记录')
-    expect(note.body).toBe('# 会议记录\n\n讨论内容')
+    expect((await db.bodies.get(note.id))!.body).toBe('# 会议记录\n\n讨论内容')
     // 走的是 createNote，所以照样进了同步队列
     expect(await db.outbox.where('kind').equals('create').count()).toBe(1)
   })
@@ -370,7 +371,8 @@ describe('导入', () => {
 
     expect(result).toMatchObject({ notes: 1, groups: 1 })
     const note = (await db.notes.get('note-old'))!
-    expect(note).toMatchObject({ star: 1, top: 1, skin_color: '#cb8585', create_time: 1234, body: '# 会议\n\n正文' })
+    expect(note).toMatchObject({ star: 1, top: 1, skin_color: '#cb8585', create_time: 1234 })
+    expect((await db.bodies.get('note-old'))!.body).toBe('# 会议\n\n正文')
     const group = (await db.groups.toArray())[0]
     expect(group).toMatchObject({ name: '工作', color: '#86a394' })
 
@@ -420,7 +422,7 @@ describe('导入', () => {
     expect(result.images).toBe(1)
     expect(uploadMock).toHaveBeenCalledTimes(1)
     const note = (await db.notes.toArray())[0]
-    expect(note.body).toBe('# 带图\n\n![照片](/api/images/n/xyz.jpg)')
+    expect((await db.bodies.get(note.id))!.body).toBe('# 带图\n\n![照片](/api/images/n/xyz.jpg)')
   })
 
   it('图片上传失败时不提交任何笔记或分组，可以完整重试', async () => {

@@ -21,7 +21,7 @@ afterEach(() => {
 
 describe('syncOpens', () => {
   it('成功后写回其它设备统计、推进游标并只清已发送 dirty', async () => {
-    await db.notes.add({ id: 'n1', group_id: null, title: '', summary: '', thumbnail: null, version: 1, prop_version: 1, star: 0, top: 0, skin_color: null, invalid: 0, create_time: 1, update_time: 1, body: '', body_version: 1, dirty: 'none', open_count: 2, last_open_time: 10 })
+    await db.notes.add({ id: 'n1', group_id: null, title: '', summary: '', thumbnail: null, version: 1, prop_version: 1, star: 0, top: 0, skin_color: null, invalid: 0, create_time: 1, update_time: 1, body_version: 1, dirty: 'none', open_count: 2, last_open_time: 10 })
     await setMeta('device_id', 'device-a')
     await setMeta('opens_dirty', ['n1'])
     apiFetch.mockResolvedValue({ opens: [{ note_id: 'n1', others_count: 7, others_last_open_time: 20 }], server_time: 123 })
@@ -35,7 +35,7 @@ describe('syncOpens', () => {
   })
 
   it('请求失败时保留 dirty 与游标', async () => {
-    await db.notes.add({ id: 'n1', group_id: null, title: '', summary: '', thumbnail: null, version: 1, prop_version: 1, star: 0, top: 0, skin_color: null, invalid: 0, create_time: 1, update_time: 1, body: '', body_version: 1, dirty: 'none', open_count: 2, last_open_time: 10 })
+    await db.notes.add({ id: 'n1', group_id: null, title: '', summary: '', thumbnail: null, version: 1, prop_version: 1, star: 0, top: 0, skin_color: null, invalid: 0, create_time: 1, update_time: 1, body_version: 1, dirty: 'none', open_count: 2, last_open_time: 10 })
     await setMeta('device_id', 'device-a')
     await setMeta('opens_dirty', ['n1'])
     await setMeta('opens_cursor', 9)

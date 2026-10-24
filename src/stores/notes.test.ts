@@ -58,7 +58,7 @@ describe('notes store', () => {
       await store.saveBody(first.id, '# 第一遍')
       await store.saveBody(first.id, '# 第二遍', '# 第一遍')
       expect(list).not.toHaveBeenCalled()
-      expect(store.notes.find(note => note.id === first.id)?.body).toBe('# 第二遍')
+      expect((await db.bodies.get(first.id))!.body).toBe('# 第二遍')
       expect(store.notes.some(note => note.id === second.id)).toBe(true)
     } finally { list.mockRestore() }
   })
@@ -69,8 +69,30 @@ describe('notes store', () => {
     await store.saveBody(note.id, '另一台设备的新正文')
     await store.saveBody(note.id, '本机编辑', '旧基线')
     expect(store.notes).toHaveLength(2)
-    expect(store.notes.find(row => row.id !== note.id)?.body).toContain('另一台设备的新正文')
-    expect(store.current?.body).toBe('本机编辑')
+    const copy = store.notes.find(row => row.id !== note.id)!
+    expect((await db.bodies.get(copy.id))!.body).toContain('另一台设备的新正文')
+    expect(store.currentBody).toBe('本机编辑')
+  })
+
+  it('看过的笔记被 pull 更新后，再打开拿到的是新正文而不是缓存旧文', async () => {
+    const store = useNotesStore()
+    const first = await store.create()
+    const second = await store.create()
+    await store.saveBody(first.id, '# 旧正文')
+    await store.saveBody(second.id, '# 第二条')
+
+    store.open(first.id)
+    await vi.waitFor(() => expect(store.currentBody).toBe('# 旧正文'))
+    store.open(second.id)
+    await vi.waitFor(() => expect(store.currentBody).toBe('# 第二条'))
+
+    // 模拟 pull 落库：远端推进了 first 的正文版本，随后 onRemoteApplied → load() 刷新列表
+    await db.bodies.put({ id: first.id, body: '# 另一台设备的新正文' })
+    await db.notes.update(first.id, { body_version: 2, version: 2 })
+    await store.load()
+
+    store.open(first.id)
+    await vi.waitFor(() => expect(store.currentBody).toBe('# 另一台设备的新正文'))
   })
 
   it('保存正文后笔记本目录保持手动顺序', async () => {
@@ -154,7 +176,9 @@ describe('notes store', () => {
 
     ui.query = '关键词'
 
-    expect(store.visible.map((n) => n.id)).toEqual([titleHit.id, bodyHit.id])
+    // 标题命中即时；正文命中异步补齐后仍排在标题命中之后
+    expect(store.visible.map((n) => n.id)).toEqual([titleHit.id])
+    await vi.waitFor(() => expect(store.visible.map((n) => n.id)).toEqual([titleHit.id, bodyHit.id]))
   })
 
   it('多个关键词取交集，词可以分别落在标题与正文里', async () => {
@@ -167,7 +191,7 @@ describe('notes store', () => {
 
     ui.query = '周会 预算'
 
-    expect(store.visible.map((n) => n.id)).toEqual([both.id])
+    await vi.waitFor(() => expect(store.visible.map((n) => n.id)).toEqual([both.id]))
   })
 
   it('空搜索词返回全部', async () => {
@@ -436,10 +460,10 @@ describe('整理笔记时保留编辑上下文', () => {
     await store.setProps(note.id, { home_hidden: 1 })
     expect(ui.view).toBe('all')
     expect(store.visible).toHaveLength(0)
-    expect(store.current?.body).toBe('# 原文')
+    expect(store.currentBody).toBe('# 原文')
     await store.saveBody(note.id, '# 继续编辑', '# 原文')
-    expect(store.current?.body).toBe('# 继续编辑')
-    expect((await db.notes.get(note.id))?.body).toBe('# 继续编辑')
+    expect(store.currentBody).toBe('# 继续编辑')
+    expect((await db.bodies.get(note.id))!.body).toBe('# 继续编辑')
     ui.view = 'star'
     await store.load()
     expect(store.current).toBeUndefined()

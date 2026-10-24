@@ -2,10 +2,10 @@
 import '../insights.css'
 import { computed, onMounted, ref, watch } from 'vue'
 import { computeNoteStats, type NoteStats } from '../../shared/stats'
-import { notebookOwnedNoteIds } from '../db/repo'
+import { joinBodies, notebookOwnedNoteIds } from '../db/repo'
 import { db } from '../db/schema'
 import { buildActivity, localDateKey } from '../stats-activity'
-import type { LocalNote } from '../../shared/types'
+import type { LocalNoteWithBody } from '../../shared/types'
 import ActionMenu from './ActionMenu.vue'
 import AppIcon from './AppIcon.vue'
 
@@ -28,7 +28,7 @@ watch(
   },
   { flush: 'post' },
 )
-const notes = ref<LocalNote[]>([])
+const notes = ref<LocalNoteWithBody[]>([])
 const period = ref('30')
 const periodTrigger = ref<HTMLElement | null>(null)
 const periodOpen = ref(false)
@@ -59,7 +59,8 @@ async function load() {
   status.value = 'loading'
   // 统计只统计「外面的笔记」：属于笔记本的笔记和首页信息流一样不该出现在这里。
   const [noteList, groupList, owned] = await Promise.all([db.notes.toArray(), db.groups.toArray(), notebookOwnedNoteIds()])
-  notes.value = noteList.filter((note) => !owned.has(note.id))
+  // 字数统计要扫正文：笔记行已是纯元数据，这里把正文一次性拼上再算
+  notes.value = await joinBodies(noteList.filter((note) => !owned.has(note.id)))
   stats.value = computeNoteStats(notes.value, groupList)
   status.value = 'ready'
 }

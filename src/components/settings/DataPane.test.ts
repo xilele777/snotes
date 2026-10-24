@@ -27,7 +27,7 @@ it('失去原笔记的失败草稿可从数据页恢复为独立副本，并在�
   await vi.waitFor(async () => {
     const notes = await db.notes.toArray()
     expect(notes).toHaveLength(1)
-    expect(notes[0].body).toContain('最后几个字')
+    expect((await db.bodies.get(notes[0].id))!.body).toContain('最后几个字')
     expect(unsavedDrafts.value).toHaveLength(0)
     expect(await db.outbox.count()).toBe(1)
   })

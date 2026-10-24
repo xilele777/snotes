@@ -219,12 +219,16 @@ export interface OpensSyncResponse {
 /** 本地某条笔记的 dirty 标记（哪些轨道有未推送的改动）。 */
 export type DirtyState = 'none' | 'body' | 'prop' | 'both'
 
-/** 本地笔记（LocalNote = NoteMeta + 正文 + 正文版本 + dirty）。
+/**
+ * 本地笔记（LocalNote = NoteMeta + 正文版本 + dirty）。
+ *
+ * 正文不放在这一行：列表、搜索、同步元数据都要频繁遍历全表，行内带几 KB 的
+ * 正文会让「笔记越多越卡」。正文存在独立的 bodies 表（同主键），打开笔记时
+ * 按需取一条——与 WPS 便签「列表只含小元数据、正文按需拉取」同构。
  *
  * open_count / last_open_time 是本设备累计值；其它设备的聚合值存为本地派生字段。
  * 所有这些字段都不进入笔记内容 outbox，也不改变 update_time。 */
 export interface LocalNote extends NoteMeta {
-  body: string
   body_version: number
   dirty: DirtyState
   /** 本设备打开次数。旧笔记可能缺失，按 0 兜底。 */
@@ -240,6 +244,15 @@ export interface LocalNote extends NoteMeta {
   /** 服务端聚合的其它设备最近打开时间。 */
   open_others_time?: number
 }
+
+/** bodies 表一行：与 notes 同主键。正文快照、导出、统计等聚合场景按 id 批量取。 */
+export interface LocalBody {
+  id: string
+  body: string
+}
+
+/** 聚合场景（统计/导出/分享）里「元数据 + 正文」拼起来的视图。 */
+export type LocalNoteWithBody = LocalNote & { body: string }
 
 /* === 监控页（Bug 8）D1/R2/HITP 指标 === */
 

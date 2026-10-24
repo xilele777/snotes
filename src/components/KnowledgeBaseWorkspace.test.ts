@@ -74,7 +74,7 @@ it('can detach a notebook note without deleting its body', async () => {
     detach.click()
     await vi.waitFor(async () => expect((await db.knowledgeBaseTocs.get(book.id))?.nodes).toHaveLength(0))
     expect((await db.notes.get(note.id))?.invalid).toBe(0)
-    expect((await db.notes.get(note.id))?.body).toBe('# 独立笔记')
+    expect((await db.bodies.get(note.id))?.body).toBe('# 独立笔记')
   } finally { wrapper.unmount() }
 })
 

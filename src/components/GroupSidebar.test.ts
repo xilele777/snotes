@@ -230,7 +230,6 @@ describe('GroupSidebar', () => {
       invalid: 0,
       create_time: 1,
       update_time: 1,
-      body: '',
       body_version: 1,
       dirty: 'none',
     })

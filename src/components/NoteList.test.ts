@@ -360,11 +360,9 @@ describe('NoteList', () => {
     ui.query = '预算评审'
 
     const wrapper = mount(NoteList)
-    await wrapper.vm.$nextTick()
-
-    const summary = wrapper.find('.note-summary')
-    expect(summary.text()).toContain('预算评审结论')
-    expect(summary.find('.hit').text()).toBe('预算评审')
+    // 正文命中走后台扫描：等摘要片段出现
+    await vi.waitFor(() => expect(wrapper.find('.note-summary').text()).toContain('预算评审结论'))
+    expect(wrapper.find('.note-summary').find('.hit').text()).toBe('预算评审')
   })
 
   // 行高一致的结构前提：摘要块必须常驻，缺了它日期行会整体上移

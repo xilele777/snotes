@@ -61,8 +61,10 @@ describe('工作区偏好', () => {
     expect(notes.visible.map(n => n.id)).toEqual([pinned.id, a.id, b.id])
     updateWorkspacePreferences({ noteSort: 'created' })
     expect(notes.visible.map(n => n.id)).toEqual([pinned.id, b.id, a.id])
+    // 标题命中即时上屏；正文命中由后台扫描补齐
     useUiStore().query = 'Beta'
-    expect(notes.visible.map(n => n.id)).toEqual([b.id, a.id])
+    expect(notes.visible.map(n => n.id)).toEqual([b.id])
+    await vi.waitFor(() => expect(notes.visible.map(n => n.id)).toEqual([b.id, a.id]))
     expect((await db.notes.get(a.id))?.update_time).toBe(300)
   })
 })

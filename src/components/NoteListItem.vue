@@ -1,6 +1,5 @@
 <script setup lang="ts">
 import { computed } from 'vue'
-import { extractSearchExcerpt } from '../../shared/derive'
 import type { LocalNote } from '../../shared/types'
 import { highlight, matchesAll, splitTerms } from './SearchBar'
 import AppIcon from './AppIcon.vue'
@@ -15,8 +14,10 @@ const props = withDefaults(
     groupName?: string
     /** 这条笔记不上首页信息流：列表里给一个可辨认的标记 */
     homeHidden?: boolean
+    /** 正文命中的摘要片段（异步正文扫描产出）；null 时显示常规摘要 */
+    excerpt?: string | null
   }>(),
-  { active: false, swiped: false, query: '', homeHidden: false }
+  { active: false, swiped: false, query: '', homeHidden: false, excerpt: null }
 )
 
 /** 标题与摘要都没把关键词凑齐时，用正文里命中附近的片段替换普通摘要。 */
@@ -25,7 +26,7 @@ const displaySummary = computed(() => {
   if (terms.length === 0) return props.note.summary
   if (matchesAll(`${props.note.title}
 ${props.note.summary}`, terms)) return props.note.summary
-  return extractSearchExcerpt(props.note.body, props.query) ?? props.note.summary
+  return props.excerpt ?? props.note.summary
 })
 
 /** 日期格式化：今天显示 HH:mm，否则 MM-DD，跨年带年份 */

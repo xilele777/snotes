@@ -1,7 +1,7 @@
 import { countWords } from './derive'
 import { homeHiddenGroupIds, isHiddenFromHome } from './home-feed'
 import type { HomeFeedGroup } from './home-feed'
-import type { LocalNote } from './types'
+import type { LocalNoteWithBody } from './types'
 
 /** 一天在热力图上的格子数据 */
 export interface HeatCell {
@@ -92,7 +92,7 @@ function dayBuckets(days: number): Map<string, number> {
  * 未分组统一记为「未分组」。
  */
 export function computeNoteStats(
-  notes: LocalNote[],
+  notes: LocalNoteWithBody[],
   groups: (HomeFeedGroup & { name: string; color: string | null })[]
 ): NoteStats {
   const created30 = dayBuckets(30)

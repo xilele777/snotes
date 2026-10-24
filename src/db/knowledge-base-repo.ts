@@ -131,17 +131,19 @@ export async function snapshotIn(id: string, nodes: TocNode[], source: 'conflict
 }
 
 export async function applyKnowledgeBaseRemote(remote: KnowledgeBaseRemote, reconcile = false) {
-  await db.transaction('rw', [...knowledgeBaseTables(), db.notes, db.outbox, db.history, db.meta], async () => {
+  await db.transaction('rw', [...knowledgeBaseTables(), db.notes, db.bodies, db.outbox, db.history, db.meta], async () => {
     const id = remote.book.id
     const local = await db.knowledgeBases.get(id)
     if (remote.book.deleted) {
       const ids = remote.deleted_note_ids ?? []
       for (const noteId of ids) {
         const local = await db.notes.get(noteId)
+        const localBody = (await db.bodies.get(noteId))?.body
         const pending = await db.outbox.where('note_id').equals(noteId).toArray()
-        if (local?.body.trim() && pending.some(task => task.kind === 'body' || task.kind === 'create')) await createConflictCopy(local, local.body)
+        if (local && localBody?.trim() && pending.some(task => task.kind === 'body' || task.kind === 'create')) await createConflictCopy(local, localBody)
       }
       await db.notes.bulkDelete(ids)
+      await db.bodies.bulkDelete(ids)
       await db.history.where('note_id').anyOf(ids).delete()
       await db.outbox.where('note_id').anyOf(ids).delete()
       await db.knowledgeBaseNoteStates.bulkPut(ids.map(id => ({ id, state: 'purged' as const })))

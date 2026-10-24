@@ -392,7 +392,7 @@ describe('NoteDetail 顶栏操作条', () => {
     expect(notes.currentId).not.toBe(original.id)
     expect(ui.view).toBe('all')
     expect(ui.query).toBe('')
-    expect((await db.notes.get(original.id))!.body).toBe('# 原笔记\n\n保留正文')
+    expect((await db.bodies.get(original.id))!.body).toBe('# 原笔记\n\n保留正文')
     expect(notice.value).toBe('已导入 1 条笔记')
     expect(await db.outbox.where('[note_id+kind]').equals([notes.currentId!, 'create']).count()).toBe(1)
     expect(input.element.value).toBe('')
@@ -622,7 +622,7 @@ describe('NoteDetail 首页信息流开关', () => {
     await vi.waitFor(async () => {
       expect((await db.notes.get(note.id))!.home_hidden).toBe(1)
       expect(ui.view).toBe('all')
-      expect(notes.current?.body).toBe('归档内容')
+      expect(notes.currentBody).toBe('归档内容')
     })
     // 列表筛选照常生效，当前编辑内容继续保留。
     expect(notes.currentId).toBe(note.id)
@@ -698,7 +698,7 @@ describe('顶栏的历史版本', () => {
 
     ;(document.querySelector('[data-op="restore"]') as HTMLButtonElement).click()
     await flushPromises()
-    await vi.waitFor(() => expect(notes.current?.body).toBe('# 第一版'))
+    await vi.waitFor(() => expect(notes.currentBody).toBe('# 第一版'))
     await vi.waitFor(() => expect(document.querySelectorAll('.history-item')).toHaveLength(2))
     expect(notice.value).toContain('已恢复')
     wrapper.unmount()

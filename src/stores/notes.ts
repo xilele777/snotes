@@ -2,6 +2,7 @@ import { recordCloudSnapshot } from '../db/history'
 import { defineStore } from 'pinia'
 import { computed, ref, watch } from 'vue'
 import type { LocalNote } from '../../shared/types'
+import { extractSearchExcerpt } from '../../shared/derive'
 import * as repo from '../db/repo'
 import type { ListView, NoteProps } from '../db/repo'
 import { isMobile, pushNav } from '../navigation'
@@ -11,6 +12,7 @@ import { db } from '../db/schema'
 import { addKnowledgeBaseNode } from '../db/knowledge-base-repo'
 import { workspacePreferences } from '../workspace-preferences'
 import { notify } from '../notify'
+import { unsavedDrafts } from '../editor/save-session'
 
 export const useNotesStore = defineStore('notes', () => {
   const ui = useUiStore()
@@ -43,6 +45,83 @@ export const useNotesStore = defineStore('notes', () => {
 
   const current = computed(() => notes.value.find((n) => n.id === currentId.value) ?? (retained.value?.id === currentId.value && retainedKey === viewKey() ? retained.value : undefined))
 
+  /* === 正文按需加载（bodies 表） ===
+   *
+   * notes 行不再内联正文：列表加载只反序列化小元数据，正文在打开笔记时按主键取一条。
+   * currentBody 为 null 表示「还没取到」（取数中，或远端正文尚未下载）——详情页据此
+   * 显示骨架，与 WPS 便签「列表即显、正文打开才拉」的读路径同构。
+   */
+  const currentBody = ref<string | null>(null)
+  /** 当前正文对应的服务端版本，用于检测 pull 期间的远端更新 */
+  let loadedBodyVersion: number | null = null
+  // 最近打开过的正文留一份小缓存：左右键快速切换笔记时同 tick 命中，零骨架闪烁。
+  // 条目必须带上取出时的 body_version：pull 落库新版本后旧条目按版本失配作废，
+  // 否则「看过 A → 切走 → pull 更新了 A → 再点开 A」会一直命中改写前的旧正文，
+  // 且此时本地版本已被 pull 推进，打开时的服务端校验也不会再触发。
+  const bodyCache = new Map<string, { body: string; version: number | null }>()
+  const BODY_CACHE_MAX = 64
+  let bodySeq = 0
+
+  function rowVersionOf(id: string): number | null {
+    return notes.value.find((n) => n.id === id)?.body_version ?? null
+  }
+
+  function cacheBody(id: string, body: string) {
+    if (bodyCache.has(id)) bodyCache.delete(id)
+    bodyCache.set(id, { body, version: rowVersionOf(id) })
+    if (bodyCache.size > BODY_CACHE_MAX) bodyCache.delete(bodyCache.keys().next().value as string)
+  }
+
+  function evictBody(id: string) {
+    bodyCache.delete(id)
+  }
+
+  async function loadCurrentBody(id: string | null) {
+    const seq = ++bodySeq
+    if (id === null) { currentBody.value = null; loadedBodyVersion = null; return }
+    const cached = bodyCache.get(id)
+    if (cached !== undefined && cached.version === rowVersionOf(id)) {
+      currentBody.value = cached.body
+      loadedBodyVersion = cached.version
+      return
+    }
+    currentBody.value = null
+    loadedBodyVersion = null
+    let text: string | undefined
+    try {
+      text = await repo.getNoteBody(id)
+    } catch (e) {
+      // 组件已卸载 / 测试环境把库关了：这次取数已经没有去处，静默收场。
+      if (e instanceof Error && e.name === 'DatabaseClosedError') return
+      throw e
+    }
+    if (seq !== bodySeq || currentId.value !== id) return
+    // undefined = 远端正文还没拉到：保持 null，详情页停留在加载骨架
+    if (text === undefined) return
+    cacheBody(id, text)
+    currentBody.value = text
+    loadedBodyVersion = rowVersionOf(id)
+  }
+
+  /** 编辑器正在等着吃的正文：有未保存草稿时绝不能被远端内容顶掉 */
+  function hasUnsavedDraft(id: string): boolean {
+    return unsavedDrafts.value.some((draft) => draft.id === id)
+  }
+
+  /**
+   * pull（或打开时校验）把远端正文写进了 bodies 表后调用：
+   * 当前正看的这条若无未保存输入就静默换成新内容，有草稿则什么都不动，
+   * 等用户保存时走冲突副本链路。
+   */
+  function applyRemoteBody(id: string, body: string) {
+    if (hasUnsavedDraft(id)) return
+    cacheBody(id, body)
+    if (currentId.value === id) {
+      currentBody.value = body
+      loadedBodyVersion = rowVersionOf(id)
+    }
+  }
+
   /**
    * 打开笔记（currentId 切到非 null）记一次本地统计：递增 open_count、刷新
    * last_open_time。纯本地行为，不动 update_time、不入 outbox，因此不污染
@@ -74,10 +153,11 @@ export const useNotesStore = defineStore('notes', () => {
     })
   }, { flush: 'sync' })
 
-  /**
-   * 用户主动打开一条笔记：选中它并记一次打开次数。
-   * 已经在看这条时不产生状态迁移，也就不算一次新的打开。
-   */
+  // currentId 一变立刻切正文：缓存命中同步显示（无骨架），未命中清空后异步取。
+  // flush: 'sync' 保证同一次点击里不会先闪出上一条笔记的正文。
+  watch(currentId, (id) => { void loadCurrentBody(id) }, { flush: 'sync' })
+
+  /** 用户主动打开一条笔记：选中它并记一次打开次数。已经看这条时不产生状态迁移。 */
   function open(id: string) {
     if (currentId.value === id) return
     pendingCount = true
@@ -86,8 +166,68 @@ export const useNotesStore = defineStore('notes', () => {
 
   /**
    * 搜索：空格分隔的多个关键词取交集，标题与正文合起来都包含才算命中。
-   * 全部关键词都落在标题里的排最前，其余按更新时间倒序。
+   * 标题命中即时显示；正文命中由后台扫描补上（bodies 表按需批量读，
+   * 不再把全部正文常驻内存）。标题命中的排最前，其余按更新时间倒序。
    */
+  const bodyHits = ref<Map<string, string> | null>(null)
+  const searchingBodies = ref(false)
+  let searchSeq = 0
+  let searchTimer: ReturnType<typeof setTimeout> | undefined
+
+  async function scanBodies() {
+    const seq = ++searchSeq
+    const terms = splitTerms(ui.query)
+    if (terms.length === 0) { bodyHits.value = null; searchingBodies.value = false; return }
+    searchingBodies.value = true
+    // 键入防抖：连续输入只在停顿后扫一次正文。标题命中是同步的，这里的延迟
+    // 只影响「正文命中的补齐」，100ms 既过滤连击又不拖慢结果感。
+    await new Promise((resolve) => setTimeout(resolve, 100))
+    if (seq !== searchSeq) return
+    const rows = notes.value
+    const titles = new Map(rows.map((note) => [note.id, note.title]))
+    // 流式扫描：游标边读边算，命中先上屏（新视图不再等全表读完），
+    // 列表计数随扫描进度逐步补齐。
+    const acc = new Map<string, string>()
+    let lastFlush = performance.now()
+    const flush = (force = false) => {
+      // 查询已变时不再上屏：旧扫描的部分命中混进新查询的结果，要等新扫描才会被纠正
+      if (seq !== searchSeq) return
+      const now = performance.now()
+      if (force || now - lastFlush >= 40) {
+        lastFlush = now
+        bodyHits.value = new Map(acc)
+      }
+    }
+    try {
+      await db.bodies.where('id').anyOf(rows.map((note) => note.id)).each((row) => {
+        const title = titles.get(row.id) ?? ''
+        if (!matchesAll(`${title}\n${row.body}`, terms)) return
+        acc.set(row.id, extractSearchExcerpt(row.body, ui.query) ?? '')
+        flush()
+      })
+    } catch (e) {
+      // 视图已卸载 / 测试环境把库关了：这轮扫描没有去处，静默收场。
+      searchingBodies.value = false
+      if (e instanceof Error && e.name === 'DatabaseClosedError') return
+      throw e
+    }
+    if (seq !== searchSeq) return
+    bodyHits.value = acc
+    searchingBodies.value = false
+  }
+
+  function scheduleBodyScan() {
+    if (searchTimer !== undefined) clearTimeout(searchTimer)
+    searchTimer = setTimeout(() => { searchTimer = undefined; void scanBodies() }, 0)
+  }
+
+  watch(() => ui.query, () => {
+    // 查询一变立即丢掉上一轮正文命中：标题命中先上屏，扫描结果到了再并进来
+    bodyHits.value = null
+    if (splitTerms(ui.query).length === 0) { searchSeq++; searchingBodies.value = false; return }
+    scheduleBodyScan()
+  })
+
   const visible = computed(() => {
     const sort = workspacePreferences.value.noteSort
     const compare = (a: LocalNote, b: LocalNote) => b.top - a.top ||
@@ -95,12 +235,12 @@ export const useNotesStore = defineStore('notes', () => {
     const terms = splitTerms(ui.query)
     if (terms.length === 0) return ui.view === 'trash' || ui.view === 'knowledge-bases' ? notes.value : [...notes.value].sort(compare)
 
+    const hits = bodyHits.value
     const scored = notes.value
       .map((note) => {
         const inTitle = matchesAll(note.title, terms)
-        const inAny = inTitle || matchesAll(`${note.title}
-${note.body}`, terms)
-        return { note, rank: inTitle ? 0 : inAny ? 1 : -1 }
+        const inBody = hits?.has(note.id) ?? false
+        return { note, rank: inTitle ? 0 : inBody ? 1 : -1 }
       })
       .filter((x) => x.rank >= 0)
 
@@ -108,6 +248,11 @@ ${note.body}`, terms)
       .sort((a, b) => a.rank - b.rank || compare(a.note, b.note))
       .map((x) => x.note)
   })
+
+  /** 正文命中的摘要片段（标题命中的笔记继续显示常规摘要） */
+  function searchExcerptOf(id: string): string | null {
+    return bodyHits.value?.get(id) ?? null
+  }
 
   async function load() {
     // 取数期间视图可能又变了（挂载瞬间的 watcher 与切视图几乎同时触发）。此时这份结果
@@ -145,6 +290,27 @@ ${note.body}`, terms)
     if (currentId.value !== null && currentId.value !== restoringId && !notes.value.some((n) => n.id === currentId.value) && !retained.value) {
       currentId.value = null
     }
+
+    // pull 期间另一台设备更新了当前正看的笔记：无未保存输入时静默换上新正文，
+    // 有草稿就不动（applyRemoteBody 里的守卫只是双保险）。
+    if (currentId.value !== null && loadedBodyVersion !== null) {
+      const row = notes.value.find((n) => n.id === currentId.value)
+      if (row && row.body_version !== loadedBodyVersion && !hasUnsavedDraft(row.id)) {
+        try {
+          const text = await repo.getNoteBody(row.id)
+          if (text !== undefined && !hasUnsavedDraft(row.id)) applyRemoteBody(row.id, text)
+        } catch (e) {
+          if (!(e instanceof Error && e.name === 'DatabaseClosedError')) throw e
+        }
+      }
+    }
+    // 正文批次在用户停留期间才拉完：当前这条还没取到正文的话补一次
+    if (currentId.value !== null && currentBody.value === null && !hasUnsavedDraft(currentId.value)) {
+      void loadCurrentBody(currentId.value)
+    }
+
+    // 搜索进行中列表刚被刷新：正文命中要跟着重扫一次
+    if (splitTerms(ui.query).length > 0) scheduleBodyScan()
 
     // 桌面端同屏目录+详情，打开应用 / 切视图时若没选中项，默认选中列表第一条，
     // 详情区立刻有内容；移动端 <720px 目录与详情互斥，默认选中会直接把详情页顶成首屏。
@@ -196,11 +362,11 @@ ${note.body}`, terms)
   /** content 改自 base（编辑器认为库里此刻的正文）；库中被别处改写过时由 repo 另存冲突副本 */
   async function saveBody(id: string, content: string, base?: string) {
     const conflictCreated = await repo.updateBody(id, content, base)
+    cacheBody(id, content)
+    if (currentId.value === id) currentBody.value = content
     if (conflictCreated) { await load(); return }
-    // Saving is debounced while typing. Re-reading every note (including every
-    // full body) from IndexedDB after each save made a long note list painfully
-    // slow on mobile. The repository already wrote the canonical row; patch the
-    // one row held by the store instead.
+    // The repository already wrote the canonical row; patch the one row held by
+    // the store instead of re-reading every note from IndexedDB after each save.
     const updated = await repo.getNote(id)
     if (!updated) throw new Error('笔记已被移除，请到设置 → 数据恢复草稿')
     const index = notes.value.findIndex(note => note.id === id)
@@ -221,14 +387,18 @@ ${note.body}`, terms)
   /** 从历史（本机或云端）恢复某一版正文；repo 先把当前正文存为本机快照，这里再补录一份到云端 */
   async function restoreHistory(id: string, body: string) {
     const before = await repo.getNote(id)
+    const beforeBody = await repo.getNoteBody(id)
     const ok = await repo.restoreHistoryBody(id, body)
     if (!ok) return false
-    if (before && before.body.trim() && before.body !== body) await recordCloudSnapshot(id, before.body, before.update_time)
+    if (before && beforeBody?.trim() && beforeBody !== body) await recordCloudSnapshot(id, beforeBody, before.update_time)
     await load()
+    cacheBody(id, body)
+    if (currentId.value === id) currentBody.value = body
     return true
   }
 
   async function trash(id: string) {
+    evictBody(id)
     await repo.trashNote(id)
     const wasCurrent = currentId.value === id
     await load()
@@ -252,6 +422,7 @@ ${note.body}`, terms)
 
   /** 回收站里的「彻底删除」：物理删除单条。currentId 的收尾交给 load() 的不变量。 */
   async function purge(id: string) {
+    evictBody(id)
     await repo.purgeNote(id)
     await load()
   }
@@ -266,5 +437,10 @@ ${note.body}`, terms)
     await load()
   }
 
-  return { notes, currentId, current, visible, stale, load, create, open, beginSelectionRestore, finishSelectionRestore, saveBody, setProps, restoreHistory, trash, trashWithUndo, recover, purge, purgeAll }
+  return {
+    notes, currentId, current, currentBody, visible, stale, searchingBodies,
+    load, create, open, beginSelectionRestore, finishSelectionRestore, saveBody,
+    setProps, restoreHistory, trash, trashWithUndo, recover, purge, purgeAll,
+    searchExcerptOf,
+  }
 })

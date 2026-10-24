@@ -177,7 +177,7 @@ it('permanent remote deletion preserves unsynced text in a copy and resists a de
   await applyKnowledgeBaseRemote(deletion)
   expect(await db.notes.get(note.id)).toBeUndefined()
   expect(await db.outbox.count()).toBe(1)
-  expect((await db.notes.toArray())[0].body).toContain('即将删除')
+  expect((await db.bodies.toArray())[0].body).toContain('即将删除')
   expect(await db.history.count()).toBe(0)
   expect(await db.knowledgeBaseOutbox.count()).toBe(0)
   expect(await db.knowledgeBaseTocHistory.count()).toBe(0)

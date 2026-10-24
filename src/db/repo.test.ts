@@ -33,7 +33,7 @@ describe('createNote', () => {
     expect(note.id).toMatch(/^[0-9a-f-]{36}$/)
     expect(note.title).toBe('我的标题')
     expect(note.summary).toBe('正文内容')
-    expect(note.body).toBe('# 我的标题\n正文内容')
+    expect(await db.bodies.get(note.id)).toMatchObject({ body: '# 我的标题\n正文内容' })
     // 0 = 服务端尚未确认任何版本，不是 1
     expect(note.version).toBe(0)
     expect(note.body_version).toBe(0)
@@ -48,7 +48,8 @@ describe('createNote', () => {
 
   it('写入 IndexedDB 且可立即读回', async () => {
     const note = await createNote('内容')
-    expect(await getNote(note.id)).toMatchObject({ id: note.id, body: '内容' })
+    expect(await getNote(note.id)).toMatchObject({ id: note.id })
+    expect((await db.bodies.get(note.id))!.body).toBe('内容')
   })
 
   it('入队一条 create 任务', async () => {
@@ -66,7 +67,8 @@ describe('updateBody', () => {
     await updateBody(note.id, '# 新标题\n新正文')
 
     const updated = await getNote(note.id)
-    expect(updated).toMatchObject({ title: '新标题', body: '# 新标题\n新正文' })
+    expect(updated).toMatchObject({ title: '新标题' })
+    expect((await db.bodies.get(note.id))!.body).toBe('# 新标题\n新正文')
   })
 
   it('置 dirty 但不动 body_version', async () => {
@@ -120,7 +122,8 @@ describe('updateProps', () => {
     await updateProps(note.id, { star: 1 })
 
     const updated = await getNote(note.id)
-    expect(updated).toMatchObject({ star: 1, body: '正文' })
+    expect(updated).toMatchObject({ star: 1 })
+    expect((await db.bodies.get(note.id))!.body).toBe('正文')
     expect(updated!.body_version).toBe(note.body_version)
   })
 
@@ -466,7 +469,8 @@ describe('updateBody 基线校验', () => {
     const note = await createNote('原文')
     await updateProps(note.id, { group_id: 'g1' })
     // 模拟 pull 在编辑期间把远端正文落了库：编辑器手里的基线仍是「原文」
-    await db.notes.update(note.id, { body: '另一台设备写的', body_version: 2, version: 2 })
+    await db.notes.update(note.id, { body_version: 2, version: 2 })
+    await db.bodies.update(note.id, { body: '另一台设备写的' })
 
     await updateBody(note.id, '原文加上本机继续敲的字', '原文')
 
@@ -474,8 +478,8 @@ describe('updateBody 基线校验', () => {
     const original = all.find((n) => n.id === note.id)!
     const copy = all.find((n) => n.id !== note.id)!
     // 后写者胜：本机内容留在原笔记；被覆盖的远端正文不能凭空消失
-    expect(original.body).toBe('原文加上本机继续敲的字')
-    expect(copy.body).toContain('另一台设备写的')
+    expect(await db.bodies.get(original.id)).toMatchObject({ body: '原文加上本机继续敲的字' })
+    expect((await db.bodies.get(copy.id))!.body).toContain('另一台设备写的')
     expect(copy.title).toContain(CONFLICT_SUFFIX)
     // 副本就地放在原笔记的分组里
     expect(copy.group_id).toBe('g1')
@@ -500,17 +504,17 @@ describe('updateBody 基线校验', () => {
 
   it('不传基线时保持旧行为，不做校验', async () => {
     const note = await createNote('原文')
-    await db.notes.update(note.id, { body: '别处改的' })
+    await db.bodies.update(note.id, { body: '别处改的' })
 
     await updateBody(note.id, '直接覆盖')
 
     expect(await db.notes.count()).toBe(1)
-    expect((await getNote(note.id))!.body).toBe('直接覆盖')
+    expect((await db.bodies.get(note.id))!.body).toBe('直接覆盖')
   })
 
   it('要写入的内容与库中正文相同时，即便基线不同也不产生副本', async () => {
     const note = await createNote('原文')
-    await db.notes.update(note.id, { body: '同一份' })
+    await db.bodies.update(note.id, { body: '同一份' })
 
     await updateBody(note.id, '同一份', '原文')
 
@@ -526,7 +530,7 @@ describe('createConflictCopy', () => {
     const copy = await createConflictCopy((await getNote(note.id))!, '# 会议纪要\n我的版本')
 
     expect(copy.title).toBe(`会议纪要${CONFLICT_SUFFIX}`)
-    expect(copy.body).toContain('# 会议纪要\n我的版本')
+    expect((await db.bodies.get(copy.id))!.body).toContain('# 会议纪要\n我的版本')
     expect(copy.group_id).toBe('g1')
     const task = await db.outbox.where('[note_id+kind]').equals([copy.id, 'create']).first()
     expect(task!.payload).toMatchObject({ group_id: 'g1' })

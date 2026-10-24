@@ -1,7 +1,7 @@
 import { TITLE_MAX, derive, extractTitle } from '../../shared/derive'
 import { homeHiddenGroupIds, isHiddenFromHome } from '../../shared/home-feed'
 import { mergeTask } from '../../shared/outbox'
-import type { LocalNote, NoteMeta, OutboxTask } from '../../shared/types'
+import type { LocalNote, LocalNoteWithBody, NoteMeta, OutboxTask } from '../../shared/types'
 import { emitLocalWrite } from '../sync/signal'
 import { enqueueOpensUnknownIn, scheduleOpensSync } from '../sync/opens'
 import { db } from './schema'
@@ -53,16 +53,16 @@ const newTask = (over: Pick<OutboxTask, 'note_id' | 'kind' | 'payload'>): Outbox
   ...over,
 })
 
-function buildNote(content: string, options: CreateOptions): LocalNote {
+function buildNote(options: CreateOptions): LocalNote {
   const now = Date.now()
-  const { title, summary, thumbnail } = derive(content)
 
   return {
     id: options.id ?? crypto.randomUUID(),
     group_id: options.group_id ?? null,
-    title,
-    summary,
-    thumbnail,
+    // title/summary/thumbnail 由 insertNoteIn 从正文重新 derive（正文与元数据同源）
+    title: '',
+    summary: '',
+    thumbnail: null,
     version: 0,
     prop_version: 0,
     star: options.star ?? 0,
@@ -73,7 +73,6 @@ function buildNote(content: string, options: CreateOptions): LocalNote {
     invalid: 0,
     create_time: options.create_time ?? now,
     update_time: now,
-    body: content,
     // 0 = 服务端还没确认过任何版本；create 成功后由 applyAck 写成 1
     body_version: 0,
     dirty: 'both',
@@ -83,9 +82,10 @@ function buildNote(content: string, options: CreateOptions): LocalNote {
   }
 }
 
-/** 事务内部用：写入笔记行并入队 create 任务，调用方负责把它包进 db.transaction（须含 db.meta） */
-async function insertNoteIn(note: LocalNote): Promise<void> {
-  await db.notes.add(note)
+/** 事务内部用：调用方负责把它包进 db.transaction */
+async function insertNoteIn(note: LocalNote, body: string): Promise<void> {  const { title, summary, thumbnail } = derive(body)
+  await db.notes.add({ ...note, title, summary, thumbnail })
+  await db.bodies.put({ id: note.id, body })
   // 新笔记的 open_others 未知，进 opens 点名队列（见 sync/opens.ts）
   await enqueueOpensUnknownIn([note.id])
   await enqueueIn(
@@ -95,10 +95,10 @@ async function insertNoteIn(note: LocalNote): Promise<void> {
       payload: {
         id: note.id,
         create_time: note.create_time,
-        content: note.body,
-        title: note.title,
-        summary: note.summary,
-        thumbnail: note.thumbnail,
+        content: body,
+        title,
+        summary,
+        thumbnail,
         group_id: note.group_id,
         star: note.star,
         top: note.top,
@@ -110,12 +110,13 @@ async function insertNoteIn(note: LocalNote): Promise<void> {
 }
 
 export async function createNote(content: string, options: CreateOptions = {}): Promise<LocalNote> {
-  const note = buildNote(content, options)
+  const note = buildNote(options)
 
-  await db.transaction('rw', db.notes, db.outbox, db.meta, () => insertNoteIn(note))
+  await db.transaction('rw', db.notes, db.bodies, db.outbox, db.meta, () => insertNoteIn(note, content))
 
   emitLocalWrite()
-  return note
+  // 返回值带上从正文派生的标题/摘要/缩略图（行内的版本由 insertNoteIn 落库）
+  return { ...note, ...derive(content) }
 }
 
 /**
@@ -153,23 +154,24 @@ export async function createConflictCopy(
 export async function updateBody(id: string, content: string, base?: string): Promise<boolean> {
   const { title, summary, thumbnail } = derive(content)
 
-  const conflictCreated = await db.transaction('rw', db.notes, db.outbox, db.history, db.meta, async () => {
+  const conflictCreated = await db.transaction('rw', db.notes, db.bodies, db.outbox, db.history, db.meta, async () => {
     const note = await db.notes.get(id)
     if (!note) return false
+    const previous = (await db.bodies.get(id))?.body ?? ''
 
-    const conflict = base !== undefined && note.body !== base && note.body !== content
+    const conflict = base !== undefined && previous !== base && previous !== content
     if (conflict) {
-      await insertNoteIn(buildNote(conflictContent(note.body), { group_id: note.group_id }))
+      await insertNoteIn(buildNote({ group_id: note.group_id }), conflictContent(previous))
     }
 
     const now = Date.now()
     // 本地正文历史：被替换的旧正文按间隔或改动量留快照，快照时间记旧正文最后落库的时刻
-    await maybeSnapshotIn(id, note.body, content, note.update_time, now)
+    await maybeSnapshotIn(id, previous, content, note.update_time, now)
 
+    // body_version 刻意不动：刚敲出来的正文还没有服务端版本号。
+    // 「本地有未推送内容」由 dirty 与 outbox 表达，不由版本号表达。
+    await db.bodies.put({ id, body: content })
     await db.notes.update(id, {
-      body: content,
-      // body_version 刻意不动：刚敲出来的正文还没有服务端版本号。
-      // 「本地有未推送内容」由 dirty 与 outbox 表达，不由版本号表达。
       title,
       summary,
       thumbnail,
@@ -252,9 +254,10 @@ export const recoverNote = (id: string) => setInvalid(id, 0, 'recover')
  * 笔记行都没了，applyAck 里 db.notes.get 会返回 undefined 而提前返回，清脏位那套逻辑不参与。
  */
 export async function purgeNote(id: string): Promise<void> {
-  await db.transaction('rw', db.notes, db.outbox, db.history, db.knowledgeBaseNoteStates, async () => {
+  await db.transaction('rw', db.notes, db.bodies, db.outbox, db.history, db.knowledgeBaseNoteStates, async () => {
     await db.knowledgeBaseNoteStates.put({ id, state: 'purged' })
     await db.notes.delete(id)
+    await db.bodies.delete(id)
     await deleteHistoryIn([id])
     // 笔记行都要物理删了，它名下还没推出去的 create/body/prop 任务已无意义，
     // 留着会让 push 多发一次注定 404 的请求。先清掉，再入队唯一的 purge。
@@ -271,12 +274,13 @@ export async function purgeNote(id: string): Promise<void> {
  * 多次调用会合并成同一行（payload 都是 { scope: 'trash' }，幂等）。
  */
 export async function purgeTrash(): Promise<void> {
-  await db.transaction('rw', db.notes, db.outbox, db.history, db.knowledgeBaseNoteStates, async () => {
+  await db.transaction('rw', db.notes, db.bodies, db.outbox, db.history, db.knowledgeBaseNoteStates, async () => {
     const trashed = await db.notes.where('invalid').equals(1).toArray()
     if (trashed.length === 0) return
     await db.knowledgeBaseNoteStates.bulkPut(trashed.map(n => ({ id: n.id, state: 'purged' as const })))
 
     await db.notes.bulkDelete(trashed.map((n) => n.id))
+    await db.bodies.bulkDelete(trashed.map((n) => n.id))
     await deleteHistoryIn(trashed.map((n) => n.id))
     await enqueueIn(newTask({ note_id: '__trash__', kind: 'purge', payload: { scope: 'trash' } }))
   })
@@ -300,12 +304,13 @@ export async function restoreFromHistory(id: string, historyId: number): Promise
  */
 export async function restoreHistoryBody(id: string, body: string): Promise<boolean> {
   let exists = false
-  await db.transaction('rw', db.notes, db.history, async () => {
+  await db.transaction('rw', db.notes, db.bodies, db.history, async () => {
     const note = await db.notes.get(id)
     if (!note) return
     exists = true
-    if (note.body === body || !note.body.trim()) return
-    await recordSnapshotIn(id, note.body, note.update_time)
+    const previous = (await db.bodies.get(id))?.body ?? ''
+    if (previous === body || !previous.trim()) return
+    await recordSnapshotIn(id, previous, note.update_time)
   })
   if (!exists) return false
   await updateBody(id, body)
@@ -314,6 +319,25 @@ export async function restoreHistoryBody(id: string, body: string): Promise<bool
 
 export function getNote(id: string): Promise<LocalNote | undefined> {
   return db.notes.get(id)
+}
+
+/** 单条正文（打开笔记按需取，主键读取不碰列表） */
+export async function getNoteBody(id: string): Promise<string | undefined> {
+  return (await db.bodies.get(id))?.body
+}
+
+/** 批量正文（搜索、统计、导出等聚合场景）；缺失的 id 不在结果里 */
+export async function getNoteBodies(ids: string[]): Promise<Map<string, string>> {
+  const rows = await db.bodies.bulkGet(ids)
+  const map = new Map<string, string>()
+  for (const row of rows) if (row) map.set(row.id, row.body)
+  return map
+}
+
+/** 聚合场景（统计/导出/搜索）：元数据行拼上正文；本地缺正文时以空串兜底 */
+export async function joinBodies(notes: LocalNote[]): Promise<LocalNoteWithBody[]> {
+  const bodies = await getNoteBodies(notes.map((note) => note.id))
+  return notes.map((note) => ({ ...note, body: bodies.get(note.id) ?? '' }))
 }
 
 /**

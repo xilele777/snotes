@@ -32,7 +32,7 @@ describe('pushOnce', () => {
     const result = await pushOnce()
     expect(result.failedTotal).toBe(0)
     expect(await db.outbox.count()).toBe(1)
-    expect((await db.notes.toArray())[0].body).toContain('迟到的正文')
+    expect((await db.bodies.toArray())[0].body).toContain('迟到的正文')
     expect(await db.notes.get(note.id)).toBeUndefined()
     expect(await db.history.count()).toBe(0)
     expect((await db.knowledgeBaseNoteStates.get(note.id))?.state).toBe('purged')
@@ -70,7 +70,7 @@ describe('pushOnce', () => {
 
     const task = await db.outbox.where('kind').equals('body').first()
     expect(task).toBeDefined()
-    expect((await db.notes.get(note.id))!.body).toBe('ACK 期间的新正文')
+    expect((await db.bodies.get(note.id))!.body).toBe('ACK 期间的新正文')
   })
 
   it('只清掉本次任务对应的那一位 dirty', async () => {
