@@ -134,3 +134,31 @@ describe('DELETE /api/groups/:id', () => {
     expect(note!.prop_version).toBe(2)
   })
 })
+
+describe('分组字段类型校验', () => {
+  it('create 的字段类型非法返回 400，不入库', async () => {
+    for (const body of [
+      { group_id: 'g1', name: '工作', ord: 'zero' },
+      { group_id: 'g1', name: 42 },
+      { group_id: 'g1', name: '工作', hide_from_home: 'on' },
+      { group_id: '', name: '空 id' },
+    ]) {
+      const res = await json('/api/groups', 'POST', body)
+      expect(res.status, JSON.stringify(body)).toBe(400)
+    }
+    expect(await env.DB.prepare('SELECT COUNT(*) AS n FROM note_group').first<{ n: number }>()).toMatchObject({ n: 0 })
+  })
+
+  it('patch 的字段类型非法返回 400，合法值照常通过', async () => {
+    await json('/api/groups', 'POST', { group_id: 'g1', name: '工作' })
+    const bad = await json('/api/groups/g1', 'PATCH', { hide_from_home: 'on' })
+    expect(bad.status).toBe(400)
+    const badOrd = await json('/api/groups/g1', 'PATCH', { ord: -1 })
+    expect(badOrd.status).toBe(400)
+
+    const ok = await json('/api/groups/g1', 'PATCH', { hide_from_home: 1, ord: 3, color: null })
+    expect(ok.status).toBe(200)
+    const group = await env.DB.prepare('SELECT hide_from_home, ord FROM note_group WHERE group_id = ?').bind('g1').first()
+    expect(group).toMatchObject({ hide_from_home: 1, ord: 3 })
+  })
+})

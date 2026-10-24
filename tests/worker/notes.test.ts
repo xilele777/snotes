@@ -434,3 +434,37 @@ describe('PATCH /api/notes/:id 冲突时保住被覆盖的正文', () => {
     expect(note!.invalid).toBe(2)
   })
 })
+
+describe('PATCH /api/notes 字段类型校验', () => {
+  it('属性字段类型或取值非法返回 400，不入库', async () => {
+    const req = noteReq()
+    await json('/api/notes', 'POST', req)
+    for (const patch of [
+      { star: 'yes' },
+      { top: 2 },
+      { home_hidden: 'on', base_prop_version: 1 },
+      { group_id: 42, base_prop_version: 1 },
+      { skin_color: 7, base_prop_version: 1 },
+    ]) {
+      const res = await json(`/api/notes/${req.id}`, 'PATCH', patch)
+      expect(res.status, JSON.stringify(patch)).toBe(400)
+    }
+    const note = await env.DB.prepare('SELECT star, top, home_hidden, group_id, skin_color FROM note WHERE id = ?')
+      .bind(req.id).first()
+    expect(note).toMatchObject({ star: 0, top: 0, home_hidden: null, group_id: null, skin_color: null })
+  })
+
+  it('create 的属性字段类型非法同样返回 400', async () => {
+    const res = await json('/api/notes', 'POST', { ...noteReq(), star: 'yes' })
+    expect(res.status).toBe(400)
+  })
+
+  it('合法的 0/1 与 null 值照常通过', async () => {
+    const req = noteReq()
+    await json('/api/notes', 'POST', req)
+    const res = await json(`/api/notes/${req.id}`, 'PATCH', { star: 1, top: 0, home_hidden: null, base_prop_version: 1 })
+    expect(res.status).toBe(200)
+    const note = await env.DB.prepare('SELECT star, home_hidden FROM note WHERE id = ?').bind(req.id).first()
+    expect(note).toMatchObject({ star: 1, home_hidden: null })
+  })
+})

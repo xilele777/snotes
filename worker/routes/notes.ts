@@ -1,11 +1,41 @@
 import { Hono } from 'hono'
+import { z } from 'zod'
 import { noteFits } from '../../shared/limits'
 import type { CreateNoteRequest, PatchNoteRequest, PatchNoteResponse } from '../../shared/types'
-import { listNoteHistory, maybeRecordNoteHistory, nowMs, purgeNotes, recordNoteHistory } from '../db'
+import { latestNoteHistory, listNoteHistory, maybeRecordNoteHistory, nowMs, purgeNotes, recordNoteHistory } from '../db'
 import type { Env } from '../types'
 
 const PROP_FIELDS = ['group_id', 'star', 'top', 'skin_color', 'home_hidden'] as const
 const BODY_FIELDS = ['content', 'title', 'summary', 'thumbnail'] as const
+
+// 属性与派生字段的类型契约（shared/types.ts）。此前 PATCH 直接入库，畸形客户端可把
+// star: "yes" 这类类型错乱的值写进 D1，污染后续同步与三态判定——与 agent 路由对齐补上。
+const zeroOne = z.union([z.literal(0), z.literal(1)])
+const notePropFields = {
+  group_id: z.string().nullable().optional(),
+  star: zeroOne.optional(),
+  top: zeroOne.optional(),
+  skin_color: z.string().nullable().optional(),
+  home_hidden: zeroOne.or(z.null()).optional(),
+}
+const createNoteSchema = z.object({
+  id: z.string().min(1),
+  create_time: z.number().int().min(0).max(8_640_000_000_000_000),
+  content: z.string(),
+  title: z.string(),
+  summary: z.string(),
+  thumbnail: z.string().nullable().optional(),
+  ...notePropFields,
+})
+const patchNoteSchema = z.object({
+  content: z.string().optional(),
+  title: z.string().optional(),
+  summary: z.string().optional(),
+  thumbnail: z.string().nullable().optional(),
+  ...notePropFields,
+  base_version: z.number().int().optional(),
+  base_prop_version: z.number().int().optional(),
+})
 
 /**
  * 条件更新落空（读到的版本在写入前已被别的请求推进）时的重试上限。
@@ -17,18 +47,10 @@ const MAX_WRITE_ATTEMPTS = 3
 export const notesRoutes = new Hono<{ Bindings: Env }>()
 
 notesRoutes.post('/api/notes', async (c) => {
-  const req = await c.req.json<CreateNoteRequest>().catch(() => null)
-
-  if (
-    !req ||
-    typeof req.id !== 'string' ||
-    typeof req.create_time !== 'number' || !Number.isSafeInteger(req.create_time) || req.create_time < 0 || req.create_time > 8_640_000_000_000_000 ||
-    typeof req.content !== 'string' ||
-    typeof req.title !== 'string' ||
-    typeof req.summary !== 'string'
-  ) {
-    return c.json({ error: 'invalid_body' }, 400)
-  }
+  const raw = await c.req.json().catch(() => null)
+  const parsed = createNoteSchema.safeParse(raw)
+  if (!parsed.success) return c.json({ error: 'invalid_body' }, 400)
+  const req: CreateNoteRequest = parsed.data
 
   if (!noteFits(req.content)) return c.json({ error: 'content_too_large', max_bytes: 1024 * 1024 }, 413)
 
@@ -146,14 +168,15 @@ function readCurrent(env: Env, id: string) {
 
 notesRoutes.patch('/api/notes/:id', async (c) => {
   const id = c.req.param('id')
-  const req = await c.req.json<PatchNoteRequest>().catch(() => null)
-  if (!req) return c.json({ error: 'invalid_body' }, 400)
+  const raw = await c.req.json().catch(() => null)
+  const parsed = patchNoteSchema.safeParse(raw)
+  if (!parsed.success) return c.json({ error: 'invalid_body' }, 400)
+  const req: PatchNoteRequest = parsed.data
 
   let current = await readCurrent(c.env, id)
   if (!current) return c.json({ error: 'not_found' }, 404)
 
   const touchesBody = req.content !== undefined
-  if (touchesBody && typeof req.content !== 'string') return c.json({ error: 'invalid_body' }, 400)
   if (touchesBody && !noteFits(req.content!)) return c.json({ error: 'content_too_large', max_bytes: 1024 * 1024 }, 413)
   const touchedProps = PROP_FIELDS.filter((f) => req[f] !== undefined)
 
@@ -161,7 +184,7 @@ notesRoutes.patch('/api/notes/:id', async (c) => {
     return c.json({ error: 'empty_patch' }, 400)
   }
 
-  if (touchesBody && (typeof req.title !== 'string' || typeof req.summary !== 'string')) {
+  if (touchesBody && (req.title === undefined || req.summary === undefined)) {
     return c.json({ error: 'derived_fields_required' }, 400)
   }
 
@@ -321,8 +344,8 @@ notesRoutes.post('/api/notes/:id/history', async (c) => {
   const current = await readCurrent(c.env, id)
   if (!current) return c.json({ error: 'not_found' }, 404)
   if (!req.body.trim()) return c.json({ ok: true, recorded: false })
-  const last = await listNoteHistory(c.env, id)
-  if (last[0]?.body === req.body) return c.json({ ok: true, recorded: false })
+  const last = await latestNoteHistory(c.env, id)
+  if (last?.body === req.body) return c.json({ ok: true, recorded: false })
   const time = typeof req.time === 'number' && Number.isFinite(req.time) ? req.time : current.update_time
   await recordNoteHistory(c.env, id, req.body, time)
   return c.json({ ok: true, recorded: true })

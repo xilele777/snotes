@@ -1,18 +1,29 @@
 import { Hono } from 'hono'
+import { z } from 'zod'
 import type { CreateGroupRequest, PatchGroupRequest } from '../../shared/types'
 import { nowMs } from '../db'
 import type { Env } from '../types'
 
 const PATCH_FIELDS = ['name', 'ord', 'color', 'hide_from_home'] as const
 
+// 类型契约（shared/types.ts）。只查类型与取值，不收紧长度——旧备份导入的分组名
+// 可能比 UI 限制长，收紧会把本可同步的数据变成永久 400。
+const groupFields = {
+  name: z.string().optional(),
+  ord: z.number().int().min(0).optional(),
+  color: z.string().nullable().optional(),
+  hide_from_home: z.union([z.literal(0), z.literal(1)]).optional(),
+}
+const createGroupSchema = z.object({ group_id: z.string().min(1), ...groupFields, name: z.string() })
+const patchGroupSchema = z.object(groupFields)
+
 export const groupsRoutes = new Hono<{ Bindings: Env }>()
 
 groupsRoutes.post('/api/groups', async (c) => {
-  const req = await c.req.json<CreateGroupRequest>().catch(() => null)
-
-  if (!req || typeof req.group_id !== 'string' || typeof req.name !== 'string') {
-    return c.json({ error: 'invalid_body' }, 400)
-  }
+  const raw = await c.req.json().catch(() => null)
+  const parsed = createGroupSchema.safeParse(raw)
+  if (!parsed.success) return c.json({ error: 'invalid_body' }, 400)
+  const req: CreateGroupRequest = parsed.data
 
   const now = nowMs()
 
@@ -29,8 +40,10 @@ groupsRoutes.post('/api/groups', async (c) => {
 
 groupsRoutes.patch('/api/groups/:id', async (c) => {
   const id = c.req.param('id')
-  const req = await c.req.json<PatchGroupRequest>().catch(() => null)
-  if (!req) return c.json({ error: 'invalid_body' }, 400)
+  const raw = await c.req.json().catch(() => null)
+  const parsed = patchGroupSchema.safeParse(raw)
+  if (!parsed.success) return c.json({ error: 'invalid_body' }, 400)
+  const req: PatchGroupRequest = parsed.data
 
   const exists = await c.env.DB.prepare('SELECT group_id FROM note_group WHERE group_id = ?')
     .bind(id)

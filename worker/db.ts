@@ -26,7 +26,8 @@ export function rowToNoteMeta(row: Record<string, unknown>): NoteMeta {
       row.home_hidden === null || row.home_hidden === undefined
         ? null
         : Number(row.home_hidden) === 1 ? 1 : 0,
-    invalid: (Number(row.invalid) as 0 | 1 | 2) ?? 0,
+    // ?? 兜不住 NaN（NaN 不是 null）：先按驱动给的类型转数值，再白名单化
+    invalid: [0, 1, 2].includes(Number(row.invalid)) ? (Number(row.invalid) as 0 | 1 | 2) : 0,
     create_time: Number(row.create_time),
     update_time: Number(row.update_time),
   }
@@ -116,6 +117,15 @@ export async function listNoteHistory(env: Env, noteId: string): Promise<History
     .bind(noteId)
     .all<HistoryRow>()
   return results
+}
+
+/** 最新的一条快照。去重比较用这一条就够，别为它拉整份历史（最多 20 条 × 1MB 正文）。 */
+export async function latestNoteHistory(env: Env, noteId: string): Promise<HistoryRow | null> {
+  return env.DB.prepare(
+    'SELECT id, note_id, time, body FROM note_history WHERE note_id = ? ORDER BY time DESC, id DESC LIMIT 1'
+  )
+    .bind(noteId)
+    .first<HistoryRow>()
 }
 
 /** 写一条云端快照并按条数与时长修剪 */

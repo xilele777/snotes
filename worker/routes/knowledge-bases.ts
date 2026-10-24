@@ -80,12 +80,13 @@ knowledgeBasesRoutes.post('/api/knowledge-bases/sync/pull', async c => {
   const after = req?.after ?? since
   const clock = (await c.env.DB.prepare('SELECT seq FROM knowledge_base_clock WHERE id = 1').first<{ seq: number }>())!.seq
   const until = req?.until ?? clock
+  // 先校验再发 checkpoint：非整数的 until 此前会先写进 checkpoint 表，只能等 TTL 清理
+  if (![since, after, until].every(n => Number.isSafeInteger(n) && n >= 0) || after < since || until > clock || since > until) {
+    return c.json({ error: 'invalid_cursor' }, 400)
+  }
   const receipt = await issueCheckpoint(c.env.DB, until, 'books', c.env.SYNC_INSTANCE_EPOCH)
   if ('checkpoint' in (req ?? {}) && since > 0 && !await validCheckpoint(c.env.DB, req.checkpoint, since, 'books', c.env.SYNC_INSTANCE_EPOCH)) {
     return c.json({ error: 'sync_reset_required' }, 409)
-  }
-  if (![since, after, until].every(n => Number.isSafeInteger(n) && n >= 0) || after < since || until > clock || since > until) {
-    return c.json({ error: 'invalid_cursor' }, 400)
   }
   const inventory = req?.inventory === true
   if (inventory && req.after_id !== undefined && (typeof req.after_id !== 'string' || req.after_id.length > 100)) return c.json({ error: 'invalid_cursor' }, 400)
