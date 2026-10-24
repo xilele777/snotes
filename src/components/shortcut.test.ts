@@ -51,6 +51,11 @@ describe('resolveShortcut', () => {
       .toBeNull()
   })
 
+  it('Esc 在编辑器内 → null（表情/链接等浮层要靠 Esc 自行关闭，不能被清空搜索词抢走）', () => {
+    expect(resolveShortcut({ metaKey: false, ctrlKey: false, key: 'Escape' }, { hasQuery: true, inEditor: true }))
+      .toBeNull()
+  })
+
   it('无修饰键的字母不触发任何快捷键', () => {
     expect(resolveShortcut({ metaKey: false, ctrlKey: false, key: 'n' }, { hasQuery: false })).toBeNull()
   })

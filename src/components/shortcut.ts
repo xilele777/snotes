@@ -79,7 +79,9 @@ export const MARKDOWN_HINTS: { keys: string; label: string }[] = [
  *   常被输入法与键盘布局吃掉。Mac 上 Option+N 是死键，key 变成 Dead，靠 code 辨认。
  * - Cmd/Ctrl + F → 聚焦搜索框（编辑器外仍兼容 Mod+K）
  * - Cmd/Ctrl + , → 打开设置
- * - Esc → 仅在有活动查询时清空（无查询时不劫持，交给浏览器关闭弹层等默认行为）
+ * - Esc → 仅在有活动查询且焦点不在编辑器时清空搜索词。编辑器的表情/链接等浮层
+ *   自身要靠 Esc 关闭（它们不是 aria-modal，App 的弹层让路规则罩不住），这里
+ *   抢走会让浮层关不掉；无查询时同样不劫持，交给浏览器默认行为
  * - Cmd/Ctrl + Shift + S / P → 星标、置顶；Alt + D / U → 删除、同步
  * - Cmd/Ctrl + Alt + ↑ / ↓ → 列表里切到上一条 / 下一条（不用单独的 Alt+方向键，
  *   那在 Mac 编辑器里是按词移动光标）
@@ -109,6 +111,6 @@ export function resolveShortcut(
   if (!mod && e.altKey && !e.shiftKey && (key === 'n' || e.code === 'KeyN')) return { type: 'create' }
   if (mod && !e.altKey && !e.shiftKey && (key === 'f' || (key === 'k' && !ctx.inEditor))) return { type: 'focusSearch' }
   if (mod && !e.shiftKey && !e.altKey && (key === ',' || e.code === 'Comma')) return { type: 'openSettings' }
-  if (key === 'escape' && ctx.hasQuery) return { type: 'clearQuery' }
+  if (key === 'escape' && ctx.hasQuery && !ctx.inEditor) return { type: 'clearQuery' }
   return null
 }
