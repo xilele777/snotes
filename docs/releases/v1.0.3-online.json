@@ -1,0 +1,70 @@
+{
+  "origin": "https://note.alover.me",
+  "at": "2026-10-24T07:05:28.174Z",
+  "app_version": "1.0.3",
+  "checks": [
+    {
+      "path": "/api/health",
+      "status": 200,
+      "ok": true
+    },
+    {
+      "path": "/",
+      "status": 200,
+      "sha256": "c4be5d07dac7510e641d7039b2cc855008a21d9edcfaf2715f67f13289979a48",
+      "hash_equal": true,
+      "cache_control": "no-cache",
+      "content_encoding": "br"
+    },
+    {
+      "path": "assets/index-BfXfenm0.js",
+      "status": 200,
+      "sha256": "ac57a7b705e4e889a5fd70b8456dd90a752997db97339f92eae174bfcbd66ce0",
+      "hash_equal": true,
+      "cache_control": "public, max-age=31536000, immutable",
+      "content_encoding": "br"
+    },
+    {
+      "path": "assets/client-9esxuV6y.js",
+      "status": 200,
+      "sha256": "008c33284aa2fcc9117f13dcc2b50b9d38854f49036f7d03a3c3b7b68215d4ec",
+      "hash_equal": true,
+      "cache_control": "public, max-age=31536000, immutable",
+      "content_encoding": "br"
+    },
+    {
+      "path": "assets/VditorEditor-DLrSe-ct.js",
+      "status": 200,
+      "sha256": "23b1fbeeade67d1e56267e62206f4229b8c6a1d519cfd64ac2e4f3c2c928ba5b",
+      "hash_equal": true,
+      "cache_control": "public, max-age=31536000, immutable",
+      "content_encoding": "br"
+    },
+    {
+      "path": "assets/VditorEditor-BoSy7Ped.css",
+      "status": 200,
+      "sha256": "a9cfc846473ceed6e9367bd67736eb47d46bd4f9ecfc745a339f7c8473389644",
+      "hash_equal": true,
+      "cache_control": "public, max-age=31536000, immutable",
+      "content_encoding": "br"
+    },
+    {
+      "path": "/sw.js",
+      "status": 200,
+      "sha256": "226e63735b0844908f03cdb13342e9593a3df2d4a2fd75fe4a3537a8d79bb324",
+      "hash_equal": true,
+      "cache_control": "no-cache",
+      "content_encoding": "br"
+    },
+    {
+      "path": "/api/sync/instance",
+      "method": "GET",
+      "status": 401
+    },
+    {
+      "path": "/api/notes/opens",
+      "method": "POST",
+      "status": 401
+    }
+  ]
+}
