@@ -63,3 +63,40 @@ it('草稿存储也满时仍保留内存恢复入口，不能报告已安全保�
     expect(await waitForDraftSaves()).toBe(false)
   } finally { storage.mockRestore() }
 })
+
+it('别页中途新落的草稿实时出现在本页列表，保存后随 storage 移除消失，且不阻塞本页更新刷新', async () => {
+  const otherKey = 'snotes_unsaved_draft:live-other'
+  const draft = { id: 'e', body: '别页正在编辑', base: '原文', updatedAt: 3 }
+  localStorage.setItem(otherKey, JSON.stringify(draft))
+  window.dispatchEvent(new StorageEvent('storage', { key: otherKey, newValue: JSON.stringify(draft), storageArea: localStorage }))
+  expect(unsavedDrafts.value.map(d => d.body)).toContain('别页正在编辑')
+  // 非本会话拥有的草稿不拦更新刷新——它已持久化，由别页自己负责。
+  expect(await waitForDraftSaves()).toBe(true)
+  localStorage.removeItem(otherKey)
+  window.dispatchEvent(new StorageEvent('storage', { key: otherKey, newValue: null, storageArea: localStorage }))
+  expect(unsavedDrafts.value.map(d => d.body)).not.toContain('别页正在编辑')
+})
+
+it('别页更新草稿时本页实时跟进新正文与新 base，重试保存用的是新内容', async () => {
+  const otherKey = 'snotes_unsaved_draft:live-other-2'
+  localStorage.setItem(otherKey, JSON.stringify({ id: 'c', body: '旧版', base: '原文', updatedAt: 1 }))
+  window.dispatchEvent(new StorageEvent('storage', { key: otherKey, newValue: JSON.stringify({ id: 'c', body: '旧版', base: '原文', updatedAt: 1 }), storageArea: localStorage }))
+  const updated = { id: 'c', body: '新版', base: '旧版', updatedAt: 2 }
+  localStorage.setItem(otherKey, JSON.stringify(updated))
+  window.dispatchEvent(new StorageEvent('storage', { key: otherKey, newValue: JSON.stringify(updated), storageArea: localStorage }))
+  expect(unsavedDrafts.value[0]).toMatchObject({ body: '新版', base: '旧版' })
+  const save = vi.fn().mockResolvedValue(undefined)
+  await saveDraft('c', save)
+  expect(save).toHaveBeenCalledWith('c', '新版', '旧版')
+})
+
+it('启动快照里的别页残留草稿不会阻塞本页更新刷新，本页自己的失败草稿仍会', async () => {
+  // 模拟启动快照：直接把别页草稿塞进恢复列表（等价于 read() 在别页保存前读到）。
+  const phantom = { id: 'f', body: '别页残留', base: '原文', updatedAt: 1, journalKey: 'snotes_unsaved_draft:phantom' }
+  unsavedDrafts.value.push(phantom)
+  expect(await waitForDraftSaves()).toBe(true)
+  stageDraft('g', '本页未保存正文', '原文')
+  await expect(saveDraft('g', async () => { throw new Error('quota') })).rejects.toThrow('quota')
+  expect(await waitForDraftSaves()).toBe(false)
+  discardDraft('f')
+})
