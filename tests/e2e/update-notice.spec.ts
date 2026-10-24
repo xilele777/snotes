@@ -60,17 +60,19 @@ for (const width of [1440, 390, 320]) {
       })
       try {
         await new Promise<void>((resolve, reject) => {
-          const tx = db.transaction('notes', 'readwrite')
+          const tx = db.transaction(['notes', 'bodies'], 'readwrite')
           for (let week = 0; week < 52; week++) {
             for (let i = 0; i < (week % 4) + 1; i++) {
               const date = new Date()
               date.setDate(date.getDate() - week * 7)
               const time = date.getTime()
+              const id = `heat-${week}-${i}`
               tx.objectStore('notes').put({
-                id: `heat-${week}-${i}`, group_id: null, title: '热力图验收', summary: '',
+                id, group_id: null, title: '热力图验收', summary: '',
                 thumbnail: null, version: 1, prop_version: 1, body_version: 1, star: 0, top: 0,
-                skin_color: null, invalid: 0, dirty: 'none', create_time: time, update_time: time, body: '',
+                skin_color: null, invalid: 0, dirty: 'none', create_time: time, update_time: time,
               })
+              tx.objectStore('bodies').put({ id, body: '' })
             }
           }
           tx.oncomplete = () => resolve()

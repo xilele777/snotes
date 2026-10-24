@@ -14,8 +14,8 @@ async function saved(page: Page) {
     })
     try {
       return await new Promise<string>((resolve, reject) => {
-        const req = db.transaction('notes').objectStore('notes').getAll()
-        req.onsuccess = () => resolve(req.result.map(note => note.body).join('\n'))
+        const req = db.transaction('bodies').objectStore('bodies').getAll()
+        req.onsuccess = () => resolve(req.result.map(row => row.body).join('\n'))
         req.onerror = () => reject(req.error)
       })
     } finally { db.close() }

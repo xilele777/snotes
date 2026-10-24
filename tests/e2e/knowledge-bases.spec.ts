@@ -130,7 +130,7 @@ for (const width of [1440, 720, 390, 320]) {
       // Allow the editor's debounced body write, then return through the real nav.
       await expect.poll(async () => page.evaluate(async () => {
         const db = await new Promise<IDBDatabase>(resolve => { const req = indexedDB.open('snotes'); req.onsuccess = () => resolve(req.result) })
-        try { return await new Promise<boolean>(resolve => { const req = db.transaction('notes').objectStore('notes').getAll(); req.onsuccess = () => resolve(req.result.some(n => n.body.includes('离线记录'))) }) } finally { db.close() }
+        try { return await new Promise<boolean>(resolve => { const req = db.transaction('bodies').objectStore('bodies').getAll(); req.onsuccess = () => resolve(req.result.some(n => n.body.includes('离线记录'))) }) } finally { db.close() }
       })).toBe(true)
       await page.getByRole('button', { name: '返回列表', exact: true }).click()
     }

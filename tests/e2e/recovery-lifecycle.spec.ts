@@ -12,7 +12,7 @@ async function bodies(page: Page): Promise<string> {
     })
     try {
       return await new Promise<string>((resolve, reject) => {
-        const request = db.transaction('notes').objectStore('notes').getAll()
+        const request = db.transaction('bodies').objectStore('bodies').getAll()
         request.onsuccess = () => resolve(request.result.map(n => n.body).join('\n'))
         request.onerror = () => reject(request.error)
       })

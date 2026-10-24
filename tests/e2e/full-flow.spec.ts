@@ -52,17 +52,18 @@ async function seedNavigationNotes(page: Page) {
     })
     try {
       await new Promise<void>((resolve, reject) => {
-        const tx = db.transaction('notes', 'readwrite')
+        const tx = db.transaction(['notes', 'bodies'], 'readwrite')
         const now = Date.now()
         for (let i = 0; i < 27; i++) {
           const title = i < 24 ? `项目记录 ${i + 1}` : `已归档 ${i - 23}`
+          const body = `# ${title}\n\n` + Array.from({ length: 70 }, (_, n) => `第 ${n + 1} 段，记录项目的讨论和后续工作。`).join('\n\n')
           tx.objectStore('notes').put({
             id: `navigation-${i}`, group_id: groupId, title, summary: '导航与阅读位置验收',
             thumbnail: null, version: 1, prop_version: 1, body_version: 1, star: 0, top: 0,
             skin_color: null, invalid: i < 24 ? 0 : 1, dirty: 'none',
             create_time: now - i * 1000, update_time: now - i * 1000,
-            body: `# ${title}\n\n` + Array.from({ length: 70 }, (_, n) => `第 ${n + 1} 段，记录项目的讨论和后续工作。`).join('\n\n'),
           })
+          tx.objectStore('bodies').put({ id: `navigation-${i}`, body })
         }
         tx.oncomplete = () => resolve()
         tx.onerror = () => reject(tx.error)
@@ -93,16 +94,17 @@ async function seedLongNotes(page: Page, titles: string[]) {
     })
     try {
       await new Promise<void>((resolve, reject) => {
-        const tx = db.transaction('notes', 'readwrite')
+        const tx = db.transaction(['notes', 'bodies'], 'readwrite')
         const now = Date.now()
         list.forEach((title, i) => {
+          const body = `# ${title}\n\n` + Array.from({ length: 70 }, (_, n) => `第 ${n + 1} 段，记录项目的讨论和后续工作。`).join('\n\n')
           tx.objectStore('notes').put({
             id: `long-${i}`, group_id: null, title, summary: '切换笔记验收',
             thumbnail: null, version: 1, prop_version: 1, body_version: 1, star: 0, top: 0,
             skin_color: null, invalid: 0, dirty: 'none',
             create_time: now - i * 1000, update_time: now - i * 1000,
-            body: `# ${title}\n\n` + Array.from({ length: 70 }, (_, n) => `第 ${n + 1} 段，记录项目的讨论和后续工作。`).join('\n\n'),
           })
+          tx.objectStore('bodies').put({ id: `long-${i}`, body })
         })
         tx.oncomplete = () => resolve()
         tx.onerror = () => reject(tx.error)
@@ -143,15 +145,15 @@ async function pasteImage(page: Page, touchTarget = false) {
   }, { fixture: PNG_BASE64, touchTarget })
 }
 
-/** 读当前笔记落在 IndexedDB 里的正文，用来确认 debounce 存盘已经完成 */
+/** 读当前笔记落在 IndexedDB 里的正文，用来确认 debounce 存盘已经完成（v4 起正文在 bodies 表） */
 function savedBody(page: Page): Promise<string> {
   return page.evaluate(async () => {
     const req = indexedDB.open('snotes')
     const rows = await new Promise<{ body?: string }[]>((resolve) => {
       req.onsuccess = () => {
         const db = req.result
-        if (!db.objectStoreNames.contains('notes')) return resolve([])
-        const all = db.transaction('notes').objectStore('notes').getAll()
+        if (!db.objectStoreNames.contains('bodies')) return resolve([])
+        const all = db.transaction('bodies').objectStore('bodies').getAll()
         all.onsuccess = () => resolve(all.result)
       }
       req.onerror = () => resolve([])
