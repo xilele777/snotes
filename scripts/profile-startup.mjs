@@ -15,7 +15,8 @@ if (!Number.isInteger(runs) || runs < 1 || runs > 10) throw new Error('--runs mu
 const outputPath = option('--output') ?? 'tmp/startup-profile.json'
 const current = option('--current') ?? 'dist'
 const largeNote = args.includes('--large-note')
-const noteCount = 500
+const noteCount = Number(option('--notes') ?? 500)
+if (!Number.isInteger(noteCount) || noteCount < 1 || noteCount > 20_000) throw new Error('--notes must be 1..20000')
 const notes = Array.from({ length: noteCount }, (_, index) => ({
   id: `perf-${String(index).padStart(4, '0')}`, group_id: null,
   title: `性能测试 ${index}`, summary: '用于相同数据下的启动比较', thumbnail: null,
@@ -100,6 +101,24 @@ try {
     await first.evaluate(element => element.click())
     await page.waitForFunction(() => [...document.querySelectorAll('.snotes-vditor:not(.is-initializing) [role="textbox"]')].some(el => el.getClientRects().length && (el.value ?? el.textContent).includes('性能测试')), null, { timeout: 60_000 })
     output.firstEditorMs = Math.round(await page.evaluate(() => performance.now()) - openAt)
+    // 移动端首开编辑器后整屏是详情页，先返回列表再测搜索。
+    await page.click('.back-btn')
+    await page.waitForFunction(() => document.querySelector('.note-search input') && getComputedStyle(document.querySelector('.note-search input')).display !== 'none', null, { timeout: 60_000 })
+    // 搜索计时：标题命中应近即时；正文命中要等正文扫描完成。
+    // 键入后等列表里重新出现条目（正文命中前是空态）。
+    await page.fill('.note-search input', '性能测试')
+    const titleSearchAt = await page.evaluate(() => performance.now())
+    await page.waitForFunction(() => document.querySelectorAll('.note-item').length > 0, null, { timeout: 60_000 })
+    output.searchTitleMs = Math.round(await page.evaluate(() => performance.now()) - titleSearchAt)
+    await page.fill('.note-search input', 'English')
+    const bodySearchAt = await page.evaluate(() => performance.now())
+    await page.waitForFunction(() => document.querySelectorAll('.note-item').length > 0, null, { timeout: 120_000 })
+    output.searchBodyMs = Math.round(await page.evaluate(() => performance.now()) - bodySearchAt)
+    await page.click('.search-clear')
+    await page.waitForFunction(() => !document.querySelector('.list-caption') && document.querySelectorAll('.note-item').length > 0, null, { timeout: 60_000 })
+    // 恢复到「编辑器打开」的导航状态，热启动 reload 后移动端才会还原出编辑器
+    await page.click('.note-select')
+    await page.waitForFunction(() => !!document.querySelector('.snotes-vditor [role="textbox"]'), null, { timeout: 60_000 })
     await page.waitForFunction(() => !document.querySelector('.header-refresh')?.disabled, null, { timeout: 90_000 })
     await page.evaluate(async () => { await navigator.serviceWorker.ready })
     // All precached resources have been saved by ready; measure actual browser
@@ -114,6 +133,9 @@ try {
     output.coldSyncXhr = await page.evaluate(() => window.__syncXhr)
     output.coldLongTaskMs = Math.round(await page.evaluate(() => window.__longTasks.reduce((sum, task) => sum + task.duration, 0)))
     await page.reload({ waitUntil: 'domcontentloaded' })
+    // 热启动列表：IndexedDB 里已有全部数据，列表出现的耗时直接反映「打开应用多久能用」
+    await page.waitForFunction(count => Number(document.querySelector('.header-count')?.textContent) === count, noteCount, { timeout: 90_000 })
+    output.warmListMs = Math.round(await page.evaluate(() => performance.now()))
     await page.waitForFunction(() => [...document.querySelectorAll('.snotes-vditor:not(.is-initializing) [role="textbox"]')].some(el => el.getClientRects().length && (el.value ?? el.textContent).includes('性能测试')), null, { timeout: 60_000 })
     output.warmEditorMs = Math.round(await page.evaluate(() => performance.now()))
     output.warmSyncXhr = await page.evaluate(() => window.__syncXhr)
