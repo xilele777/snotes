@@ -9,7 +9,7 @@ import type { LocalNoteWithBody } from '../../shared/types'
 import ActionMenu from './ActionMenu.vue'
 import AppIcon from './AppIcon.vue'
 
-const status = ref<'loading' | 'ready'>('loading')
+const status = ref<'loading' | 'ready' | 'error'>('loading')
 const stats = ref<NoteStats | null>(null)
 const hoveredDay = ref<number | null>(null)
 const chartElement = ref<HTMLElement | null>(null)
@@ -57,12 +57,17 @@ watch([period, customStart, customEnd], () => {
 
 async function load() {
   status.value = 'loading'
-  // 统计只统计「外面的笔记」：属于笔记本的笔记和首页信息流一样不该出现在这里。
-  const [noteList, groupList, owned] = await Promise.all([db.notes.toArray(), db.groups.toArray(), notebookOwnedNoteIds()])
-  // 字数统计要扫正文：笔记行已是纯元数据，这里把正文一次性拼上再算
-  notes.value = await joinBodies(noteList.filter((note) => !owned.has(note.id)))
-  stats.value = computeNoteStats(notes.value, groupList)
-  status.value = 'ready'
+  try {
+    // 统计只统计「外面的笔记」：属于笔记本的笔记和首页信息流一样不该出现在这里。
+    const [noteList, groupList, owned] = await Promise.all([db.notes.toArray(), db.groups.toArray(), notebookOwnedNoteIds()])
+    // 字数统计要扫正文：笔记行已是纯元数据，这里把正文一次性拼上再算
+    notes.value = await joinBodies(noteList.filter((note) => !owned.has(note.id)))
+    stats.value = computeNoteStats(notes.value, groupList)
+    status.value = 'ready'
+  } catch {
+    // 库读取失败不能停在「正在统计…」，也不能变成 unhandled rejection
+    status.value = 'error'
+  }
 }
 onMounted(load)
 
@@ -133,6 +138,9 @@ function heatTip(cell: { date: string; count: number }): string {
   <div class="metrics-view stats-view" aria-label="统计">
     <div class="metrics-body">
       <p v-if="status === 'loading'" class="metrics-hint">正在统计…</p>
+      <div v-else-if="status === 'error'" class="metrics-hint metrics-error" role="alert">
+        统计读取失败。<button class="metrics-retry" type="button" @click="load">重试</button>
+      </div>
       <div v-else-if="stats" class="stats-layout">
         <main class="stats-main">
           <div class="stats-grid">

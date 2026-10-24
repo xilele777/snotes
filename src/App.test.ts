@@ -293,9 +293,11 @@ describe('App 扩展快捷键', () => {
   })
 
   it('Toast 挂在 App 上，提示文字渲染在顶部状态区', async () => {
-    const { notify } = await import('./notify')
+    const { notify, dismissNotice } = await import('./notify')
     const wrapper = mount(App, { attachTo: document.body })
     await flushPromises()
+    // 前面用例可能留下带撤销操作的提示（新语义下普通消息会在它后面排队），先清场
+    dismissNotice()
     notify('已复制 Markdown')
     await flushPromises()
     const host = document.querySelector('.toast-host')!

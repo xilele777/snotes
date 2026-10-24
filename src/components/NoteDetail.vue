@@ -55,10 +55,14 @@ onMounted(() => {
 onUnmounted(() => paneObserver?.disconnect())
 const editorReady = ref(false)
 // 普通笔记复用实例；长文切换时重新选择初始化模式。分类在打开时固定，
-// 避免连续输入跨过阈值就重建编辑器、丢掉光标和撤销栈。
+// 避免连续输入跨过阈值就重建编辑器、丢掉光标和撤销栈。设上限防长会话无限增长。
 const editorClasses = new Map<string, boolean>()
 function editorSessionKey(id: string, body: string) {
-  if (!editorClasses.has(id)) editorClasses.set(id, body.length > LARGE_DOCUMENT_CHARS)
+  if (!editorClasses.has(id)) {
+    const oldest = editorClasses.keys().next().value
+    if (editorClasses.size >= 200 && oldest !== undefined) editorClasses.delete(oldest)
+    editorClasses.set(id, body.length > LARGE_DOCUMENT_CHARS)
+  }
   return editorClasses.get(id) ? `long:${id}` : 'normal'
 }
 watch(() => notes.current, note => { if (!note) editorReady.value = false })

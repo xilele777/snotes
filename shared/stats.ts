@@ -56,8 +56,6 @@ export interface NoteStats {
   totalOpens: number
 }
 
-const DAY_MS = 86_400_000
-
 function ymd(ts: number): string {
   const d = new Date(ts)
   const pad = (n: number) => String(n).padStart(2, '0')
@@ -79,7 +77,10 @@ function dayBuckets(days: number): Map<string, number> {
   const today = new Date()
   today.setHours(0, 0, 0, 0)
   for (let i = days - 1; i >= 0; i--) {
-    m.set(ymd(today.getTime() - i * DAY_MS), 0)
+    // 日历日推进而非固定毫秒相减：夏令时切换日相差的 1 小时会把 00:00 挪到前一天
+    const day = new Date(today)
+    day.setDate(day.getDate() - i)
+    m.set(ymd(day.getTime()), 0)
   }
   return m
 }
@@ -98,17 +99,19 @@ export function computeNoteStats(
   const created30 = dayBuckets(30)
   const updated30 = dayBuckets(30)
 
-  // 热力图：最近 371 天（53 周 × 7），按周列分组
+  // 热力图：最近 371 天（53 周 × 7），按周列分组。
+  // 周起点与逐日推进都用日历日（setDate），固定毫秒加法在夏令时切换日会差出 1 小时，
+  // 让格子的日期标签错位/重复（与 src/stats-activity.ts 的推进方式保持一致）。
   const weeks = 53
-  const heatStart = weekStartTs(Date.now() - (weeks - 1) * 7 * DAY_MS)
   const heat = new Map<string, HeatCell>()
+  const heatCursor = new Date(weekStartTs(Date.now()))
+  heatCursor.setDate(heatCursor.getDate() - (weeks - 1) * 7)
   for (let w = 0; w < weeks; w++) {
-    const wsTs = heatStart + w * 7 * DAY_MS
-    const wsDate = ymd(wsTs)
+    const wsDate = ymd(heatCursor.getTime())
     for (let d = 0; d < 7; d++) {
-      const dayTs = wsTs + d * DAY_MS
-      const dayDate = ymd(dayTs)
+      const dayDate = ymd(heatCursor.getTime())
       heat.set(dayDate, { date: dayDate, count: 0, weekStart: wsDate })
+      heatCursor.setDate(heatCursor.getDate() + 1)
     }
   }
 
@@ -200,23 +203,23 @@ export function computeNoteStats(
   let streakLongest = 0
   let streakRun = 0
   // yyyy-mm-dd 的词典顺序即日期顺序；从最早到今天扫描得到最长连续段。
+  // 推进/回退都用日历日（setDate），夏令时切换日固定毫秒步长会漏掉或重复一天。
   const start = new Date()
   start.setHours(0, 0, 0, 0)
   const allDayKeys = [...updatedDays].sort()
   if (allDayKeys.length) {
-    let cursor = new Date(`${allDayKeys[0]}T00:00:00`).getTime()
-    const end = start.getTime()
-    for (; cursor <= end; cursor += DAY_MS) {
-      if (updatedDays.has(ymd(cursor))) {
+    const cursor = new Date(`${allDayKeys[0]}T00:00:00`)
+    for (; cursor <= start; cursor.setDate(cursor.getDate() + 1)) {
+      if (updatedDays.has(ymd(cursor.getTime()))) {
         streakRun++
         streakLongest = Math.max(streakLongest, streakRun)
       } else streakRun = 0
     }
   }
   let streakCurrent = 0
-  let currentStart = start.getTime()
-  if (!updatedDays.has(ymd(currentStart))) currentStart -= DAY_MS
-  for (let cursor = currentStart; updatedDays.has(ymd(cursor)); cursor -= DAY_MS) streakCurrent++
+  const current = new Date(start)
+  if (!updatedDays.has(ymd(current.getTime()))) current.setDate(current.getDate() - 1)
+  for (; updatedDays.has(ymd(current.getTime())); current.setDate(current.getDate() - 1)) streakCurrent++
 
   return {
     total,

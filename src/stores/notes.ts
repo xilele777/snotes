@@ -262,6 +262,10 @@ export const useNotesStore = defineStore('notes', () => {
   }
 
   async function load() {
+    // metrics 页不经这里取数（MetricsView 直接调 apiMetrics）。直接打开 /metrics 时
+    // main.ts 的首帧 load() 会带着 metrics 视图进来，不拦的话落进 listNotes 的默认
+    // 分支全量加载一份没有消费方的列表。
+    if (ui.view === 'metrics') return
     // 取数期间视图可能又变了（挂载瞬间的 watcher 与切视图几乎同时触发）。此时这份结果
     // 已经过期，但它可能已经是最新的那个 seq，让 seq 守卫放行的话列表就空着没人再补，
     // 所以这里就着重取一次，直到「取数前后是同一个视图」为止。

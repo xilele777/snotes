@@ -3,6 +3,7 @@ import { ref, watch } from 'vue'
 import { useDialogFocus } from './useDialogFocus'
 import { countWords } from '../../shared/derive'
 import { fetchCloudHistory, listHistory, mergeHistory, type MergedHistoryEntry } from '../db/history'
+import { fmtFull, fmtRelative } from '../format'
 import type { LocalNote } from '../../shared/types'
 
 /**
@@ -12,23 +13,6 @@ import type { LocalNote } from '../../shared/types'
 const props = defineProps<{ open: boolean; note: LocalNote | undefined; readonly?: boolean }>()
 const emit = defineEmits<{ close: []; restore: [body: string] }>()
 
-function fmtFull(ts: number | undefined | null): string {
-  if (!ts) return '—'
-  const d = new Date(ts)
-  const pad = (n: number) => String(n).padStart(2, '0')
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`
-}
-
-function fmtRelative(ts: number | undefined | null): string {
-  if (!ts) return '—'
-  const diff = Date.now() - ts
-  if (diff < 60_000) return '刚刚'
-  if (diff < 3_600_000) return Math.floor(diff / 60_000) + ' 分钟前'
-  if (diff < 86_400_000) return Math.floor(diff / 3_600_000) + ' 小时前'
-  if (diff < 30 * 86_400_000) return Math.floor(diff / 86_400_000) + ' 天前'
-  return fmtFull(ts)
-}
-
 const panel = ref<HTMLElement | null>(null)
 useDialogFocus(() => props.open, panel, () => emit('close'))
 
@@ -36,10 +20,14 @@ useDialogFocus(() => props.open, panel, () => emit('close'))
 const history = ref<MergedHistoryEntry[]>([])
 const previewId = ref<string | null>(null)
 const loadingCloud = ref(false)
+const loadError = ref(false)
 async function loadHistory() {
   const id = props.note?.id
-  if (!props.open || !id) { history.value = []; previewId.value = null; return }
-  const local = await listHistory(id)
+  if (!props.open || !id) { history.value = []; previewId.value = null; loadError.value = false; return }
+  loadError.value = false
+  // 本机快照读取失败（库异常等）不能变成 unhandled rejection 让弹窗停在空白
+  let local: Awaited<ReturnType<typeof listHistory>>
+  try { local = await listHistory(id) } catch { loadError.value = true; history.value = []; return }
   if (props.note?.id !== id) return
   // 本机部分先显示，云端到了再合并进来
   history.value = mergeHistory(local, [])
@@ -63,7 +51,8 @@ const sourceLabel = (entry: MergedHistoryEntry) => entry.sources.map((s) => (s =
       <div v-if="open" class="dialog-mask" @click.self="emit('close')">
         <div ref="panel" class="dialog history-dialog" role="dialog" aria-modal="true" aria-label="历史版本">
           <h3 class="dialog-title">历史版本<span v-if="history.length" class="history-count">{{ history.length }} 条</span></h3>
-          <p v-if="loadingCloud" class="history-hint">正在读取云端…</p>
+          <p v-if="loadError" class="history-hint" role="alert">历史版本读取失败，请关闭后重试。</p>
+          <p v-else-if="loadingCloud" class="history-hint">正在读取云端…</p>
           <section class="history" aria-label="历史版本列表">
             <p v-if="history.length === 0" class="history-empty">暂无历史版本。</p>
             <ul v-else class="history-list">

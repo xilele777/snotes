@@ -82,9 +82,14 @@ function openRename(groupId: string) {
 }
 
 async function submitDialog(name: string) {
-  if (editingId.value === null) await groups.create(name)
-  else await groups.rename(editingId.value, name)
-  dialogOpen.value = false
+  try {
+    if (editingId.value === null) await groups.create(name)
+    else await groups.rename(editingId.value, name)
+    dialogOpen.value = false
+  } catch (error) {
+    // 失败时弹窗保持打开：既给出提示，也保留用户刚输入的名字
+    notify(error instanceof Error ? error.message : String(error))
+  }
 }
 
 /** 分组行「⋯」菜单：重命名、标记颜色、上移下移、删除 */
@@ -122,22 +127,28 @@ function menuRename() {
 
 async function menuColor(color: string | null) {
   const group = takeMenuGroup()
-  if (group) await groups.setColor(group.group_id, color)
+  if (!group) return
+  try { await groups.setColor(group.group_id, color) }
+  catch (error) { notify(error instanceof Error ? error.message : String(error)) }
 }
 
 /** 分组级「不上首页信息流」：打开状态那一刻的组内笔记会立刻跟着变（笔记级覆盖除外） */
 async function menuHomeFeed(hidden: boolean) {
   const group = takeMenuGroup()
   if (!group) return
-  await groups.setHomeFeedHidden(group.group_id, hidden)
-  notify(hidden ? `「${group.name}」的笔记不再上首页` : `「${group.name}」的笔记恢复上首页`)
-  // 首页信息流的筛选结果变了：正看着「全部笔记」或「已隐藏」时要刷新列表
-  if (ui.view === 'all' || ui.view === 'hidden') await notes.load()
+  try {
+    await groups.setHomeFeedHidden(group.group_id, hidden)
+    notify(hidden ? `「${group.name}」的笔记不再上首页` : `「${group.name}」的笔记恢复上首页`)
+    // 首页信息流的筛选结果变了：正看着「全部笔记」或「已隐藏」时要刷新列表
+    if (ui.view === 'all' || ui.view === 'hidden') await notes.load()
+  } catch (error) { notify(error instanceof Error ? error.message : String(error)) }
 }
 
 async function menuMove(delta: -1 | 1) {
   const group = takeMenuGroup()
-  if (group) await groups.move(group.group_id, delta)
+  if (!group) return
+  try { await groups.move(group.group_id, delta) }
+  catch (error) { notify(error instanceof Error ? error.message : String(error)) }
 }
 
 const confirmRemove = ref<Group | null>(null)
@@ -151,9 +162,11 @@ async function runRemove() {
   const group = confirmRemove.value
   confirmRemove.value = null
   if (!group) return
-  await groups.remove(group.group_id)
-  if (ui.view === 'group' && ui.activeGroupId === group.group_id) await switchListView('all')
-  else await notes.load()
+  try {
+    await groups.remove(group.group_id)
+    if (ui.view === 'group' && ui.activeGroupId === group.group_id) await switchListView('all')
+    else await notes.load()
+  } catch (error) { notify(error instanceof Error ? error.message : String(error)) }
 }
 
 // 抽屉收起时菜单没有锚点可贴，一并收掉
