@@ -107,11 +107,10 @@ async function openNotebookLocation() {
 const notebookBusy = ref(false)
 const notebookForm = ref(false)
 
-/** 加入调整归属；删除进入回收站并保留恢复所需的位置。 */
-async function toggleNotebook(bookId: string, join: boolean) {
+/** 加入只调整归属；删除始终使用明确的删除入口。 */
+async function joinNotebook(bookId: string) {
   const id = notes.current?.id
   if (!id || notebookBusy.value) return
-  if (!join) { if (canEdit.value) { openPop.value = null; await trashCurrent() }; return }
   notebookBusy.value = true
   try {
     editorRef.value?.flush?.()
@@ -439,44 +438,47 @@ async function runShare() {
         <AppIcon name="back" :size="20" />
       </button>
 
-      <button v-if="!readonly && memberBooks.length" class="editor-location notebook-location" :title="notebookLocation" :aria-label="`所在位置：${notebookLocation}`" @click="openNotebookLocation"><AppIcon name="book" :size="16" /><span>{{ notebookLocation }}</span></button>
-      <div v-else-if="!readonly" class="op-wrap editor-group">
-        <button
-          class="editor-location"
-          data-op="group"
-          :class="{ open: openPop === 'group' }"
-          :title="`移至分组：${currentGroup}`"
-          aria-label="移至分组"
-          aria-haspopup="true"
-          :aria-expanded="openPop === 'group'"
-          @click="toggle('group')"
-        >
-          <AppIcon name="folder" :size="16" />
-          <span>{{ currentGroup }}</span>
-          <AppIcon name="chevron" :size="12" class="group-chevron" />
-        </button>
+      <div v-if="!readonly" class="editor-context">
+        <button v-if="memberBooks.length" class="editor-location notebook-location" :title="notebookLocation" :aria-label="`所在位置：${notebookLocation}`" @click="openNotebookLocation"><AppIcon name="book" :size="16" /><span>{{ notebookLocation }}</span></button>
+        <div v-else class="op-wrap editor-group">
+          <button
+            class="editor-location"
+            data-op="group"
+            :class="{ open: openPop === 'group' }"
+            :title="`移至分组：${currentGroup}`"
+            aria-label="移至分组"
+            aria-haspopup="true"
+            :aria-expanded="openPop === 'group'"
+            @click="toggle('group')"
+          >
+            <AppIcon name="folder" :size="16" />
+            <span>{{ currentGroup }}</span>
+            <AppIcon name="chevron" :size="12" class="group-chevron" />
+          </button>
 
-        <div v-if="openPop === 'group'" class="op-popover groups-pop" role="group" aria-label="选择分组">
-          <span class="popover-heading">移至分组</span>
-          <button
-            class="group-opt"
-            :class="{ selected: notes.current.group_id === null }"
-            :aria-pressed="notes.current.group_id === null"
-            @click="notes.current && notes.setProps(notes.current.id, { group_id: null }); openPop = null"
-          >
-            未分组
-          </button>
-          <button
-            v-for="g in groups.groups"
-            :key="g.group_id"
-            class="group-opt"
-            :class="{ selected: notes.current.group_id === g.group_id }"
-            :aria-pressed="notes.current.group_id === g.group_id"
-            @click="notes.current && notes.setProps(notes.current.id, { group_id: g.group_id }); openPop = null"
-          >
-            {{ g.name }}
-          </button>
+          <Transition name="menu"><div v-if="openPop === 'group'" class="op-popover groups-pop" role="group" aria-label="选择分组">
+            <span class="popover-heading">移至分组</span>
+            <button
+              class="group-opt"
+              :class="{ selected: notes.current.group_id === null }"
+              :aria-pressed="notes.current.group_id === null"
+              @click="notes.current && notes.setProps(notes.current.id, { group_id: null }); openPop = null"
+            >
+              未分组
+            </button>
+            <button
+              v-for="g in groups.groups"
+              :key="g.group_id"
+              class="group-opt"
+              :class="{ selected: notes.current.group_id === g.group_id }"
+              :aria-pressed="notes.current.group_id === g.group_id"
+              @click="notes.current && notes.setProps(notes.current.id, { group_id: g.group_id }); openPop = null"
+            >
+              {{ g.name }}
+            </button>
+          </div></Transition>
         </div>
+
       </div>
 
       <!-- 回收站详情：只读，只剩恢复 / 彻底删除两个动作，顶栏说明还有几天被自动删除 -->
@@ -526,7 +528,7 @@ async function runShare() {
 
         <!-- 管理浮层靠右对齐，窄编辑区从更多菜单进入。 -->
         <div class="op-wrap notebook-wrap">
-          <div v-if="openPop === 'color'" class="op-popover colors" role="group" aria-label="选择标记颜色">
+          <Transition name="menu"><div v-if="openPop === 'color'" class="op-popover colors" role="group" aria-label="选择标记颜色">
             <button
               v-for="color in SKIN_COLORS"
               :key="color ?? 'none'"
@@ -538,27 +540,22 @@ async function runShare() {
               :aria-label="color ? `标记颜色 ${color}` : '清除颜色'"
               @click="notes.current && notes.setProps(notes.current.id, { skin_color: color }); openPop = null"
             />
-          </div>
+          </div></Transition>
           <button ref="moreButton" class="op-btn" data-op="more" :class="{ open: menuOpen }" title="更多操作" aria-label="更多操作" aria-haspopup="menu" :aria-expanded="menuOpen" @click="toggleMenu">
             <AppIcon name="more" />
           </button>
-          <div v-if="openPop === 'notebook'" class="op-popover groups-pop notebook-pop" role="group" aria-label="加入笔记本">
-            <span class="popover-heading">加入笔记本</span>
-            <p class="notebook-pop-hint">移出后成为独立笔记；删除会移入回收站，恢复后回到原位置。</p>
+          <Transition name="menu"><div v-if="openPop === 'notebook'" class="op-popover groups-pop notebook-pop" role="group" :aria-label="memberBooks.length ? '所属笔记本' : '加入笔记本'">
+            <span class="popover-heading">{{ memberBooks.length ? '所属笔记本' : '加入笔记本' }}</span>
+            <p class="notebook-pop-hint">{{ memberBooks.length ? '移出只改变归属，正文会保留在全部笔记中。' : '用章节整理长期资料；加入后仍可在全部笔记中找到。' }}</p>
             <div v-if="memberBooks.length" class="notebook-pop-members">
-              <button
+              <div
                 v-for="b in memberBooks"
                 :key="b.id"
-                type="button"
                 class="book-opt member"
                 :data-book-id="b.id"
-                :disabled="notebookBusy"
-                :aria-pressed="true"
-                title="从笔记本删除这条笔记"
-                @click="toggleNotebook(b.id, false)"
               >
-                <AppIcon name="check" :size="14" /><span>{{ b.name }}</span><small>移入回收站</small>
-              </button>
+                <AppIcon name="book" :size="14" /><span>{{ b.name }}</span><small>当前归属</small>
+              </div>
             </div>
             <button v-if="memberBooks.length" class="book-opt" :disabled="notebookBusy" @click="detachNotebook"><AppIcon name="back" :size="14" /><span>移出笔记本，转为独立笔记</span></button>
             <p v-if="!memberBooks.length" class="notebook-pop-empty">还没加入任何笔记本</p>
@@ -572,7 +569,7 @@ async function runShare() {
                 :data-book-id="b.id"
                 :disabled="notebookBusy"
                 :aria-pressed="false"
-                @click="toggleNotebook(b.id, true)"
+                @click="joinNotebook(b.id)"
               >
                 <AppIcon name="plus" :size="14" /><span>{{ b.name }}</span>
               </button>
@@ -580,16 +577,23 @@ async function runShare() {
                 <AppIcon name="plus" :size="14" /><span>新建笔记本并加入</span>
               </button>
             </div>
-          </div>
+          </div></Transition>
         </div>
       </div>
     </div>
 
-    <NoteSaveStatus v-if="notes.current && !readonly && notes.currentBody !== null" :note-id="notes.current.id" :pending="editorPending" />
     <div ref="editorBody" class="editor-body">
       <div v-if="!notes.current && !readonly" class="editor-welcome">
         <AppIcon name="note" :size="40" class="empty-art" />
-        <h1>选择一条笔记</h1>
+        <template v-if="ui.view === 'all' && !notes.stale && notes.notes.length === 0">
+          <h1>写下你的第一条笔记</h1>
+          <p>先记录想法，再用分组归类，或用笔记本整理成章节。</p>
+          <button class="dialog-btn ok" @click="notes.create()">创建第一条笔记</button>
+        </template>
+        <template v-else>
+          <h1>选择一条笔记</h1>
+          <p>从左侧打开笔记，或新建一条开始记录。</p>
+        </template>
       </div>
       <!-- 正文按需加载：currentBody 还没取到（或远端正文尚未下载）时停在骨架 -->
       <VditorEditor
@@ -614,6 +618,10 @@ async function runShare() {
       </div>
       <EditorLoading v-else-if="notes.current" />
     </div>
+
+    <footer v-if="notes.current && !readonly" class="editor-status-bar" aria-label="当前笔记状态">
+      <NoteSaveStatus v-if="notes.currentBody !== null" :note-id="notes.current.id" :pending="editorPending" />
+    </footer>
 
     <NoteMenu
       v-if="!readonly"
@@ -671,7 +679,7 @@ async function runShare() {
 .notebook-pop-heading { margin-top: 4px; padding-top: 10px; border-top: 1px solid var(--border-light); }
 .notebook-pop-empty { margin: 0; padding: 6px 10px; color: var(--text-tertiary); font-size: 12px; }
 .book-opt { display: flex; align-items: center; gap: 8px; padding: 8px 10px; border: 0; border-radius: 5px; background: transparent; color: var(--text-primary); font-size: 13px; text-align: left; }
-.book-opt:hover:not(:disabled) { background: var(--bg-hover); }
+button.book-opt:hover:not(:disabled) { background: var(--bg-hover); }
 .book-opt:disabled { opacity: .5; }
 .book-opt .app-icon { flex: none; }
 .book-opt span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

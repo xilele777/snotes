@@ -41,6 +41,7 @@ let timer: ReturnType<typeof setTimeout> | undefined
 let observer: MutationObserver | undefined
 let contentObserver: MutationObserver | undefined
 let controlsFrame: number | undefined
+let toolbarAnimation: Animation | undefined
 let controlsNeedUpdate = false
 let observedMode: string | undefined
 let historyValue = ''
@@ -553,6 +554,35 @@ function onClick(event: MouseEvent) {
   }, 0)
 }
 
+function toggleMobileTools() {
+  const host = root.value
+  const toolbar = host?.querySelector<HTMLElement>('.vditor-toolbar')
+  if (!host || !toolbar) return
+  const before = toolbar.getBoundingClientRect().height
+  toolbarAnimation?.cancel()
+  const expanded = host.classList.toggle('mobile-tools-expanded')
+  host.querySelector('[data-type="mobile-format"]')?.setAttribute('aria-expanded', String(expanded))
+  if (!expanded) {
+    const selection = window.getSelection()
+    const range = selection?.rangeCount ? selection.getRangeAt(0).cloneRange() : undefined
+    const start = range?.startContainer
+    const element = start instanceof Element ? start : start?.parentElement
+    const input = element?.closest<HTMLElement>('[contenteditable="true"]')
+    if (input && host.contains(input) && range) {
+      input.focus({ preventScroll: true })
+      selection!.removeAllRanges()
+      selection!.addRange(range)
+    }
+  }
+  const after = toolbar.getBoundingClientRect().height
+  // Animate only the toolbar: never recreate the editor or replace its selection.
+  if (toolbar.animate && !window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+    toolbarAnimation = toolbar.animate([{ height: `${before}px`, overflow: 'hidden' }, { height: `${after}px`, overflow: 'hidden' }], {
+      duration: 180, easing: 'cubic-bezier(.2, .7, .2, 1)',
+    })
+  }
+}
+
 function positionToolbarPanels() {
   const toolbar = root.value?.querySelector<HTMLElement>('.vditor-toolbar')
   if (!toolbar) return
@@ -621,7 +651,7 @@ async function initialize() {
     placeholder: '首行写标题，接着记录正文…',
     lang: 'zh_CN',
     minHeight: 320,
-    outline: { enable: true, position: 'right' },
+    outline: { enable: false, position: 'right' },
     toolbarConfig: { pin: true },
     // Keep native writing tools; document management stays in the app menu.
     toolbar: [
@@ -630,10 +660,7 @@ async function initialize() {
       'link', '|', 'list', 'ordered-list', 'check', 'outdent', 'indent', '|',
       'quote', 'line', 'code', 'inline-code', '|',
       'upload', 'table', '|', 'undo', 'redo', '|', 'outline', 'fullscreen', 'edit-mode',
-      { name: 'mobile-format', tip: '展开或收起格式工具', icon: '<svg viewBox="0 0 24 24"><circle cx="5" cy="12" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="19" cy="12" r="2"/></svg>', click: () => {
-        const expanded = root.value?.classList.toggle('mobile-tools-expanded') ?? false
-        root.value?.querySelector('[data-type="mobile-format"]')?.setAttribute('aria-expanded', String(expanded))
-      } },
+      { name: 'mobile-format', tip: '展开或收起格式工具', icon: '<svg viewBox="0 0 24 24"><circle cx="5" cy="12" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="19" cy="12" r="2"/></svg>', click: toggleMobileTools },
     ],
     hint: { emojiPath: `${VDITOR_CDN}/dist/images/emoji` },
     preview: {
@@ -680,6 +707,7 @@ async function initialize() {
       applyTheme()
       applyEditable()
       rememberMode()
+      root.value?.querySelector('[data-type="mobile-format"]')?.setAttribute('aria-expanded', 'false')
       emit('ready')
       if (!props.modelValue.trim()) void nextTick(() => { if (!disposed) focus() })
     },
@@ -717,6 +745,7 @@ onBeforeUnmount(() => {
   clearImageUploads()
   clearTimer()
   cancelLongPress()
+  toolbarAnimation?.cancel()
   observer?.disconnect()
   contentObserver?.disconnect()
   if (controlsFrame !== undefined) cancelAnimationFrame(controlsFrame)

@@ -761,7 +761,7 @@ describe('顶栏的加入笔记本', () => {
     wrapper.unmount()
   })
 
-  it('所属笔记本不再提供重复加入，删除进回收站且保留恢复位置', async () => {
+  it('所属笔记本只是归属展示，点击不会删除；移出保留正文', async () => {
     const notes = useNotesStore()
     const note = await notes.create()
     notes.currentId = note.id
@@ -772,16 +772,22 @@ describe('顶栏的加入笔记本', () => {
     await vi.waitFor(() => expect(op(wrapper, 'notebooks').attributes('title')).toContain('已加入 1 本'))
     await chooseMore(wrapper, 'notebooks')
     await flushPromises()
-    const member = document.querySelector<HTMLButtonElement>('.notebook-pop-members .book-opt')!
+    const member = document.querySelector<HTMLElement>('.notebook-pop-members .book-opt')!
     expect(member.textContent).toContain('产品研究')
+    expect(member.tagName).toBe('DIV')
     member.click()
 
     await flushPromises()
     expect(document.querySelector('.notebook-pop-addable')).toBeNull()
     expect(document.querySelector('[role="alertdialog"]')).toBeNull()
-    await vi.waitFor(async () => expect((await db.notes.get(note.id))!.invalid).toBe(1))
+    expect((await db.notes.get(note.id))!.invalid).toBe(0)
     expect((await db.knowledgeBaseTocs.get(book.id))!.nodes).toHaveLength(1)
-    expect(await db.outbox.where('kind').equals('trash').count()).toBe(1)
+    expect(await db.outbox.where('kind').equals('trash').count()).toBe(0)
+    const body = (await db.bodies.get(note.id))!.body
+    ;(document.querySelector('.notebook-pop > button.book-opt') as HTMLButtonElement).click()
+    await vi.waitFor(async () => expect(await memberCount(note.id)).toBe(0))
+    expect((await db.notes.get(note.id))!.invalid).toBe(0)
+    expect((await db.bodies.get(note.id))!.body).toBe(body)
     wrapper.unmount()
   })
 

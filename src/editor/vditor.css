@@ -55,6 +55,7 @@
   .snotes-vditor .vditor-toolbar > .vditor-toolbar__item:has([data-type='mobile-format']) { display: block; order: -1; }
   .snotes-vditor .vditor-toolbar > .vditor-toolbar__divider { display: none; }
   .snotes-vditor .vditor-outline { display: none !important; }
+  .snotes-vditor .vditor-toolbar > .vditor-toolbar__item:has([data-type='outline']) { display: none !important; }
   .snotes-vditor :is(.vditor-reset, .vditor-sv) { padding-inline: 24px !important; }
 }
 @media print {

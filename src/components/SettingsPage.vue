@@ -75,7 +75,7 @@ function onTabKeydown(event: KeyboardEvent) {
         </button>
       </div>
       <div :id="`settings-pane-${ui.settingsTab}`" class="settings-pane" role="tabpanel" :aria-labelledby="`settings-tab-${ui.settingsTab}`">
-        <div class="settings-content"><component :is="panes[ui.settingsTab]" /></div>
+        <div :key="ui.settingsTab" class="settings-content settings-content-enter"><component :is="panes[ui.settingsTab]" /></div>
       </div>
     </div>
   </section>

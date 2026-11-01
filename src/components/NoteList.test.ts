@@ -286,13 +286,16 @@ describe('NoteList', () => {
     expect(store.notes.find((n) => n.id === note.id)).toBeDefined()
   })
 
-  it('列表为空时显示空态', async () => {
+  it('空态直接创建第一条笔记并打开编辑器', async () => {
     const wrapper = mount(NoteList)
     await vi.waitFor(() => expect(wrapper.find('.empty-state').exists()).toBe(true))
 
     expect(wrapper.text()).toContain('还没有笔记')
-    expect(wrapper.find('.empty-state .empty-action').exists()).toBe(false)
+    expect(wrapper.get('.empty-state .empty-action').text()).toBe('开始记录')
     expect(wrapper.findAll('[aria-label="新建笔记"]')).toHaveLength(1)
+    await wrapper.get('.empty-state .empty-action').trigger('click')
+    await vi.waitFor(() => expect(useNotesStore().currentId).toBeTruthy())
+    expect(await db.notes.count()).toBe(1)
   })
 
   it('星标视图空态不引导新建——星标是标出来的，不是建出来的', async () => {

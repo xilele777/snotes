@@ -22,7 +22,12 @@ function submit() {
       <label for="access-token" class="token-hint">访问令牌</label>
       <input id="access-token" v-model="input" type="password" autocomplete="current-password" placeholder="请输入访问令牌" required autofocus />
       <button class="token-submit" type="submit" :disabled="!input.trim()">进入我的便签</button>
-      <p class="token-footnote"><AppIcon name="lock" :size="12" />令牌只需输入一次，记录随时开始</p>
+      <p class="token-footnote"><AppIcon name="lock" :size="12" />使用部署时设置的访问令牌</p>
+      <details class="token-help">
+        <summary>访问令牌在哪里？</summary>
+        <p>自己部署的实例，请使用服务端配置的 ACCESS_TOKEN。由他人部署时，请向部署者获取令牌，无需注册账号。</p>
+        <p>此浏览器会记住令牌；清除网站数据或更换浏览器后，需要重新输入。</p>
+      </details>
     </form>
   </div>
 </template>

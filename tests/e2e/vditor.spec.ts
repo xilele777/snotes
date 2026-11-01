@@ -76,6 +76,7 @@ test('原生三种编辑模式、Markdown 往返与本设备模式记忆', async
   await expect.poll(() => saved(page)).toContain('兼容性笔记')
   await switchMode(page, 'wysiwyg')
   const outline = page.locator('.vditor-outline')
+  await tool(page, 'outline').click()
   await expect(outline).toBeVisible()
   await expect(outline).toContainText('兼容性笔记')
   expect((await outline.boundingBox())!.width).toBe(200)
@@ -222,6 +223,7 @@ test('大纲有右边界，长标题省略且悬停可读全文，更新后提�
   await body(page).fill(`# ${title}\n\n正文`)
   await switchMode(page, 'wysiwyg')
   const outline = page.locator('.vditor-outline')
+  await tool(page, 'outline').click()
   const item = outline.locator('[data-target-id]').filter({ hasText: title })
   await expect(item).toBeVisible()
   await expect(outline).toHaveCSS('border-right-width', '1px')
@@ -537,6 +539,7 @@ test('大纲定位滚动工作区，收起栏目后正文居中，工具栏保�
   await body(page).fill('# 定位笔记\n\n' + '正文段落\n\n'.repeat(50) + '## 目标章节\n\n' + '后续段落\n\n'.repeat(30))
   for (const mode of ['ir', 'wysiwyg']) {
     await switchMode(page, mode)
+    if (mode === 'ir') await tool(page, 'outline').click()
     await page.locator('.editor-body').evaluate(el => { el.scrollTop = 0 })
     await page.locator('.vditor-outline [data-target-id]').filter({ hasText: '目标章节' }).click()
     await expect.poll(() => page.locator('.editor-body').evaluate(el => el.scrollTop)).toBeGreaterThan(500)

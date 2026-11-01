@@ -34,6 +34,7 @@ function submit(event?: Event) {
       <div v-if="open" class="dialog-mask" @click.self="$emit('close')">
         <div ref="panel" class="dialog" role="dialog" aria-modal="true" :aria-label="title">
           <p class="dialog-title">{{ title }}</p>
+          <p class="empty-hint">分组用于按主题归类笔记；需要章节目录时，可以使用笔记本。</p>
 
           <input
             v-model="value"

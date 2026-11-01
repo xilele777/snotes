@@ -129,12 +129,12 @@ async function save(info: KnowledgeBaseMeta) {
           </div>
         </header>
 
-        <section class="kb-home-intro" aria-label="知识库简介">
-          <h2><span aria-hidden="true">👋</span> 欢迎来到知识库</h2>
+        <section class="kb-home-intro" aria-label="笔记本简介">
+          <h2>关于这本笔记本</h2>
           <p>{{ book.description || '在这里整理文档，记录想法。' }}</p>
         </section>
 
-        <section v-if="!embedded" class="kb-home-documents" aria-label="知识库目录">
+        <section v-if="!embedded" class="kb-home-documents" aria-label="笔记本目录">
           <header class="kb-home-section-head">
             <h2>目录</h2>
             <span>{{ folderCount ? `${folderCount} 个章节 · ` : '' }}{{ noteCount }} 篇笔记</span>

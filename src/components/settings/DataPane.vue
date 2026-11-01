@@ -8,7 +8,8 @@ import AppIcon from '../AppIcon.vue'
 import { buildBackup, importBackup, type BackupProgress } from '../../export/backup'
 import { downloadBlob, downloadMarkdown } from '../../export/share'
 import { unsavedDrafts, saveDraft, discardDraft } from '../../editor/save-session'
-import { createConflictCopy, getNote, updateBody } from '../../db/repo'
+import { createConflictCopy, createNote, getNote, updateBody } from '../../db/repo'
+import { useNotesStore } from '../../stores/notes'
 
 /** 设置「数据」页：导出全部、导入备份。逻辑自原 BackupDialog 迁入，断言用的 data-action 与类名不变。 */
 const fileInput = ref<HTMLInputElement | null>(null)
@@ -17,11 +18,56 @@ const progress = ref<BackupProgress | null>(null)
 const message = ref('')
 const failed = ref(false)
 const failedTasks = ref<OutboxTask[]>([])
+const failedContent = ref<Record<string, { title: string; body: string | null }>>({})
+const savedCopies = ref<string[]>([])
+const taskKey = (task: OutboxTask) => `${task.note_id}:${task.kind}:${task.seq}`
+const taskContent = (task: OutboxTask) => failedContent.value[taskKey(task)] ?? { title: '未命名内容', body: null }
 let failedSubscription: { unsubscribe(): void } | undefined
 onMounted(() => {
-  failedSubscription = liveQuery(() => db.outbox.where('failed').equals(1).toArray()).subscribe(tasks => { failedTasks.value = tasks })
+  failedSubscription = liveQuery(async () => {
+    const tasks = await db.outbox.where('failed').equals(1).toArray()
+    const details = await Promise.all(tasks.map(async task => {
+      const payload = (task.payload ?? {}) as Record<string, unknown>
+      const group = payload.scope === 'group'
+      const note = group ? undefined : await db.notes.get(task.note_id)
+      const namedGroup = group ? await db.groups.get(task.note_id) : undefined
+      const body = !group && (task.kind === 'create' || task.kind === 'body')
+        ? typeof payload.content === 'string' ? payload.content : (await db.bodies.get(task.note_id))?.body ?? null
+        : null
+      const title = namedGroup?.name || note?.title || (typeof payload.title === 'string' ? payload.title : '') || (group && typeof payload.name === 'string' ? payload.name : '') || (group ? '未命名分组' : '无标题笔记')
+      return [taskKey(task), { title, body }] as const
+    }))
+    return { tasks, details: Object.fromEntries(details) }
+  }).subscribe(({ tasks, details }) => { failedTasks.value = tasks; failedContent.value = details })
 })
 onUnmounted(() => failedSubscription?.unsubscribe())
+
+function failureReason(task: OutboxTask) {
+  const error = task.last_error ?? ''
+  const hasBody = taskContent(task).body !== null
+  if (/413|content_too_large/i.test(error)) return '正文超过服务端大小限制。请先下载正文，缩短内容后再同步。'
+  if (/401|403/i.test(error)) return '访问权限验证失败。请检查访问令牌和服务端设置后重试。'
+  if (/404|410|deleted|not_found/i.test(error)) return hasBody ? '原内容在服务端已不存在。可以将正文另存为一条独立笔记。' : '原内容在服务端已不存在，请在技术详情中查看原因。'
+  return hasBody ? '这次改动未能同步。可以重试，或先下载正文留存。' : '这次改动未能同步。可以重试，或展开技术详情查看原因。'
+}
+
+async function saveFailedCopy(task: OutboxTask) {
+  const body = taskContent(task).body
+  const key = taskKey(task)
+  if (busy.value || body === null || savedCopies.value.includes(key)) return
+  busy.value = true
+  failed.value = false
+  try {
+    await createNote(body, { group_id: null })
+    savedCopies.value.push(key)
+    message.value = '已另存为独立笔记，可在全部笔记中找到。原失败任务保留，供继续检查。'
+    try { await useNotesStore().load() }
+    catch { message.value = '副本已保存到本机，请返回全部笔记并手动刷新。原失败任务保留。' }
+  } catch (error) {
+    failed.value = true
+    message.value = `另存失败：${error instanceof Error ? error.message : String(error)}`
+  } finally { busy.value = false }
+}
 
 function downloadFailedTask(task: OutboxTask) {
   downloadBlob(new Blob([JSON.stringify(task, null, 2)], { type: 'application/json' }), `snotes-failed-${task.id}.json`)
@@ -120,10 +166,18 @@ async function onPicked(event: Event) {
 
 <template>
   <section v-if="failedTasks.length" class="backup-progress failed" role="alert">
-    <p>{{ failedTasks.length }} 项改动尚未同步。正文仍保存在本机，可下载任务数据留存；目标已被删除时请另建笔记恢复正文。</p>
-    <article v-for="task in failedTasks" :key="task.id">
-      <p>{{ task.note_id }} · {{ task.kind }} · {{ task.last_error || '同步失败' }}</p>
-      <button class="dialog-btn" @click="downloadFailedTask(task)">下载任务数据</button>
+    <p>{{ failedTasks.length }} 项改动尚未同步。请先保留需要的内容，再尝试恢复同步。</p>
+    <article v-for="task in failedTasks" :key="task.id" class="failed-task">
+      <h3>{{ taskContent(task).title }}</h3>
+      <p>{{ failureReason(task) }}</p>
+      <div v-if="taskContent(task).body !== null" class="recovery-actions">
+        <button class="dialog-btn cancel" @click="downloadMarkdown(taskContent(task).title, taskContent(task).body!)">下载正文</button>
+        <button class="dialog-btn cancel" :disabled="busy || savedCopies.includes(taskKey(task))" @click="saveFailedCopy(task)">{{ savedCopies.includes(taskKey(task)) ? '已另存为笔记' : '另存为笔记' }}</button>
+      </div>
+      <details class="data-details"><summary>技术详情</summary>
+        <p>{{ task.note_id }} · {{ task.kind }} · {{ task.last_error || '同步失败' }}</p>
+        <button class="dialog-btn" @click="downloadFailedTask(task)">下载任务数据</button>
+      </details>
     </article>
     <button class="dialog-btn" :disabled="busy" @click="retryFailedTasks">重试失败任务</button>
   </section>
@@ -136,6 +190,8 @@ async function onPicked(event: Event) {
       <button class="dialog-btn" @click="downloadMarkdown('未保存草稿', draft.body); discardDraft(draft.journalKey)">下载并移除草稿</button>
     </article>
   </section>
+  <h3 class="settings-section-title">备份与恢复</h3>
+  <p class="settings-description">将笔记导出为 ZIP 文件，保存在此设备。需要恢复时，选择之前导出的备份；也可导入 Markdown 文件。</p>
   <div class="backup-actions">
     <button class="dialog-btn ok" data-action="export" :disabled="busy" @click="runExport">
       <AppIcon name="download" :size="15" />导出全部
@@ -154,7 +210,15 @@ async function onPicked(event: Event) {
       @change="onPicked"
     />
   </div>
-  <p class="settings-hint">备份包含本机正常笔记、全部回收站笔记、本地正文历史、分组和笔记本。仅在云端的历史需使用服务端实例备份。导入采用合并：本地数据一次提交，失败不写入笔记；同 ID 的不同正文保存在笔记历史中。图片上传失败可能留下云端孤立对象，重试会复用已上传图片。删除笔记不会擦除图片，持有效凭证和图片地址仍可读取。单篇正文上限 1 MiB，一次导入文件上限 100 MiB。</p>
+  <ul class="backup-summary">
+    <li>包含本机笔记、回收站、本地历史、分组、笔记本及引用图片。</li>
+    <li>建议联网并完成同步后导出。图片下载失败时会提示备份不完整。</li>
+    <li>导入会合并内容；相同笔记有不同正文时，导入版本保存在笔记历史中。</li>
+  </ul>
+  <details class="data-details"><summary>备份范围与导入限制</summary>
+    <p>仅在云端的历史需使用服务端实例备份。本地数据一次提交，失败不写入笔记。图片上传失败可能留下云端孤立对象，重试会复用已上传图片。</p>
+    <p>删除笔记不会擦除图片，持有效凭证和图片地址仍可读取。单篇正文上限 1 MiB，一次导入文件上限 100 MiB。</p>
+  </details>
 
   <p v-if="busy" class="backup-progress" role="status">
     {{ progress?.label ?? '正在处理…' }}

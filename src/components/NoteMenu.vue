@@ -32,7 +32,7 @@ const emit = defineEmits<{ action: [NoteMenuAction]; close: [] }>()
 <template>
   <ActionMenu :open="open" :anchor="anchor" label="更多操作" menu-class="note-menu" @close="emit('close')">
     <button v-if="showNotebooks" type="button" role="menuitem" class="menu-item" data-action="notebooks" @click="emit('action', 'notebooks')">
-      <AppIcon name="book" :size="15" /><span>加入笔记本{{ notebookCount ? `（已加入 ${notebookCount} 本）` : '' }}</span>
+      <AppIcon name="book" :size="15" /><span>{{ notebookCount ? '所属笔记本' : '加入笔记本' }}</span>
     </button>
     <button type="button" role="menuitem" class="menu-item" data-action="color" @click="emit('action', 'color')"><AppIcon name="highlight" :size="15" /><span>标记颜色</span></button>
     <template v-if="showDocItems">

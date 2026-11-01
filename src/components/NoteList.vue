@@ -208,7 +208,7 @@ function homeHiddenOf(note: LocalNote): boolean {
 
 /**
  * 空态分五种：搜索无结果与「这个视图本来就没东西」是两回事，
- * 搜索无结果提供调整搜索的出口，新建统一使用顶部按钮。
+ * 搜索无结果提供调整搜索的出口；空列表直接引导记录，桌面首次创建使用主区域入口。
  */
 const empty = computed(() => {
   if (ui.query.trim()) {
@@ -221,22 +221,23 @@ const empty = computed(() => {
     }
   }
   if (ui.view === 'star') {
-    return { title: '没有星标笔记', hint: '', action: '' }
+    return { title: '没有星标笔记', hint: '给常用笔记加星标，下次就能在这里快速找到。', action: '' }
   }
   if (ui.view === 'hidden') {
-    return { title: '没有已隐藏的笔记', hint: '', action: '' }
+    return { title: '没有从随手记隐藏的笔记', hint: '隐藏只影响随手记，全部笔记和搜索中仍可找到。', action: '' }
   }
   if (ui.view === 'group') {
-    return { title: `「${viewTitle.value}」里还没有笔记`, hint: '', action: '' }
+    return { title: `「${viewTitle.value}」里还没有笔记`, hint: '分组用来归类笔记，不改变正文。', action: '在此分组新建' }
   }
   return {
     title: '还没有笔记',
-    hint: '',
-    action: '',
+    hint: ui.view === 'home' ? '随手记展示独立笔记，不含笔记本内容和已隐藏的笔记。' : '从一个想法开始，内容会自动保存。',
+    action: '开始记录',
   }
 })
 
 async function onEmptyAction() {
+  if (empty.value.action === '开始记录' || empty.value.action === '在此分组新建') { await notes.create(); return }
   if (empty.value.action === '清除搜索') ui.query = ''
   else if (empty.value.action === '在全部笔记中搜索') {
     const query = ui.query
@@ -256,7 +257,7 @@ watch(
 </script>
 
 <template>
-  <div class="list-view">
+  <div class="list-view" :class="{ 'empty-library-list': ui.view === 'all' && !notes.notes.length && !ui.query.trim() }">
     <!-- 窄屏显示抽屉入口，新建按钮始终可见。 -->
     <div class="list-header">
       <button class="drawer-btn" title="打开侧栏" aria-label="打开侧栏" @click="openDrawer()">
