@@ -3,7 +3,7 @@ import { parseRoute, routeUrl } from './routes'
 
 describe('workspace routes', () => {
   it.each([
-    ['/', 'all', null], ['/star', 'star', null], ['/hidden', 'hidden', null],
+    ['/', 'all', null], ['/home', 'home', null], ['/star', 'star', null], ['/hidden', 'hidden', null],
     ['/trash', 'trash', null], ['/metrics', 'metrics', null],
     ['/groups/work', 'group', null], ['/notebooks', 'knowledge-bases', null],
     ['/notebooks/book', 'knowledge-bases', null], ['/stats', 'all', 'stats'],

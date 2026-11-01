@@ -138,9 +138,9 @@ async function menuHomeFeed(hidden: boolean) {
   if (!group) return
   try {
     await groups.setHomeFeedHidden(group.group_id, hidden)
-    notify(hidden ? `「${group.name}」的笔记不再上首页` : `「${group.name}」的笔记恢复上首页`)
-    // 首页信息流的筛选结果变了：正看着「全部笔记」或「已隐藏」时要刷新列表
-    if (ui.view === 'all' || ui.view === 'hidden') await notes.load()
+    notify(hidden ? `「${group.name}」已从随手记隐藏，全部笔记中仍可找到` : `「${group.name}」的独立笔记恢复显示在随手记`)
+    // 信息流的筛选结果变了：正看着「随手记」或「已隐藏」时要刷新列表
+    if (ui.view === 'home' || ui.view === 'hidden') await notes.load()
   } catch (error) { notify(error instanceof Error ? error.message : String(error)) }
 }
 
@@ -182,8 +182,11 @@ watch(() => ui.drawerOpen, (open) => { if (!open) menuGroup.value = null })
         <button class="sidebar-close icon-button" aria-label="关闭侧栏" title="关闭侧栏" @click="ui.drawerOpen = false"><AppIcon name="close" /></button>
       </div>
 
-      <div class="nav-section-label">随手记</div>
+      <div class="nav-section-label">笔记</div>
       <ul class="views">
+        <li data-view="home" :class="{ active: !ui.workspacePage && ui.view === 'home' }" @click="switchListView('home')">
+          <button type="button" aria-label="随手记" title="独立笔记的信息流，不含已隐藏内容" :aria-current="!ui.workspacePage && ui.view === 'home' ? 'page' : undefined"><AppIcon name="home" /><span>随手记</span></button>
+        </li>
         <li data-view="all" :class="{ active: !ui.workspacePage && ui.view === 'all' }" @click="switchListView('all')">
           <button type="button" aria-label="全部笔记" title="全部笔记" :aria-current="!ui.workspacePage && ui.view === 'all' ? 'page' : undefined"><AppIcon name="notes" /><span>全部笔记</span><span v-if="ui.view === 'all' && !notes.stale" class="nav-count">{{ notes.notes.length }}</span></button>
         </li>

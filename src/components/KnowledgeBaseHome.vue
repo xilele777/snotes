@@ -53,6 +53,7 @@ const activeNotes = computed(() =>
 )
 const noteCount = computed(() => activeNotes.value.length)
 const wordCount = computed(() => activeNotes.value.reduce((total, note) => total + countWords(libraries.bodyText.get(note.id) ?? '').words, 0))
+const missingBodies = computed(() => activeNotes.value.filter(note => !libraries.bodyText.has(note.id)).length)
 const folderCount = computed(() => rows.value.filter(({ node }) => node.kind === 'folder').length)
 const number = (value: number) => value.toLocaleString('zh-CN')
 const date = (time: number) => {
@@ -104,7 +105,7 @@ async function save(info: KnowledgeBaseMeta) {
             <div class="kb-home-heading">
               <h1>{{ book.name }}</h1>
               <p class="kb-home-stats">
-                <b>{{ number(noteCount) }}</b> 文档 <i aria-hidden="true">·</i> <b>{{ number(wordCount) }}</b> 字
+                <b>{{ number(noteCount) }}</b> 文档 <i aria-hidden="true">·</i> {{ missingBodies ? '已下载' : '' }} <b>{{ number(wordCount) }}</b> 字<span v-if="missingBodies"> · {{ missingBodies }} 篇正文未下载</span>
               </p>
             </div>
           </div>

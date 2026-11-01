@@ -2,7 +2,7 @@
 import '../insights.css'
 import { computed, onMounted, ref, watch } from 'vue'
 import { computeNoteStats, type NoteStats } from '../../shared/stats'
-import { joinBodies, notebookOwnedNoteIds } from '../db/repo'
+import { joinBodies } from '../db/repo'
 import { db } from '../db/schema'
 import { buildActivity, localDateKey } from '../stats-activity'
 import type { LocalNoteWithBody } from '../../shared/types'
@@ -58,10 +58,9 @@ watch([period, customStart, customEnd], () => {
 async function load() {
   status.value = 'loading'
   try {
-    // 统计只统计「外面的笔记」：属于笔记本的笔记和首页信息流一样不该出现在这里。
-    const [noteList, groupList, owned] = await Promise.all([db.notes.toArray(), db.groups.toArray(), notebookOwnedNoteIds()])
+    const [noteList, groupList] = await Promise.all([db.notes.toArray(), db.groups.toArray()])
     // 字数统计要扫正文：笔记行已是纯元数据，这里把正文一次性拼上再算
-    notes.value = await joinBodies(noteList.filter((note) => !owned.has(note.id)))
+    notes.value = await joinBodies(noteList.filter(note => note.invalid === 0))
     stats.value = computeNoteStats(notes.value, groupList)
     status.value = 'ready'
   } catch {
@@ -142,13 +141,14 @@ function heatTip(cell: { date: string; count: number }): string {
         统计读取失败。<button class="metrics-retry" type="button" @click="load">重试</button>
       </div>
       <div v-else-if="stats" class="stats-layout">
+        <p class="metrics-hint">包含全部未删除笔记（含笔记本和隐藏笔记）。时间分布按每篇笔记的创建时间、最后更新时间计算，包含属性修改，不代表逐日写作记录。</p>
         <main class="stats-main">
           <div class="stats-grid">
             <section class="stats-panel panel-overview" aria-label="总体数据">
               <div class="writing-overview">
                 <section class="panel-daily" aria-label="创建与更新柱状图">
                   <header class="panel-head">
-                    <h2 class="panel-title">创建与更新</h2>
+                    <h2 class="panel-title">创建与最后更新分布</h2>
                     <button
                       ref="periodTrigger"
                       type="button"
@@ -263,7 +263,7 @@ function heatTip(cell: { date: string; count: number }): string {
                     <span class="total-sub">星标 <b>{{ num(stats.starred) }}</b> · 置顶 <b>{{ num(stats.topped) }}</b></span>
                   </article>
                   <article class="total-card" data-kpi="words">
-                    <span class="total-label">累计字数</span><strong>{{ num(stats.totalWords) }}</strong>
+                    <span class="total-label">已下载正文总字数</span><strong>{{ num(stats.totalWords) }}</strong>
                     <span class="total-sub">平均 <b>{{ num(stats.avgWords) }}</b> 字 / 篇</span>
                   </article>
                   <article class="total-card" data-kpi="created">
@@ -281,17 +281,10 @@ function heatTip(cell: { date: string; count: number }): string {
             <section class="stats-panel panel-heatmap">
               <header class="panel-head">
                 <div>
-                  <h2 class="panel-title">编辑热力图</h2>
-                </div>
-                <div class="streak-summary">
-                  <span
-                    >连续 <b>{{ stats.streakCurrent }}</b> 天</span
-                  ><span
-                    >最长 <b>{{ stats.streakLongest }}</b> 天</span
-                  >
+                  <h2 class="panel-title">最后更新时间分布</h2>
                 </div>
               </header>
-              <div class="heatmap-scroll" tabindex="0" aria-label="全年写作热力图，可横向浏览">
+              <div class="heatmap-scroll" tabindex="0" aria-label="全年最后更新时间分布，可横向浏览">
                 <div class="heatmap-calendar">
                   <div class="heatmap-months" aria-hidden="true">
                     <span

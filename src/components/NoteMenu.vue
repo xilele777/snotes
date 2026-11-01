@@ -23,6 +23,7 @@ defineProps<{
   homeHidden?: boolean
   /** 笔记单独设过、而所属分组又有默认值：给一个回到「跟随分组」的出口 */
   canFollowGroup?: boolean
+  showHomeFeed?: boolean
 }>()
 
 const emit = defineEmits<{ action: [NoteMenuAction]; close: [] }>()
@@ -47,9 +48,9 @@ const emit = defineEmits<{ action: [NoteMenuAction]; close: [] }>()
       <span class="menu-separator" aria-hidden="true"></span>
     </template>
     <!-- 首页信息流可见性：分组级设置是默认值，这里可以给单条笔记单独定 -->
-    <button type="button" role="menuitemcheckbox" class="menu-item" data-action="home-feed" :aria-checked="homeHidden === true" @click="emit('action', 'home-feed')">
+    <button v-if="showHomeFeed !== false" type="button" role="menuitemcheckbox" class="menu-item" data-action="home-feed" :aria-checked="homeHidden === true" @click="emit('action', 'home-feed')">
       <AppIcon :name="homeHidden ? 'eyeOff' : 'eye'" :size="15" />
-      <span>{{ homeHidden ? '在首页信息流显示' : '不在首页信息流显示' }}</span>
+      <span>{{ homeHidden ? '在随手记中显示' : '不在随手记中显示' }}</span>
     </button>
     <button v-if="canFollowGroup" type="button" role="menuitem" class="menu-item" data-action="home-follow" @click="emit('action', 'home-follow')">
       <AppIcon name="refresh" :size="15" /><span>恢复跟随分组设置</span>

@@ -13,6 +13,7 @@ import NoteMenu, { type NoteMenuAction } from './NoteMenu.vue'
 import WordCountDialog from './WordCountDialog.vue'
 import AppIcon from './AppIcon.vue'
 import EditorLoading from './EditorLoading.vue'
+import NoteSaveStatus from './NoteSaveStatus.vue'
 import ImageLightbox from './ImageLightbox.vue'
 import { SKIN_COLORS } from './palette'
 import { copyMarkdown, downloadMarkdown, shareMarkdown } from '../export/share'
@@ -54,6 +55,9 @@ onMounted(() => {
 })
 onUnmounted(() => paneObserver?.disconnect())
 const editorReady = ref(false)
+const editorPending = ref(false)
+function onPending(id: string, pending: boolean) { if (id === notes.currentId) editorPending.value = pending }
+watch(() => notes.currentId, () => { editorPending.value = false })
 // 普通笔记复用实例；长文切换时重新选择初始化模式。分类在打开时固定，
 // 避免连续输入跨过阈值就重建编辑器、丢掉光标和撤销栈。设上限防长会话无限增长。
 const editorClasses = new Map<string, boolean>()
@@ -77,6 +81,29 @@ const memberBooks = computed(() => {
   return libraries.books.filter(book => book.invalid === 0 && libraries.tocs.some(toc => toc.knowledge_base_id === book.id && toc.nodes.some(node => node.kind === 'note' && node.note_id === id)))
 })
 const addableBooks = computed(() => memberBooks.value.length ? [] : libraries.books.filter(book => book.invalid === 0))
+const notebookLocation = computed(() => {
+  const book = memberBooks.value[0]
+  if (!book) return ''
+  const nodes = libraries.tocs.find(t => t.knowledge_base_id === book.id)?.nodes ?? []
+  let node = nodes.find(n => n.note_id === notes.current?.id)
+  const path: string[] = []
+  const seen = new Set<string>()
+  while (node?.parent_id && !seen.has(node.parent_id)) {
+    seen.add(node.parent_id)
+    node = nodes.find(n => n.id === node!.parent_id)
+    if (node?.title) path.unshift(node.title)
+  }
+  return [book.name, ...path].join(' / ')
+})
+async function openNotebookLocation() {
+  const book = memberBooks.value[0]
+  const id = notes.current?.id
+  if (!book || !id) return
+  await showKnowledgeBases(book.id)
+  ui.activeTocNodeId = libraries.tocs.find(t => t.knowledge_base_id === book.id)?.nodes.find(n => n.note_id === id)?.id ?? null
+  notes.currentId = id
+  if (isMobile()) ui.mobilePane = 'editor'
+}
 const notebookBusy = ref(false)
 const notebookForm = ref(false)
 
@@ -129,8 +156,6 @@ const hiddenGroups = computed(() => homeHiddenGroupIds(groups.groups))
 const homeHidden = computed(() => (notes.current ? isHiddenFromHome(notes.current, hiddenGroups.value) : false))
 /** 当前笔记是否对首页可见性做过单独设置（有覆盖值），用于菜单文案与恢复入口 */
 const homeOverridden = computed(() => notes.current?.home_hidden === 0 || notes.current?.home_hidden === 1)
-/** 所属分组是否默认不上首页；有默认值时才谈得上「恢复跟随分组」 */
-const groupHidesHome = computed(() => groups.groups.find(g => g.group_id === notes.current?.group_id)?.hide_from_home === 1)
 
 const compact = useMediaQuery('(max-width: 720px)')
 const directActions = computed(() => !compact.value && paneWidth.value >= 620)
@@ -149,7 +174,7 @@ async function toggleHomeFeed() {
   if (!note) return
   const hide = !homeHidden.value
   await notes.setProps(note.id, { home_hidden: hide ? 1 : 0 })
-  notify(hide ? '已设为不上首页，可在「已隐藏」里找到' : '这条笔记已显示在首页信息流')
+  notify(hide ? '已从随手记隐藏，仍可在「全部笔记」和「已隐藏」里找到' : '这条笔记已显示在随手记中')
 }
 
 /** 清掉笔记级的覆盖值，重新跟随所属分组的默认设置 */
@@ -414,7 +439,8 @@ async function runShare() {
         <AppIcon name="back" :size="20" />
       </button>
 
-      <div v-if="!readonly" class="op-wrap editor-group">
+      <button v-if="!readonly && memberBooks.length" class="editor-location notebook-location" :title="notebookLocation" :aria-label="`所在位置：${notebookLocation}`" @click="openNotebookLocation"><AppIcon name="book" :size="16" /><span>{{ notebookLocation }}</span></button>
+      <div v-else-if="!readonly" class="op-wrap editor-group">
         <button
           class="editor-location"
           data-op="group"
@@ -559,6 +585,7 @@ async function runShare() {
       </div>
     </div>
 
+    <NoteSaveStatus v-if="notes.current && !readonly && notes.currentBody !== null" :note-id="notes.current.id" :pending="editorPending" />
     <div ref="editorBody" class="editor-body">
       <div v-if="!notes.current && !readonly" class="editor-welcome">
         <AppIcon name="note" :size="40" class="empty-art" />
@@ -576,8 +603,15 @@ async function runShare() {
         @flush="onFlush"
         @open-lightbox="openLightbox"
         @notice="notify"
+        @pending="onPending"
         @ready="editorReady = true"
       />
+      <div v-else-if="notes.current && (notes.bodyStatus === 'missing' || notes.bodyStatus === 'error')" class="body-unavailable" role="status">
+        <AppIcon name="cloud" :size="32" />
+        <h2>{{ notes.bodyStatus === 'missing' ? '本机尚未下载这篇正文' : '正文读取失败' }}</h2>
+        <p>{{ notes.bodyError || '联网后下载即可阅读，已下载的笔记仍可离线使用。' }}</p>
+        <button class="dialog-btn ok" @click="notes.retryCurrentBody()">重新下载正文</button>
+      </div>
       <EditorLoading v-else-if="notes.current" />
     </div>
 
@@ -594,7 +628,8 @@ async function runShare() {
       :notebook-count="memberBooks.length"
       :importing="importing"
       :home-hidden="homeHidden"
-      :can-follow-group="homeOverridden && groupHidesHome"
+      :show-home-feed="memberBooks.length === 0"
+      :can-follow-group="memberBooks.length === 0 && homeOverridden"
       @action="onMenuAction"
       @close="menuOpen = false"
     />

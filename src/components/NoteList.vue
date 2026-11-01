@@ -12,6 +12,7 @@ import SortMenu from './SortMenu.vue'
 import { useNotesStore } from '../stores/notes'
 import { useUiStore } from '../stores/ui'
 import { useGroupsStore } from '../stores/groups'
+import { useKnowledgeBasesStore } from '../stores/knowledge-bases'
 import { homeHiddenGroupIds, isHiddenFromHome } from '../../shared/home-feed'
 import type { LocalNote } from '../../shared/types'
 import { useWorkspaceScroll } from './useWorkspaceScroll'
@@ -24,6 +25,19 @@ import { settings } from '../settings'
 const notes = useNotesStore()
 const groups = useGroupsStore()
 const ui = useUiStore()
+const libraries = useKnowledgeBasesStore()
+let membership: ReturnType<typeof libraries.subscribeMembership> | undefined
+onMounted(() => { membership = libraries.subscribeMembership() })
+onUnmounted(() => membership?.unsubscribe())
+const locations = computed(() => {
+  const names = new Map(libraries.books.filter(b => !b.invalid && !b.deleted).map(b => [b.id, b.name]))
+  const labels = new Map<string, string>()
+  for (const toc of libraries.tocs) {
+    const name = names.get(toc.knowledge_base_id)
+    if (name) for (const node of toc.nodes) if (node.note_id) labels.set(node.note_id, name)
+  }
+  return labels
+})
 const groupNames = computed(() => new Map(groups.groups.map(g => [g.group_id, g.name])))
 const list = ref<HTMLElement | null>(null)
 useWorkspaceScroll(list, 'list')
@@ -174,6 +188,7 @@ async function onListKeydown(event: KeyboardEvent) {
 
 // 列表 header 视图标题：全部笔记 / 星标 / 分组名
 const viewTitle = computed(() => {
+  if (ui.view === 'home') return '随手记'
   if (ui.view === 'star') return '星标'
   if (ui.view === 'hidden') return '已隐藏'
   if (ui.view === 'group') {
@@ -198,7 +213,7 @@ function homeHiddenOf(note: LocalNote): boolean {
 const empty = computed(() => {
   if (ui.query.trim()) {
     // 分组和星标视图只搜当前范围；搜不到时给一个跳去全部笔记继续找的出口
-    const scoped = ui.view === 'group' || ui.view === 'star' || ui.view === 'hidden'
+    const scoped = ui.view !== 'all'
     return {
       title: `没有匹配「${ui.query.trim()}」的笔记`,
       hint: scoped ? `当前只在「${viewTitle.value}」里搜索` : '换个词试试，多个词用空格隔开',
@@ -265,6 +280,7 @@ watch(
     <div v-if="ui.query.trim()" class="list-caption" aria-live="polite">
       <span>找到 {{ notes.visible.length }} 条笔记{{ notes.searchingBodies ? '，正在搜索正文…' : '' }}</span><button @click="ui.query = ''">清除筛选</button>
     </div>
+    <p v-if="ui.query.trim() && !notes.searchingBodies && notes.missingSearchBodies" class="search-coverage" role="status">当前范围有 {{ notes.missingSearchBodies }} 篇正文未下载，结果可能不完整。联网后刷新可继续搜索。</p>
 
     <ListSkeleton v-if="notes.stale" />
 
@@ -289,7 +305,7 @@ watch(
         :query="ui.query"
         :home-hidden="homeHiddenOf(note)"
         :excerpt="notes.searchExcerptOf(note.id)"
-        :group-name="note.group_id ? groupNames.get(note.group_id) : undefined"
+        :group-name="locations.get(note.id) ?? (note.group_id ? groupNames.get(note.group_id) : undefined)"
         @click="selectNote(note.id)"
         @contextmenu.prevent="openNoteMenu(note, $event)"
         @pointerdown="onPointerDown"

@@ -174,11 +174,17 @@ async function fillBodies(notes: LocalNote[], report: ProgressReporter): Promise
   const filled: LocalNoteWithBody[] = notes.map((note) => ({ ...note, body: '' }))
   const byId = new Map(filled.map((n) => [n.id, n]))
   const localRows = await db.bodies.bulkGet(filled.map((n) => n.id))
+  const available = new Set(localRows.flatMap(row => row ? [row.id] : []))
   for (const row of localRows) {
     if (row) byId.get(row.id)!.body = row.body
   }
 
-  const missing = filled.filter((n) => n.body === '' && n.body_version === 0 && n.dirty !== 'body' && n.dirty !== 'both').map((n) => n.id)
+  // An existing empty string is a complete body. Never replace a missing local
+  // edit with an older server version merely to make an export succeed.
+  if (filled.some(n => !available.has(n.id) && (n.dirty === 'body' || n.dirty === 'both'))) {
+    throw new Error('部分本地正文缺失，请先到设置 → 数据恢复草稿，再导出备份')
+  }
+  const missing = filled.filter(n => !available.has(n.id)).map(n => n.id)
   const BATCH = 50
   for (let i = 0; i < missing.length; i += BATCH) {
     report({ done: i, total: missing.length, label: '正在读取正文' })
@@ -188,11 +194,11 @@ async function fillBodies(notes: LocalNote[], report: ProgressReporter): Promise
     })
     for (const body of response.bodies) {
       const note = byId.get(body.note_id)
-      if (note) note.body = body.content
+      if (note) { note.body = body.content; available.add(note.id) }
     }
     if (missing.slice(i, i + BATCH).some(id => !response.bodies.some(b => b.note_id === id))) throw new Error('部分笔记正文尚未下载，无法完成备份')
   }
-  if (filled.some((n) => n.body === '' && n.body_version > 0)) throw new Error('部分笔记正文尚未下载，无法完成备份')
+  if (filled.some(n => !available.has(n.id))) throw new Error('部分笔记正文尚未下载，无法完成备份')
   return filled
 }
 

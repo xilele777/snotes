@@ -4,7 +4,7 @@ import { ref } from 'vue'
 export const NOTICE_MS = 3500
 /** 带操作的提示（如撤销）停留更久 */
 const ACTION_NOTICE_MS = 5000
-/** 排队等待展示的消息上限：防突发风暴排成长串，超出丢最旧的 */
+/** 普通排队消息上限；带撤销操作的消息不丢弃。 */
 const QUEUE_LIMIT = 3
 
 /** 当前显示的提示文字，空串表示没有；Toast.vue 渲染它，单测直接断言它 */
@@ -41,17 +41,24 @@ export function notify(text: string, action?: { label: string; run: () => void |
   const entry: NoticeEntry = { text, action: action ?? null }
   if (notice.value !== '' && noticeAction.value) {
     queue.push(entry)
-    while (queue.length > QUEUE_LIMIT) queue.shift()
+    // Bound passive messages, but never discard an unconsumed undo action.
+    while (queue.filter(item => !item.action).length > QUEUE_LIMIT) {
+      queue.splice(queue.findIndex(item => !item.action), 1)
+    }
     return
   }
   clearTimeout(timer)
-  queue.length = 0
+  // A passive message may be displayed ahead of pending undo actions.
+  // Replacing it must not erase those actions.
+  for (let i = queue.length - 1; i >= 0; i--) if (!queue[i]!.action) queue.splice(i, 1)
   show(entry)
 }
 
 export async function runNoticeAction(): Promise<void> {
   const action = noticeAction.value
-  dismissNotice()
+  clearTimeout(timer)
+  // Consume only this notification. The next deletion still needs its undo.
+  expire()
   try { await action?.run() } catch (error) { notify(error instanceof Error ? error.message : String(error)) }
 }
 

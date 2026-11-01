@@ -106,6 +106,14 @@
 .is-resizing-workspace .layout { transition: none; }
 .list-visibility-toggle { flex: none; color: var(--text-tertiary); }
 .editor-pane { container-type: inline-size; }
+.note-save-status { flex: none; min-height: 28px; padding: 2px 24px; border-bottom: 1px solid var(--border-light); font-size: 12px; color: var(--text-secondary); }
+.note-save-status button { padding: 3px 0; border: 0; background: transparent; text-align: left; font: inherit; color: inherit; }
+.note-save-status button.failed { color: var(--danger); }
+.body-unavailable { display: flex; flex-direction: column; align-items: center; gap: 12px; padding: 48px 24px; text-align: center; color: var(--text-secondary); }
+.body-unavailable h2 { font-size: 17px; margin: 0; }
+.body-unavailable p { margin: 0 0 8px; overflow-wrap: anywhere; }
+.search-coverage { margin: 0; padding: 0 20px 12px; font-size: 12px; color: var(--text-secondary); }
+.editor-location.notebook-location { flex: 1; min-width: 0; max-width: 320px; }
 .editor-top-bar > .op-wrap { min-width: 0; }
 @container (max-width: 560px) {
   .editor-top-bar { gap: 4px; padding-inline: 12px; }
@@ -122,3 +130,12 @@
 @media (max-width: 1020px) {
   .list-visibility-toggle, .workspace-divider { display: none; }
 }
+@media (max-width: 720px) {
+  .editor-location.notebook-location { width: auto; justify-content: flex-start; }
+  .editor-location.notebook-location span { display: block; }
+  .note-save-status { padding-inline: 16px; }
+  .op-btn { min-width: 40px; min-height: 40px; }
+  .note-more { width: 40px; height: 40px; }
+  .note-title { padding-right: 34px; }
+}
+@media print { .note-save-status { display: none; } }

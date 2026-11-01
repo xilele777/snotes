@@ -68,8 +68,8 @@ function fmtDate(ts: number): string {
         <time class="note-date" :datetime="new Date(note.update_time).toISOString()" :title="new Date(note.update_time).toLocaleString('zh-CN')">{{ fmtDate(note.update_time) }}</time>
         <span v-if="note.top === 1" class="note-pin" role="img" aria-label="置顶"><AppIcon name="pin" :size="12" /></span>
         <span v-if="note.star === 1" class="note-star" role="img" aria-label="星标"><AppIcon name="star" :size="12" /></span>
-        <span v-if="homeHidden" class="note-hidden" role="img" aria-label="不上首页" title="不上首页信息流"><AppIcon name="eyeOff" :size="12" /></span>
-        <span v-if="groupName" class="note-group-label">{{ groupName }}</span>
+        <span v-if="homeHidden" class="note-hidden" role="img" aria-label="从随手记隐藏" title="不在随手记中显示，全部笔记中仍可找到"><AppIcon name="eyeOff" :size="12" /></span>
+        <span v-if="groupName" class="note-group-label" :title="groupName">{{ groupName }}</span>
         <slot name="meta" />
       </div>
     </button>

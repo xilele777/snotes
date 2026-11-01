@@ -54,6 +54,8 @@ export const useNotesStore = defineStore('notes', () => {
    * 显示骨架，与 WPS 便签「列表即显、正文打开才拉」的读路径同构。
    */
   const currentBody = ref<string | null>(null)
+  const bodyStatus = ref<'idle' | 'loading' | 'ready' | 'missing' | 'error'>('idle')
+  const bodyError = ref('')
   /** 当前正文对应的服务端版本，用于检测 pull 期间的远端更新 */
   let loadedBodyVersion: number | null = null
   // 最近打开过的正文留一份小缓存：左右键快速切换笔记时同 tick 命中，零骨架闪烁。
@@ -80,11 +82,14 @@ export const useNotesStore = defineStore('notes', () => {
 
   async function loadCurrentBody(id: string | null) {
     const seq = ++bodySeq
-    if (id === null) { currentBody.value = null; loadedBodyVersion = null; return }
+    bodyError.value = ''
+    if (id === null) { currentBody.value = null; loadedBodyVersion = null; bodyStatus.value = 'idle'; return }
+    bodyStatus.value = 'loading'
     const cached = bodyCache.get(id)
     if (cached !== undefined && cached.version === rowVersionOf(id)) {
       currentBody.value = cached.body
       loadedBodyVersion = cached.version
+      bodyStatus.value = 'ready'
       return
     }
     currentBody.value = null
@@ -95,14 +100,37 @@ export const useNotesStore = defineStore('notes', () => {
     } catch (e) {
       // 组件已卸载 / 测试环境把库关了：这次取数已经没有去处，静默收场。
       if (e instanceof Error && e.name === 'DatabaseClosedError') return
-      throw e
+      if (seq === bodySeq && currentId.value === id) {
+        bodyStatus.value = 'error'
+        bodyError.value = e instanceof Error ? e.message : String(e)
+      }
+      return
     }
     if (seq !== bodySeq || currentId.value !== id) return
-    // undefined = 远端正文还没拉到：保持 null，详情页停留在加载骨架
-    if (text === undefined) return
+    // undefined 与合法空正文不同：详情页显示缺失提示和下载重试入口。
+    if (text === undefined) { bodyStatus.value = 'missing'; return }
     cacheBody(id, text)
     currentBody.value = text
     loadedBodyVersion = rowVersionOf(id)
+    bodyStatus.value = 'ready'
+  }
+
+  async function retryCurrentBody() {
+    const id = currentId.value
+    if (!id) return
+    if (!navigator.onLine) { bodyStatus.value = 'missing'; bodyError.value = '当前离线，联网后可下载正文'; return }
+    bodyStatus.value = 'loading'
+    bodyError.value = ''
+    try {
+      const fresh = await refreshNoteBodyOnOpen(id, true)
+      if (currentId.value !== id) return
+      if (fresh !== undefined) applyRemoteBody(id, fresh)
+      await loadCurrentBody(id)
+    } catch (error) {
+      if (currentId.value !== id) return
+      bodyStatus.value = 'error'
+      bodyError.value = error instanceof Error ? error.message : String(error)
+    }
   }
 
   /** 编辑器正在等着吃的正文：有未保存草稿时绝不能被远端内容顶掉 */
@@ -121,6 +149,7 @@ export const useNotesStore = defineStore('notes', () => {
     if (currentId.value === id) {
       currentBody.value = body
       loadedBodyVersion = rowVersionOf(id)
+      bodyStatus.value = 'ready'
     }
   }
 
@@ -167,7 +196,7 @@ export const useNotesStore = defineStore('notes', () => {
     // WPS §7 打开笔记点位：后台对一次正文版本校验（带本地 body_version），
     // 服务端更新了才回填。离线/未登录/有未确认编辑时静默跳过，不产生请求风暴。
     if (hasToken.value && !hasUnsavedDraft(id)) {
-      void refreshNoteBodyOnOpen(id).then((fresh) => { if (fresh) applyRemoteBody(id, fresh) }).catch(() => undefined)
+      void refreshNoteBodyOnOpen(id).then((fresh) => { if (fresh !== undefined) applyRemoteBody(id, fresh) }).catch(() => undefined)
     }
   }
 
@@ -178,6 +207,7 @@ export const useNotesStore = defineStore('notes', () => {
    */
   const bodyHits = ref<Map<string, string> | null>(null)
   const searchingBodies = ref(false)
+  const missingSearchBodies = ref(0)
   let searchSeq = 0
   let searchTimer: ReturnType<typeof setTimeout> | undefined
 
@@ -195,6 +225,7 @@ export const useNotesStore = defineStore('notes', () => {
     // 流式扫描：游标边读边算，命中先上屏（新视图不再等全表读完），
     // 列表计数随扫描进度逐步补齐。
     const acc = new Map<string, string>()
+    let downloaded = 0
     let lastFlush = performance.now()
     const flush = (force = false) => {
       // 查询已变时不再上屏：旧扫描的部分命中混进新查询的结果，要等新扫描才会被纠正
@@ -207,6 +238,7 @@ export const useNotesStore = defineStore('notes', () => {
     }
     try {
       await db.bodies.where('id').anyOf(rows.map((note) => note.id)).each((row) => {
+        downloaded++
         const title = titles.get(row.id) ?? ''
         if (!matchesAll(`${title}\n${row.body}`, terms)) return
         acc.set(row.id, extractSearchExcerpt(row.body, ui.query) ?? '')
@@ -220,6 +252,7 @@ export const useNotesStore = defineStore('notes', () => {
     }
     if (seq !== searchSeq) return
     bodyHits.value = acc
+    missingSearchBodies.value = rows.length - downloaded
     searchingBodies.value = false
   }
 
@@ -231,6 +264,7 @@ export const useNotesStore = defineStore('notes', () => {
   watch(() => ui.query, () => {
     // 查询一变立即丢掉上一轮正文命中：标题命中先上屏，扫描结果到了再并进来
     bodyHits.value = null
+    missingSearchBodies.value = 0
     if (splitTerms(ui.query).length === 0) { searchSeq++; searchingBodies.value = false; return }
     scheduleBodyScan()
   })
@@ -352,7 +386,7 @@ export const useNotesStore = defineStore('notes', () => {
       return note
     }
     // 分组内就地新建；星标、回收站和监控视图的新笔记统一显示在全部笔记里。
-    const viewSwitches = ui.view !== 'all' && ui.view !== 'group'
+    const viewSwitches = ui.view !== 'all' && ui.view !== 'home' && ui.view !== 'group'
     if (viewSwitches) {
       // 视图切换前把当前态入栈，返回键退回新建前的筛选视图而不是直接退出应用
       pushNav()
@@ -449,7 +483,7 @@ export const useNotesStore = defineStore('notes', () => {
   }
 
   return {
-    notes, currentId, current, currentBody, visible, stale, searchingBodies,
+    notes, currentId, current, currentBody, bodyStatus, bodyError, retryCurrentBody, visible, stale, searchingBodies, missingSearchBodies,
     load, create, open, beginSelectionRestore, finishSelectionRestore, saveBody,
     setProps, restoreHistory, trash, trashWithUndo, recover, purge, purgeAll,
     searchExcerptOf,

@@ -48,7 +48,7 @@ const chapterEditing = ref<TocNode | null>(null)
 const pickerQuery = ref('')
 const candidates = ref<LocalNote[]>([])
 const chosen = ref<string[]>([])
-const confirm = ref<{ title: string; message: string; run: () => Promise<unknown> } | null>(null)
+const confirm = ref<{ title: string; message: string; confirmText?: string; run: () => Promise<unknown> } | null>(null)
 const deleting = ref<{ id: string; name: string; nodes: TocNode[] } | null>(null)
 const deletionError = ref('')
 const deletionBusy = ref(false)
@@ -61,7 +61,7 @@ function openMenu(event: MouseEvent, kind: 'book' | 'node' | 'create' | 'tree', 
   if (menu.value?.anchor === anchor) { menu.value = null; return }
   menu.value = { kind, anchor, book: kind === 'book' ? item as KnowledgeBase : undefined, node: kind === 'node' ? item as TocNode : undefined }
 }
-async function menuAction(action: 'edit' | 'remove-book' | 'pin' | 'new-note' | 'add' | 'chapter' | 'expand' | 'collapse' | 'rename' | 'up' | 'down' | 'move' | 'detach' | 'remove-node') {
+async function menuAction(action: 'edit' | 'dissolve' | 'remove-book' | 'pin' | 'new-note' | 'add' | 'chapter' | 'expand' | 'collapse' | 'rename' | 'up' | 'down' | 'move' | 'detach' | 'remove-node') {
   const current = menu.value
   menu.value = null
   await nextTick()
@@ -77,6 +77,15 @@ async function menuAction(action: 'edit' | 'remove-book' | 'pin' | 'new-note' | 
   if (current?.book) {
     if (action === 'edit') { editing.value = current.book; formOpen.value = true }
     if (action === 'remove-book') removeBook(current.book)
+    if (action === 'dissolve') {
+      const target = current.book
+      confirm.value = {
+        title: `解散笔记本「${target.name}」？`,
+        confirmText: '解散并保留笔记',
+        message: '保留全部笔记及正文，只移除这本笔记本。未删除的内容仍可在“全部笔记”中找到，其他笔记本的内容不受影响。',
+        run: async () => { await updateKnowledgeBase(target.id, { invalid: 1 }); await showKnowledgeBases(); notify('笔记本已解散，笔记已保留') },
+      }
+    }
     if (action === 'pin') togglePinnedKnowledgeBase(current.book.id)
   }
   if (current?.node) {
@@ -306,7 +315,7 @@ async function resolve(id: string, kind: 'meta' | 'toc', choice: 'local' | 'remo
   await run(async () => { await resolveKnowledgeBaseConflict(id, kind, choice); await notes.load(); dialog.value = null; void syncNow() })
 }
 let subscription: ReturnType<typeof libraries.subscribe> | undefined
-onMounted(() => { subscription = libraries.subscribe(); void notes.load() })
+onMounted(() => { subscription = libraries.subscribe(() => ui.activeKnowledgeBaseId); void notes.load() })
 onUnmounted(() => subscription?.unsubscribe())
 watch(() => ui.activeKnowledgeBaseId, () => { error.value = ''; dialog.value = null; menu.value = null; void notes.load() })
 watch(() => book.value?.deleted, deleted => { if (deleted) void showKnowledgeBases() })
@@ -375,7 +384,8 @@ watch(() => ui.restorePosition, async position => { if (position?.view === 'know
         <button class="menu-item" role="menuitem" @click="menuAction('edit')"><AppIcon name="edit" :size="15" />编辑笔记本</button>
         <button class="menu-item" role="menuitemcheckbox" :aria-checked="preferences.pinnedKnowledgeBaseIds.includes(menu.book!.id)" @click="menuAction('pin')"><AppIcon name="pin" :size="15" />{{ preferences.pinnedKnowledgeBaseIds.includes(menu.book!.id) ? '取消固定' : '固定到前面' }}</button>
         <span class="menu-separator" aria-hidden="true"></span>
-        <button class="menu-item danger" role="menuitem" @click="menuAction('remove-book')"><AppIcon name="trash" :size="15" />删除笔记本</button>
+        <button class="menu-item" role="menuitem" @click="menuAction('dissolve')"><AppIcon name="back" :size="15" />解散并保留笔记</button>
+        <button class="menu-item danger" role="menuitem" @click="menuAction('remove-book')"><AppIcon name="trash" :size="15" />永久删除笔记本及内容</button>
       </template>
       <template v-else-if="menu?.kind === 'create'">
         <button class="menu-item" role="menuitem" :disabled="busy" @click="menuAction('new-note')"><AppIcon name="plus" :size="15" />新建笔记</button>
@@ -404,7 +414,7 @@ watch(() => ui.restorePosition, async position => { if (position?.view === 'know
     </ActionMenu>
     <DeleteNotebookDialog :open="!!deleting" :name="deleting?.name ?? ''" :count="deleting?.nodes.filter(n => n.kind === 'note').length ?? 0" :busy="deletionBusy" :error="deletionError" @confirm="confirmDelete" @cancel="deleting = null" />
     <Teleport to="body">
-      <ConfirmDialog :open="!!confirm" :title="confirm?.title ?? ''" :message="confirm?.message" confirm-text="删除" @confirm="confirmAction" @cancel="confirm = null" />
+      <ConfirmDialog :open="!!confirm" :title="confirm?.title ?? ''" :message="confirm?.message" :confirm-text="confirm?.confirmText ?? '删除'" @confirm="confirmAction" @cancel="confirm = null" />
       <Transition name="dialog">
         <div v-if="dialog" class="dialog-mask" @click.self="dialog = null">
           <div ref="panel" class="dialog kb-workspace-dialog" role="dialog" aria-modal="true" :aria-label="dialog === 'chapter' ? '章节名称' : dialog === 'add' ? '加入已有笔记' : dialog === 'move' ? '移动目录' : '解决笔记本冲突'">

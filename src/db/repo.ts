@@ -7,7 +7,7 @@ import { enqueueOpensUnknownIn, scheduleOpensSync } from '../sync/opens'
 import { db } from './schema'
 import { deleteHistoryIn, getHistoryEntry, maybeSnapshotIn, recordSnapshotIn } from './history'
 
-export type ListView = 'all' | 'trash' | 'star' | 'group' | 'hidden'
+export type ListView = 'all' | 'home' | 'trash' | 'star' | 'group' | 'hidden'
 
 export interface ListFilter {
   view: ListView
@@ -371,9 +371,8 @@ export async function openNote(id: string): Promise<OpenNoteResult | undefined> 
 
 /**
  * 被笔记本目录引用的笔记 id —— 也就是「属于笔记本」的那些笔记。
- * 归属由目录推导，不在笔记行上另设字段：一条笔记进了某本笔记本的目录，
- * 它就只属于笔记本，外形（全部笔记 / 星标 / 已隐藏 / 统计）一律看不到它。
- * 只算未被移除（invalid !== 1）的笔记本：笔记本被删掉后，它的笔记重新回到外面。
+ * 归属由目录推导，不在笔记行上另设字段。随手记排除笔记本内容，
+ * 全部笔记、星标、分组及统计仍包含它们。解散笔记本后解除归属。
  */
 export async function notebookOwnedNoteIds(): Promise<Set<string>> {
   const books = await db.knowledgeBases.filter((b) => b.invalid !== 1).toArray()
@@ -387,28 +386,24 @@ export async function notebookOwnedNoteIds(): Promise<Set<string>> {
 
 export async function listNotes(filter: ListFilter): Promise<LocalNote[]> {
   const all = await db.notes.toArray()
-  // 笔记本笔记不算「外面的笔记」：全部 / 星标 / 已隐藏都不该看到它们。
-  // 回收站例外——「从笔记本移除」是把笔记丢进回收站，那里必须能看到、能恢复，
-  // 所以回收站视图完全不走这道过滤。
-  const owned = filter.view === 'trash' ? undefined : await notebookOwnedNoteIds()
+  // 仅随手记保留独立笔记的信息流；其他视图可跨笔记本查询。
+  const owned = filter.view === 'home' ? await notebookOwnedNoteIds() : undefined
 
   const matched = all.filter((n) => {
     if (filter.view === 'trash') return n.invalid === 1
-    if (n.invalid === 1) return false
+    if (n.invalid !== 0) return false
     if (owned?.has(n.id)) return false
     if (filter.view === 'star') return n.star === 1
     if (filter.view === 'group') return n.group_id === filter.groupId
     return true
   })
 
-  // 首页信息流（全部笔记）里滤掉「不上首页」的笔记，这些笔记集中到 hidden 视图，
-  // 保证它们永远有地方能看到、能放回首页。分组视图要能就地看到它们（否则用户没法
-  // 把它们放回首页），星标是明确的收藏，回收站更不该被可见性影响。
-  // 过滤规则与统计页共用 shared/home-feed.ts。
+  // 随手记按分组默认与单篇覆盖过滤；已隐藏提供反向查询。
+  // 全部笔记、星标、分组和回收站不受信息流可见性影响。
   let visible = matched
-  if (filter.view === 'all' || filter.view === 'hidden') {
+  if (filter.view === 'home' || filter.view === 'hidden') {
     const hiddenGroups = await homeHiddenGroups(matched)
-    visible = filter.view === 'all'
+    visible = filter.view === 'home'
       ? matched.filter((n) => !isHiddenFromHome(n, hiddenGroups))
       : matched.filter((n) => isHiddenFromHome(n, hiddenGroups))
   }

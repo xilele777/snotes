@@ -129,7 +129,8 @@ kbd { font-family: inherit; font-size: 10px; line-height: 20px; white-space: now
 .groups li:hover .group-menu-btn, .groups li:focus-within .group-menu-btn, .groups li.menu-open .group-menu-btn { opacity: 1; }
 .groups .group-menu-btn:hover, .groups li.menu-open .group-menu-btn { background: var(--border-default); }
 /* Menus open in a fixed-position layer so scrolling lists, the drawer transform and the top bar cannot clip them. */
-.action-menu { position: fixed; z-index: 60; max-width: calc(100vw - 16px); padding: 6px; display: flex; flex-direction: column; gap: 2px; background: var(--bg-surface); border: 1px solid var(--border-light); border-radius: 8px; box-shadow: 0 6px 24px rgb(0 0 0 / 10%); }
+.action-menu { position: fixed; z-index: 60; max-width: calc(100vw - 16px); max-height: calc(100dvh - 16px); overflow-y: auto; overscroll-behavior: contain; padding: 6px; display: flex; flex-direction: column; gap: 2px; background: var(--bg-surface); border: 1px solid var(--border-light); border-radius: 8px; box-shadow: 0 6px 24px rgb(0 0 0 / 10%); }
+.action-menu > * { flex-shrink: 0; }
 .group-menu { min-width: 184px; }
 .note-menu { min-width: 200px; }
 .menu-item { display: flex; align-items: center; gap: 9px; width: 100%; padding: 8px 10px; border: 0; border-radius: 5px; background: transparent; color: var(--text-primary); font-size: 13px; text-align: left; }

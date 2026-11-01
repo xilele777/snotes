@@ -1,6 +1,6 @@
 import { liveQuery } from 'dexie'
 import { defineStore } from 'pinia'
-import { ref } from 'vue'
+import { ref, watch } from 'vue'
 import type { KnowledgeBase, KnowledgeBaseToc } from '../../shared/knowledge-base'
 import type { LocalNote } from '../../shared/types'
 import type { KnowledgeBaseNoteState, KnowledgeBaseTask } from '../db/knowledge-base-types'
@@ -30,21 +30,37 @@ export const useKnowledgeBasesStore = defineStore('knowledge-bases', () => {
         error(e) { error.value = e instanceof Error ? e.message : String(e) },
       })
   }
-  function subscribe() {
-    return liveQuery(async () => {
-      const [books, tocs, tasks, noteStates] = await Promise.all([
-        db.knowledgeBases.toArray(), db.knowledgeBaseTocs.toArray(), db.knowledgeBaseOutbox.toArray(), db.knowledgeBaseNoteStates.toArray(),
-      ])
-      const conflictTocs = tasks.flatMap(t => t.conflict ? [t.conflict.toc] : [])
-      const ids = [...new Set([...tocs, ...conflictTocs].flatMap(t => t.nodes.flatMap(n => n.note_id ? [n.note_id] : [])))]
-      const [notes, bodies] = await Promise.all([
-        db.notes.bulkGet(ids).then(rows => rows.filter((n): n is LocalNote => !!n)),
-        db.bodies.bulkGet(ids),
-      ])
-      const bodyText = new Map(bodies.filter((row): row is NonNullable<typeof row> => !!row).map(row => [row.id, row.body]))
-      return { books, tocs, tasks, notes, noteStates, bodyText }
-    }).subscribe({ next(data) { books.value = data.books; tocs.value = data.tocs; tasks.value = data.tasks; notes.value = data.notes; noteStates.value = data.noteStates; bodyText.value = data.bodyText; error.value = null },
-      error(e) { error.value = e instanceof Error ? e.message : String(e) } })
+  function subscribe(activeBookId?: () => string | null) {
+    let subscription: { unsubscribe(): void } | undefined
+    const stop = watch(activeBookId ?? (() => undefined), bookId => {
+      subscription?.unsubscribe()
+      bodyText.value = new Map()
+      subscription = liveQuery(async () => {
+        const [books, tocs, tasks, noteStates] = await Promise.all([
+          db.knowledgeBases.toArray(), db.knowledgeBaseTocs.toArray(), db.knowledgeBaseOutbox.toArray(), db.knowledgeBaseNoteStates.toArray(),
+        ])
+        const conflictTocs = tasks.flatMap(t => t.conflict ? [t.conflict.toc] : [])
+        const ids = [...new Set([...tocs, ...conflictTocs].flatMap(t => t.nodes.flatMap(n => n.note_id ? [n.note_id] : [])))]
+        // The overview needs counts and titles, never every notebook's body.
+        const bodyIds = bookId === undefined ? ids : [...new Set([...tocs, ...conflictTocs]
+          .filter(t => t.knowledge_base_id === bookId)
+          .flatMap(t => t.nodes.flatMap(n => n.note_id ? [n.note_id] : [])))]
+        const [notes, bodies] = await Promise.all([
+          db.notes.bulkGet(ids).then(rows => rows.filter((n): n is LocalNote => !!n)),
+          bodyIds.length ? db.bodies.bulkGet(bodyIds) : Promise.resolve([]),
+        ])
+        const bodyText = new Map(bodies.flatMap(row => row ? [[row.id, row.body] as const] : []))
+        return { books, tocs, tasks, notes, noteStates, bodyText }
+      }).subscribe({
+        next(data) {
+          books.value = data.books; tocs.value = data.tocs; tasks.value = data.tasks
+          notes.value = data.notes; noteStates.value = data.noteStates; bodyText.value = data.bodyText
+          error.value = null
+        },
+        error(e) { error.value = e instanceof Error ? e.message : String(e) },
+      })
+    }, { immediate: true })
+    return { unsubscribe() { stop(); subscription?.unsubscribe() } }
   }
   return { books, tocs, tasks, notes, bodyText, noteStates, error, subscribe, subscribeCatalog, subscribeMembership }
 })

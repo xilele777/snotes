@@ -23,6 +23,7 @@ async function saved(page: Page) {
 }
 
 async function switchMode(page: Page, mode: string) {
+  if (!await tool(page, 'edit-mode').isVisible()) await tool(page, 'mobile-format').click()
   await tool(page, 'edit-mode').click()
   await page.locator(`.vditor-toolbar button[data-mode="${mode}"]`).click()
   await expect(page.locator('.snotes-vditor')).toHaveAttribute('data-mode', mode)
@@ -503,6 +504,7 @@ test('公式与流程图在线按需加载，已用过的渲染器离线仍可�
 for (const width of [320, 390]) {
   test(`${width}px 原生工具栏可用且页面不横向溢出`, async ({ page }) => {
     await page.setViewportSize({ width, height: 844 })
+    await tool(page, 'mobile-format').click()
     await tool(page, 'edit-mode').scrollIntoViewIfNeeded()
     await expect(tool(page, 'edit-mode')).toBeInViewport()
     await tool(page, 'upload').scrollIntoViewIfNeeded()
@@ -553,7 +555,7 @@ test('大纲定位滚动工作区，收起栏目后正文居中，工具栏保�
   })
   expect(Math.abs(margins[0]! - margins[1]!)).toBeLessThan(2)
   const toolbar = page.locator('.vditor-toolbar')
-  const tops = await toolbar.locator(':scope > .vditor-toolbar__item').evaluateAll(items => items.map(item => Math.round(item.getBoundingClientRect().top)))
+  const tops = await toolbar.locator(':scope > .vditor-toolbar__item:visible').evaluateAll(items => items.map(item => Math.round(item.getBoundingClientRect().top)))
   expect(new Set(tops).size).toBe(1)
   await expect(tool(page, 'strike')).toBeVisible()
   await expect(tool(page, 'check')).toBeVisible()

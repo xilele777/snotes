@@ -616,7 +616,7 @@ describe('NoteDetail 首页信息流开关', () => {
     await wrapper.vm.$nextTick()
     await openMore(wrapper)
 
-    expect(menuAction('home-feed')!.textContent).toContain('不在首页信息流显示')
+    expect(menuAction('home-feed')!.textContent).toContain('不在随手记中显示')
     menuAction('home-feed')!.click()
     // 等属性写入与列表刷新完成。
     await vi.waitFor(async () => {
@@ -642,7 +642,7 @@ describe('NoteDetail 首页信息流开关', () => {
     await wrapper.vm.$nextTick()
     await openMore(wrapper)
 
-    expect(menuAction('home-feed')!.textContent).toContain('在首页信息流显示')
+    expect(menuAction('home-feed')!.textContent).toContain('在随手记中显示')
     menuAction('home-feed')!.click()
     await vi.waitFor(async () => {
       expect((await db.notes.get(note.id))!.home_hidden).toBe(0)

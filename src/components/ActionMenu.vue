@@ -30,11 +30,16 @@ function place() {
   const rect = props.anchor?.getBoundingClientRect()
   const menu = panel.value
   if (!rect || !menu) return
+  const viewport = window.visualViewport
+  const viewportTop = viewport?.offsetTop ?? 0
+  const viewportHeight = viewport?.height ?? window.innerHeight
+  menu.style.maxHeight = `${Math.max(80, viewportHeight - 16)}px`
   const width = menu.offsetWidth
   const height = menu.offsetHeight
   const left = Math.max(8, Math.min(rect.right - width, window.innerWidth - width - 8))
   let top = rect.bottom + 4
-  if (top + height > window.innerHeight - 8) top = Math.max(8, rect.top - height - 4)
+  if (top + height > viewportTop + viewportHeight - 8) top = rect.top - height - 4
+  top = Math.max(viewportTop + 8, Math.min(top, viewportTop + viewportHeight - height - 8))
   position.value = { top, left }
 }
 
@@ -73,6 +78,8 @@ function listen(on: boolean) {
   document[method]('click', onDocumentClick, true)
   window[method]('resize', place)
   window[method]('scroll', place, true)
+  window.visualViewport?.[method]('resize', place)
+  window.visualViewport?.[method]('scroll', place)
 }
 
 watch(() => props.open, async (open, previous) => {

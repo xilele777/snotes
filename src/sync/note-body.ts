@@ -19,10 +19,10 @@ const lastRefreshAt = new Map<string, number>()
 const inFlight = new Map<string, Promise<string | undefined>>()
 
 /** 返回服务端更新的正文（已落库）；没有更新时返回 undefined。 */
-export function refreshNoteBodyOnOpen(id: string): Promise<string | undefined> {
+export function refreshNoteBodyOnOpen(id: string, force = false): Promise<string | undefined> {
   const last = lastRefreshAt.get(id)
   // 左右方向键快速划过列表时不打请求风暴；30s 内看过的笔记下一轮 pull 会兜底
-  if (last && Date.now() - last < OPEN_REFRESH_THROTTLE_MS) return Promise.resolve(undefined)
+  if (!force && last && Date.now() - last < OPEN_REFRESH_THROTTLE_MS) return Promise.resolve(undefined)
   const pending = inFlight.get(id)
   if (pending) return pending
   const task = (async () => {
@@ -37,7 +37,8 @@ export function refreshNoteBodyOnOpen(id: string): Promise<string | undefined> {
       method: 'POST', body: JSON.stringify({ ids: [id] }),
     })
     const remote = response.bodies.find((body) => body.note_id === id)
-    if (!remote || remote.version <= note.body_version) return undefined
+    if (!remote || remote.version < note.body_version) return undefined
+    if (remote.version === note.body_version && await db.bodies.get(id)) return undefined
 
     // 落库前在事务里重查：请求飞行期间用户可能又开始了输入（草稿 stage 后马上
     // 会入队 body 任务）。有未确认编辑就不能覆盖，交给保存链路的冲突副本。
@@ -47,7 +48,8 @@ export function refreshNoteBodyOnOpen(id: string): Promise<string | undefined> {
       if (!current) return
       const pendingTasks = await db.outbox.where('note_id').equals(id).toArray()
       if (pendingTasks.some((task) => task.kind === 'body' || task.kind === 'create')) return
-      if (remote.version <= current.body_version) return
+      if (remote.version < current.body_version) return
+      if (remote.version === current.body_version && await db.bodies.get(id)) return
       await db.bodies.put({ id, body: remote.content })
       await db.notes.update(id, { version: remote.version, body_version: remote.version, ...derive(remote.content) })
       applied = remote.content

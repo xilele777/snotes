@@ -19,6 +19,7 @@ const emit = defineEmits<{
   notice: [string]
   'open-lightbox': [string[], number]
   ready: []
+  pending: [id: string, pending: boolean]
 }>()
 const root = ref<HTMLElement | null>(null)
 let editor: Vditor | undefined
@@ -72,12 +73,15 @@ function handOff(flushing: boolean) {
   base = value
   if (flushing) emit('flush', documentId, value, previous)
   else emit('update:modelValue', value, previous)
+  emit('pending', documentId, false)
 }
 
 function capture(value = ready ? editor?.getValue() : undefined) {
-  if (!ready || disposed || replacing || value === undefined || value === observed) return
+  if (!ready || disposed || replacing || value === undefined) return
+  if (value === observed) { emit('pending', documentId, pending !== undefined); return }
   observed = value
   pending = value === base ? undefined : value
+  emit('pending', documentId, pending !== undefined)
   clearTimer()
   if (pending !== undefined) timer = setTimeout(() => handOff(false), 800)
 }
@@ -151,6 +155,7 @@ function onInput(event: Event) {
   // Vditor's debounced callback captures Markdown; flush() still reads the live
   // DOM for immediate navigation/pagehide, so the last keystroke stays safe.
   if (ready && editor && props.editable !== false) {
+    emit('pending', documentId, true)
     root.value?.querySelector('[data-type="undo"]')?.classList.remove('vditor-menu--disabled')
     root.value?.querySelector('[data-type="redo"]')?.classList.add('vditor-menu--disabled')
   }
@@ -625,6 +630,10 @@ async function initialize() {
       'link', '|', 'list', 'ordered-list', 'check', 'outdent', 'indent', '|',
       'quote', 'line', 'code', 'inline-code', '|',
       'upload', 'table', '|', 'undo', 'redo', '|', 'outline', 'fullscreen', 'edit-mode',
+      { name: 'mobile-format', tip: '展开或收起格式工具', icon: '<svg viewBox="0 0 24 24"><circle cx="5" cy="12" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="19" cy="12" r="2"/></svg>', click: () => {
+        const expanded = root.value?.classList.toggle('mobile-tools-expanded') ?? false
+        root.value?.querySelector('[data-type="mobile-format"]')?.setAttribute('aria-expanded', String(expanded))
+      } },
     ],
     hint: { emojiPath: `${VDITOR_CDN}/dist/images/emoji` },
     preview: {

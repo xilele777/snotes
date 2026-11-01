@@ -82,7 +82,8 @@ it('directory trash and recovery preserve the owner, chapter, node id and orderi
   expect((await listNotes({ view: 'trash' })).map(n => n.id)).toContain(note.id)
   expect((await db.knowledgeBaseTocs.get(book.id))!.nodes).toEqual(original)
   await recoverNote(note.id)
-  expect((await listNotes({ view: 'all' })).map(n => n.id)).not.toContain(note.id)
+  expect((await listNotes({ view: 'home' })).map(n => n.id)).not.toContain(note.id)
+  expect((await listNotes({ view: 'all' })).map(n => n.id)).toContain(note.id)
   expect((await db.knowledgeBaseTocs.get(book.id))!.nodes).toEqual(original)
 })
 

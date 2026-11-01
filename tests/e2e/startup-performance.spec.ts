@@ -71,7 +71,7 @@ test('元数据先可见，正文在途时不出现可编辑空白，下载后�
     await page.goto('/')
     await expect(page.locator('.header-count')).toHaveText('2')
     await page.locator('.note-select').first().click()
-    await expect(page.locator('.editor-loading')).toBeVisible()
+    await expect(page.locator('.body-unavailable')).toContainText('本机尚未下载这篇正文')
     await expect(page.locator('.snotes-vditor [contenteditable="true"]')).toHaveCount(0)
   } finally { release() }
   await expect(page.locator('.snotes-vditor [role="textbox"]:visible')).toContainText('正文已下载')

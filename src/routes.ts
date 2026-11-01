@@ -12,7 +12,7 @@ export interface WorkspaceRoute {
   settingsTab?: SettingsTab
 }
 
-const views = ['all', 'star', 'group', 'hidden', 'trash', 'metrics', 'knowledge-bases'] as const
+const views = ['all', 'home', 'star', 'group', 'hidden', 'trash', 'metrics', 'knowledge-bases'] as const
 const settingsTabs = ['appearance', 'data', 'shortcuts', 'agents', 'about'] as const
 
 export function isUiView(value: unknown): value is UiView {
@@ -43,7 +43,7 @@ export function parseRoute(url: URL): WorkspaceRoute | null {
   } else if (page === 'groups' && parts.length === 2) {
     route.view = 'group'
     route.activeGroupId = id!
-  } else if ((page === 'star' || page === 'hidden' || page === 'trash' || page === 'metrics') && parts.length === 1) {
+  } else if ((page === 'home' || page === 'star' || page === 'hidden' || page === 'trash' || page === 'metrics') && parts.length === 1) {
     route.view = page
   } else return null
 

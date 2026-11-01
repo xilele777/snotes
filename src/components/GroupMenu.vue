@@ -57,7 +57,7 @@ const emit = defineEmits<{
         @click="emit('homeFeed', group.hide_from_home !== 1)"
       >
         <AppIcon :name="group.hide_from_home === 1 ? 'eyeOff' : 'eye'" :size="15" />
-        <span>不上首页信息流</span>
+        <span>不在随手记中显示</span>
         <AppIcon v-if="group.hide_from_home === 1" name="check" :size="15" class="menu-check" />
       </button>
       <span class="menu-separator" aria-hidden="true"></span>

@@ -68,6 +68,34 @@ describe('mimeOfFile', () => {
 })
 
 describe('导出', () => {
+  it('已同步和未同步的空正文都能完整导出，不会被误认为缺失', async () => {
+    const synced = await createNote('')
+    await db.notes.update(synced.id, { body_version: 1, dirty: 'none' })
+    await createNote('')
+    await createNote('# 正常内容')
+    const bundle = await buildBackup()
+    const files = await unzip(bundle.blob)
+    const index = JSON.parse(files['index.json'])
+    expect(bundle.notes).toBe(3)
+    expect(files[index.notes.find((n: { id: string }) => n.id === synced.id).file]).toBe('')
+    expect(apiFetchMock).not.toHaveBeenCalled()
+  })
+
+  it('版本非零但本地正文记录缺失时补拉，远端空正文仍是完整记录', async () => {
+    const note = await createNote('旧内容')
+    await db.notes.update(note.id, { body_version: 2, dirty: 'none' })
+    await db.bodies.delete(note.id)
+    apiFetchMock.mockResolvedValue({ bodies: [{ note_id: note.id, content: '', version: 2 }] })
+    expect((await buildBackup()).notes).toBe(1)
+    expect(apiFetchMock).toHaveBeenCalled()
+  })
+
+  it('本地未同步正文记录缺失时拒绝以云端旧内容替代', async () => {
+    const note = await createNote('本地新内容')
+    await db.bodies.delete(note.id)
+    await expect(buildBackup()).rejects.toThrow('本地正文缺失')
+    expect(apiFetchMock).not.toHaveBeenCalled()
+  })
   it('format 3 round-trips trash and historical images, and imports history idempotently', async () => {
     const note = await createNote('# 当前正文')
     const { trashNote } = await import('../db/repo')

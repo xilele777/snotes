@@ -186,29 +186,31 @@ describe('listNotes', () => {
     expect(list.map((n) => n.id)).toEqual([b.id])
   })
 
-  describe('属于笔记本的笔记不算「外面的笔记」', () => {
+  describe('全部笔记覆盖笔记本，随手记保持独立信息流', () => {
     async function seedBook(name: string, invalid: 0 | 1 = 0) {
       const book = await createKnowledgeBase({ name, description: '', icon: '', ord: 0, invalid })
       return book
     }
 
-    it('进过目录的笔记从「全部笔记」里消失，笔记本之外的笔记照常显示', async () => {
+    it('全部笔记包含笔记本内容，随手记只显示独立笔记', async () => {
       const outside = await createNote('外面的')
       const inside = await createNote('笔记本里的')
       const book = await seedBook('资料')
       await addKnowledgeBaseNode(book.id, { kind: 'note', note_id: inside.id, title: null })
 
-      expect((await listNotes({ view: 'all' })).map((n) => n.id)).toEqual([outside.id])
+      expect((await listNotes({ view: 'all' })).map((n) => n.id).sort()).toEqual([outside.id, inside.id].sort())
+      expect((await listNotes({ view: 'home' })).map((n) => n.id)).toEqual([outside.id])
       expect(await notebookOwnedNoteIds()).toEqual(new Set([inside.id]))
     })
 
-    it('星标视图同样看不到笔记本笔记', async () => {
+    it('星标和分组视图都包含笔记本笔记', async () => {
       const inside = await createNote('笔记本里的')
-      await updateProps(inside.id, { star: 1 })
+      await updateProps(inside.id, { star: 1, group_id: 'work' })
       const book = await seedBook('资料')
       await addKnowledgeBaseNode(book.id, { kind: 'note', note_id: inside.id, title: null })
 
-      expect(await listNotes({ view: 'star' })).toEqual([])
+      expect((await listNotes({ view: 'star' })).map(n => n.id)).toEqual([inside.id])
+      expect((await listNotes({ view: 'group', groupId: 'work' })).map(n => n.id)).toEqual([inside.id])
     })
 
     it('回收站仍然能看到它，否则「从笔记本删除」以后就找不回来了', async () => {
@@ -225,10 +227,10 @@ describe('listNotes', () => {
       const inside = await createNote('笔记本里的')
       const book = await seedBook('资料')
       await addKnowledgeBaseNode(book.id, { kind: 'note', note_id: inside.id, title: null })
-      expect(await listNotes({ view: 'all' })).toEqual([])
+      expect(await listNotes({ view: 'home' })).toEqual([])
 
       await updateKnowledgeBase(book.id, { invalid: 1 })
-      expect((await listNotes({ view: 'all' })).map((n) => n.id)).toEqual([inside.id])
+      expect((await listNotes({ view: 'home' })).map((n) => n.id)).toEqual([inside.id])
       expect(await notebookOwnedNoteIds()).toEqual(new Set())
     })
   })
@@ -285,13 +287,14 @@ describe('首页信息流可见性', () => {
     })
   }
 
-  it('分组默认不上首页时，组内笔记不出现在全部笔记，但仍在分组视图里', async () => {
+  it('分组默认隐藏只影响随手记，全部笔记和分组中仍可找到', async () => {
     await makeHiddenGroup('g1')
     const a = await createNote('a')
     const b = await createNote('b')
     await updateProps(a.id, { group_id: 'g1' })
 
-    expect((await listNotes({ view: 'all' })).map((n) => n.id)).toEqual([b.id])
+    expect((await listNotes({ view: 'home' })).map((n) => n.id)).toEqual([b.id])
+    expect((await listNotes({ view: 'all' })).map(n => n.id).sort()).toEqual([a.id, b.id].sort())
     expect((await listNotes({ view: 'group', groupId: 'g1' })).map((n) => n.id)).toEqual([a.id])
   })
 
@@ -301,7 +304,7 @@ describe('首页信息流可见性', () => {
     await updateProps(a.id, { group_id: 'g1' })
     await updateProps(a.id, { home_hidden: 0 })
 
-    expect((await listNotes({ view: 'all' })).map((n) => n.id)).toEqual([a.id])
+    expect((await listNotes({ view: 'home' })).map((n) => n.id)).toEqual([a.id])
     expect((await listNotes({ view: 'hidden' })).map((n) => n.id)).toEqual([])
   })
 
@@ -310,7 +313,7 @@ describe('首页信息流可见性', () => {
     const b = await createNote('b')
     await updateProps(a.id, { home_hidden: 1 })
 
-    expect((await listNotes({ view: 'all' })).map((n) => n.id)).toEqual([b.id])
+    expect((await listNotes({ view: 'home' })).map((n) => n.id)).toEqual([b.id])
     expect((await listNotes({ view: 'hidden' })).map((n) => n.id)).toEqual([a.id])
     // 星标是明确的收藏，不受首页可见性影响
     await updateProps(a.id, { star: 1 })

@@ -1,4 +1,4 @@
-import { flushPromises, mount } from '@vue/test-utils'
+import { enableAutoUnmount, flushPromises, mount } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { db } from '../db/schema'
@@ -23,6 +23,7 @@ beforeEach(async () => {
 })
 
 afterEach(() => vi.restoreAllMocks())
+enableAutoUnmount(afterEach)
 
 /**
  * 派发带 clientX 的 PointerEvent。

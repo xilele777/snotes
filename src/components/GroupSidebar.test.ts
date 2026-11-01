@@ -114,7 +114,7 @@ describe('GroupSidebar', () => {
 
     expect(ui.view).toBe('trash')
     expect(wrapper.find('.sidebar-content').exists()).toBe(true)
-    expect(wrapper.findAll('.sidebar-content > .views > li').map(item => item.attributes('data-view'))).toEqual(['all', 'star', 'hidden', 'knowledge-bases'])
+    expect(wrapper.findAll('.sidebar-content > .views > li').map(item => item.attributes('data-view'))).toEqual(['home', 'all', 'star', 'hidden', 'knowledge-bases'])
     expect(wrapper.find('.sidebar-footer [data-view="trash"]').exists()).toBe(true)
     expect(wrapper.get('[data-view="trash"]').attributes('aria-current')).toBe('page')
     wrapper.unmount()
@@ -547,7 +547,7 @@ describe('GroupSidebar 分组菜单', () => {
     await openMenu(wrapper, g.group_id)
     const toggle = action('home-feed')!
     expect(toggle.getAttribute('aria-checked')).toBe('false')
-    expect(toggle.textContent).toContain('不上首页信息流')
+    expect(toggle.textContent).toContain('不在随手记中显示')
 
     toggle.click()
     // patch() 落库后还要 enqueue + load，等 store 也跟上再看渲染结果

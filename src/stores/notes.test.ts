@@ -455,10 +455,11 @@ describe('整理笔记时保留编辑上下文', () => {
   it('隐藏后列表移除当前笔记，但正文可继续保存，切换视图后清理保留状态', async () => {
     const store = useNotesStore()
     const ui = useUiStore()
+    ui.view = 'home'
     const note = await store.create()
     await store.saveBody(note.id, '# 原文')
     await store.setProps(note.id, { home_hidden: 1 })
-    expect(ui.view).toBe('all')
+    expect(ui.view).toBe('home')
     expect(store.visible).toHaveLength(0)
     expect(store.currentBody).toBe('# 原文')
     await store.saveBody(note.id, '# 继续编辑', '# 原文')

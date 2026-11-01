@@ -48,6 +48,18 @@ it('撤销入口停留五秒，动作只执行一次', async () => {
   expect(notice.value).toBe('')
 })
 
+it('撤销第一条后保留第二条撤销，即使第一条动作又发出成功提示', async () => {
+  const second = vi.fn()
+  notify('删除第一条', { label: '撤销', run: () => notify('已恢复第一条') })
+  notify('删除第二条', { label: '撤销', run: second })
+  await runNoticeAction()
+  expect(notice.value).toBe('删除第二条')
+  expect(noticeAction.value?.label).toBe('撤销')
+  await runNoticeAction()
+  expect(second).toHaveBeenCalledOnce()
+  expect(notice.value).toBe('已恢复第一条')
+})
+
 it('带操作的提示不会被后来的消息顶掉；后来者排队，到期后接续展示', () => {
   const run = vi.fn()
   notify('已删除', { label: '撤销', run })
@@ -59,6 +71,18 @@ it('带操作的提示不会被后来的消息顶掉；后来者排队，到期�
   expect(noticeAction.value).toBeNull()
   vi.advanceTimersByTime(NOTICE_MS)
   expect(notice.value).toBe('')
+})
+
+it('撤销之间夹着普通提示时，成功提示也不会清掉后续撤销', async () => {
+  const second = vi.fn()
+  notify('删除第一条', { label: '撤销', run: () => notify('已恢复第一条') })
+  notify('已复制')
+  notify('删除第二条', { label: '撤销', run: second })
+  await runNoticeAction()
+  vi.advanceTimersByTime(NOTICE_MS)
+  expect(notice.value).toBe('删除第二条')
+  await runNoticeAction()
+  expect(second).toHaveBeenCalledOnce()
 })
 
 it('排队超过三条时丢最旧的待展示消息', () => {

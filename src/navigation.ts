@@ -56,7 +56,7 @@ function snapshot(): NavSnapshot {
 }
 
 export function isNotesView(view: UiView): boolean {
-  return view === 'all' || view === 'star' || view === 'group' || view === 'hidden'
+  return view === 'all' || view === 'home' || view === 'star' || view === 'group' || view === 'hidden'
 }
 
 let navigationGeneration = 0
