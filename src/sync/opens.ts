@@ -115,9 +115,17 @@ export async function syncOpens(): Promise<void> {
           open_others_time: open.others_last_open_time,
         })
       }
-      // 只清本次快照：请求飞行期间产生的新增打开仍留在 dirty 中。
+      // An ID alone cannot acknowledge a counter: the same note may have been
+      // opened again while the request was in flight. Clear only exact values.
       const current = (await db.meta.get(DIRTY_KEY))?.value as string[] | undefined
-      const sent = new Set(snapshot)
+      const latestRows = await db.notes.bulkGet(snapshot)
+      const sentValues = new Map(items.map(item => [item.note_id, item]))
+      const sent = new Set(snapshot.filter((noteId, index) => {
+        const latest = latestRows[index]
+        const submitted = sentValues.get(noteId)
+        return !latest || submitted && (latest.open_count ?? 0) === submitted.count
+          && (latest.last_open_time ?? 0) === submitted.last_open_time
+      }))
       await db.meta.put({ key: DIRTY_KEY, value: (current ?? []).filter((noteId) => !sent.has(noteId)) })
       await db.meta.put({ key: CURSOR_KEY, value: response.server_time })
       // 队列与请求前快照可能已并发变化（插入/合并），事务内重读后按差集出队。

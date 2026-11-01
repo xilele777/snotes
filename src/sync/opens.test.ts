@@ -20,6 +20,21 @@ afterEach(() => {
 })
 
 describe('syncOpens', () => {
+  it('keeps a repeated open of the same note dirty until its newer counter is acknowledged', async () => {
+    await db.notes.add({ id: 'n1', group_id: null, title: '', summary: '', thumbnail: null, version: 1, prop_version: 1, star: 0, top: 0, skin_color: null, invalid: 0, create_time: 1, update_time: 1, body_version: 1, dirty: 'none', open_count: 2, last_open_time: 10 })
+    await setMeta('opens_dirty', ['n1'])
+    apiFetch.mockImplementationOnce(async () => {
+      await db.notes.update('n1', { open_count: 3, last_open_time: 20 })
+      // Reopening the same ID does not add another entry to the dirty set.
+      await setMeta('opens_dirty', ['n1'])
+      return { opens: [], server_time: 123 }
+    })
+    await syncOpens()
+    expect((await db.meta.get('opens_dirty'))?.value).toEqual(['n1'])
+    await syncOpens()
+    expect(JSON.parse(apiFetch.mock.calls[1][1].body).items).toEqual([{ note_id: 'n1', count: 3, last_open_time: 20 }])
+    expect((await db.meta.get('opens_dirty'))?.value).toEqual([])
+  })
   it('成功后写回其它设备统计、推进游标并只清已发送 dirty', async () => {
     await db.notes.add({ id: 'n1', group_id: null, title: '', summary: '', thumbnail: null, version: 1, prop_version: 1, star: 0, top: 0, skin_color: null, invalid: 0, create_time: 1, update_time: 1, body_version: 1, dirty: 'none', open_count: 2, last_open_time: 10 })
     await setMeta('device_id', 'device-a')
