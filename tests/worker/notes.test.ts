@@ -105,6 +105,48 @@ function requestWithDb(db: Database, path: string, method: string, body?: unknow
 }
 
 describe('note write interleavings', () => {
+  it('a failed body CAS saves no conflict snapshot from the version it did not overwrite', async () => {
+    const req = noteReq({ content: 'initial' })
+    await json('/api/notes', 'POST', req)
+    await json(`/api/notes/${req.id}`, 'PATCH', { content: 'device a', title: 'a', summary: '', base_version: 1 })
+    let interrupted = false
+    const db: Database = {
+      prepare: sql => env.DB.prepare(sql),
+      async batch(statements) {
+        if (!interrupted) {
+          interrupted = true
+          await json(`/api/notes/${req.id}`, 'PATCH', { content: 'device c', title: 'c', summary: '', base_version: 2 })
+        }
+        return env.DB.batch(statements as D1PreparedStatement[])
+      },
+    }
+    const result = await requestWithDb(db, `/api/notes/${req.id}`, 'PATCH', { content: 'device b', title: 'b', summary: '', base_version: 1 })
+    expect(await result.json()).toMatchObject({ version: 4, conflicted: true, previous_content: 'device c' })
+    const history = await env.DB.prepare('SELECT body FROM note_history WHERE note_id = ?').bind(req.id).all<{ body: string }>()
+    expect(history.results.map(row => row.body).sort()).toEqual(['device c', 'initial'])
+  })
+
+  it('marks create replays and does not acknowledge changes committed after a fresh insert', async () => {
+    const req = noteReq()
+    let intercepted = false
+    const db: Database = {
+      prepare: sql => env.DB.prepare(sql),
+      async batch(statements) {
+        const result = await env.DB.batch(statements as D1PreparedStatement[])
+        if (!intercepted) {
+          intercepted = true
+          await json(`/api/notes/${req.id}`, 'PATCH', { content: 'other device', title: 'other device', summary: '', base_version: 1, star: 1, base_prop_version: 1 })
+        }
+        return result
+      },
+    }
+    const first = await requestWithDb(db, '/api/notes', 'POST', req)
+    expect(await first.json()).toMatchObject({ version: 1, prop_version: 1, replayed: false })
+    const retry = await json('/api/notes', 'POST', req)
+    expect(await retry.json()).toMatchObject({ version: 2, prop_version: 2, replayed: true })
+    expect(await env.DB.prepare('SELECT content FROM note_body WHERE note_id = ?').bind(req.id).first()).toMatchObject({ content: 'other device' })
+  })
+
   it('retries a body CAS after an interleaved property PATCH without writing the body alone', async () => {
     const req = noteReq()
     await json('/api/notes', 'POST', req)

@@ -427,7 +427,7 @@ describe('purge', () => {
     expect(rows[0]).toMatchObject({ note_id: a.id, kind: 'purge', payload: { scope: 'note' } })
   })
 
-  it('purgeTrash 批量删除所有回收站笔记，只入队一条 scope=trash 任务', async () => {
+  it('purgeTrash removes pending edits and queues only the notes confirmed for deletion', async () => {
     const a = await createNote('a')
     const b = await createNote('b')
     await trashNote(a.id)
@@ -437,8 +437,10 @@ describe('purge', () => {
 
     expect(await db.notes.count()).toBe(0)
     const rows = await db.outbox.where('kind').equals('purge').toArray()
-    expect(rows).toHaveLength(1)
-    expect(rows[0]).toMatchObject({ note_id: '__trash__', kind: 'purge', payload: { scope: 'trash' } })
+    expect(rows).toHaveLength(2)
+    expect(rows.map(row => row.note_id).sort()).toEqual([a.id, b.id].sort())
+    expect(rows.every(row => (row.payload as { scope: string }).scope === 'note')).toBe(true)
+    expect(await db.outbox.count()).toBe(2)
   })
 
   it('purgeTrash 在回收站为空时不入队', async () => {

@@ -103,6 +103,41 @@ it('loads three directories concurrently and settles in-flight work before retur
   expect(pending).toHaveLength(3)
 })
 
+it('starts the next directory as soon as a slot is free while a slow directory is still pending', async () => {
+  const books = Array.from({ length: 5 }, (_, i) => remote(`book-${i}`))
+  let release!: () => void
+  const slow = new Promise<void>(resolve => { release = resolve })
+  const started: string[] = []
+  fetchMock.mockImplementation(async path => {
+    if (path.endsWith('/sync/pull')) return { books: books.map(r => r.book), until: 5, next_after: null }
+    started.push(path)
+    if (path === '/api/knowledge-bases/book-0/toc') await slow
+    return books.find(r => path === `/api/knowledge-bases/${r.book.id}/toc`)!
+  })
+  const syncing = syncKnowledgeBases()
+  try {
+    await vi.waitFor(async () => expect(await db.knowledgeBases.get('book-4')).toBeDefined())
+    expect(started).toHaveLength(5)
+    expect(await db.knowledgeBases.get('book-0')).toBeUndefined()
+    expect(await db.meta.get(KNOWLEDGE_BASE_CURSOR)).toBeUndefined()
+  } finally { release(); await syncing }
+  expect((await db.meta.get(KNOWLEDGE_BASE_CURSOR))?.value).toBe(5)
+})
+
+it('retry releases delayed notebook operations but preserves conflicts and the exact sent payload', async () => {
+  await createKnowledgeBase(meta, 'delayed')
+  fetchMock.mockRejectedValue(new TypeError('offline'))
+  await syncKnowledgeBases(true)
+  await createKnowledgeBase(meta, 'blocked')
+  const delayedId = taskId('delayed', 'meta')
+  const before = await db.knowledgeBaseOutbox.get(delayedId)
+  expect(before?.next_at).toBeGreaterThan(Date.now())
+  await db.knowledgeBaseOutbox.update(taskId('blocked', 'meta'), { blocked: true, next_at: 999, retry: 2 })
+  await retryKnowledgeBases()
+  expect(await db.knowledgeBaseOutbox.get(delayedId)).toMatchObject({ next_at: 0, retry: 0, sent: before!.sent, error: before!.error })
+  expect(await db.knowledgeBaseOutbox.get(taskId('blocked', 'meta'))).toMatchObject({ blocked: true, next_at: 999, retry: 2 })
+})
+
 it('stops notebook uploads after a transient failure and retains unsent operations', async () => {
   for (let i = 0; i < 4; i++) await createKnowledgeBase(meta, `book-${i}`)
   const before = await db.knowledgeBaseOutbox.toArray()

@@ -6,6 +6,14 @@ import { api, json, noteReq, resetDb } from './helpers'
 beforeEach(resetDb)
 
 describe('POST /api/notes/opens', () => {
+  it('late requests from another tab cannot decrease the same device cumulative counters', async () => {
+    const request = (count: number, time: number) => ({ device_id: 'shared-device', since: 0, items: [{ note_id: 'n1', count, last_open_time: time }] })
+    await json('/api/notes/opens', 'POST', request(5, 50))
+    await json('/api/notes/opens', 'POST', request(2, 20))
+    const result = await json('/api/notes/opens', 'POST', { device_id: 'other-device', since: 0, items: [], want: ['n1'] })
+    expect((await result.json<OpensSyncResponse>()).opens).toEqual([{ note_id: 'n1', others_count: 5, others_last_open_time: 50 }])
+  })
+
   it('按设备覆盖累计值，重发同一 payload 不会翻倍', async () => {
     const body = { device_id: 'device-a', since: 0, items: [{ note_id: 'n1', count: 3, last_open_time: 100 }] }
     await json('/api/notes/opens', 'POST', body)

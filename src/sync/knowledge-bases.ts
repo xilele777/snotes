@@ -6,6 +6,7 @@ import { acknowledgeKnowledgeBaseTask, applyKnowledgeBaseRemote, blockKnowledgeB
 import type { KnowledgeBaseTask } from '../db/knowledge-base-types'
 import { emitRemoteApplied } from './signal'
 import { isRetriableStatus } from '../../shared/backoff'
+import { forEachConcurrent } from './concurrent'
 
 export const KNOWLEDGE_BASE_CURSOR = 'knowledge_base_cursor'
 export const KNOWLEDGE_BASE_RECONCILED = 'knowledge_base_reconciled_at'
@@ -103,22 +104,17 @@ async function pull(reconcile = false): Promise<void> {
       throw error
     }
     if (until === undefined) { until = page.until; receipt = page.checkpoint }
-    for (let offset = 0; offset < page.books.length; offset += 3) {
-      // Settle every in-flight write before reporting a failure: the next round
-      // must not race this round's late IndexedDB updates.
-      const results = await Promise.allSettled(page.books.slice(offset, offset + 3).map(async book => {
-        seen.add(book.id)
-        const remote = await apiFetch<KnowledgeBaseRemote>(`/api/knowledge-bases/${book.id}/toc`)
-        validateToc(remote.toc.nodes)
-        if (reconcile) {
-          const pending = await db.knowledgeBaseOutbox.where('book_id').equals(book.id).toArray()
-          for (const task of pending) await blockKnowledgeBaseConflict(task, remote)
-        }
-        await applyKnowledgeBaseRemote(remote, reconcile)
-        changed = true
-      }))
-      for (const result of results) if (result.status === 'rejected') throw result.reason
-    }
+    await forEachConcurrent(page.books, 3, async book => {
+      seen.add(book.id)
+      const remote = await apiFetch<KnowledgeBaseRemote>(`/api/knowledge-bases/${book.id}/toc`)
+      validateToc(remote.toc.nodes)
+      if (reconcile) {
+        const pending = await db.knowledgeBaseOutbox.where('book_id').equals(book.id).toArray()
+        for (const task of pending) await blockKnowledgeBaseConflict(task, remote)
+      }
+      await applyKnowledgeBaseRemote(remote, reconcile)
+      changed = true
+    })
     // next_id is only an inventory cursor. Incremental pages deliberately send
     // next_id: null even when next_after still points to another page.
     if (full && page.next_id !== undefined ? page.next_id === null : page.next_after === null) break

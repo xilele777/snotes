@@ -4,6 +4,8 @@ import { ApiError, apiFetch } from '../api/client'
 import { db } from '../db/schema'
 import { deleteHistoryIn } from '../db/history'
 import { createConflictCopy } from '../db/repo'
+import { saveConflictCopies } from './conflict'
+import { emitRemoteApplied } from './signal'
 
 export interface ConflictInfo {
   note_id: string
@@ -16,6 +18,7 @@ export interface PushResult {
   failed: number
   /** outbox 里累计处于失败态的任务数，界面据此提示用户 */
   failedTotal: number
+  /** Conflicts already saved atomically with their acknowledgements. */
   conflicts: ConflictInfo[]
   /** A transient connection/service failure stopped this round early. */
   interrupted?: boolean
@@ -27,6 +30,8 @@ interface ServerAck {
   update_time?: number
   conflicted?: boolean
   previous_content?: string
+  /** An existing id was returned without accepting this create payload. */
+  replayed?: boolean
 }
 
 function post(path: string, payload: unknown) {
@@ -91,8 +96,13 @@ function clearBit(dirty: string, kind: OutboxTask['kind']): string {
 
 /** 在同一个事务内确认 seq、写入 ACK，并删除已确认的 outbox 行。 */
 async function finalizeAck(task: OutboxTask, ack: ServerAck): Promise<boolean> {
-  return db.transaction('rw', db.notes, db.outbox, async () => {
+  return db.transaction('rw', db.notes, db.bodies, db.outbox, db.meta, async () => {
     const current = task.id === undefined ? undefined : await db.outbox.get(task.id)
+    // Save before consuming the task, even if a local purge removed the original
+    // while the request was in flight. A later failed chain must not lose it.
+    if (ack.conflicted && typeof ack.previous_content === 'string') {
+      await saveConflictCopies([{ note_id: task.note_id, body: ack.previous_content }])
+    }
     // 请求在途期间如果本地又写入，mergeTask 会递增 seq。旧 ACK 只能算发送成功，
     // 不能清理新任务，也不能把新正文标记成远端版本。
     if (!current) return false
@@ -106,11 +116,17 @@ async function finalizeAck(task: OutboxTask, ack: ServerAck): Promise<boolean> {
       const fields: Record<string, unknown> = { dirty: unchanged ? clearBit(note.dirty, task.kind) : note.dirty }
       if (newerBody) fields.dirty = newerProp ? 'both' : 'body'
       else if (newerProp) fields.dirty = 'prop'
-      if (typeof ack.version === 'number') {
+      // A response can report versions of fields this request never supplied.
+      // Those fields have not been downloaded: treating them as acknowledged
+      // hides remote properties and can suppress a later body conflict.
+      const created = task.kind === 'create' && !ack.replayed
+      if ((task.kind === 'body' || created) && typeof ack.version === 'number') {
         fields.version = Math.max(note.version, ack.version)
-        if (!newerBody && (task.kind === 'body' || task.kind === 'create')) fields.body_version = ack.version
+        if (!newerBody) fields.body_version = ack.version
       }
-      if (typeof ack.prop_version === 'number') fields.prop_version = Math.max(note.prop_version, ack.prop_version)
+      // Partial property/state writes do not acknowledge the whole projection.
+      // Let the next pull fill other devices' properties before advancing it.
+      if (created && typeof ack.prop_version === 'number') fields.prop_version = Math.max(note.prop_version, ack.prop_version)
       if (unchanged && !newerBody && !newerProp && typeof ack.update_time === 'number') fields.update_time = ack.update_time
       await db.notes.update(task.note_id, fields)
     }
@@ -175,8 +191,17 @@ export async function pushOnce(): Promise<PushResult> {
     // 等 create 重试成功后，这些编辑就再也推不上去了。
     let blocked = false
 
-    for (const task of chain) {
+    for (const queued of chain) {
       if (blocked || stop !== 'none') return
+
+      // The round's snapshot can outlive a local purge or merged edit while
+      // earlier requests are in flight. Never send a cancelled/superseded row.
+      const task = queued.id === undefined ? undefined : await db.outbox.get(queued.id)
+      if (stop !== 'none') return
+      if (!task || task.seq !== queued.seq) {
+        if (queued.kind === 'create') blocked = true
+        continue
+      }
 
       if (task.failed === 1 || task.next_at > now) {
         if (task.kind === 'create') blocked = true
@@ -185,15 +210,16 @@ export async function pushOnce(): Promise<PushResult> {
 
       try {
         const ack = await send(task)
+        await finalizeAck(task, ack)
 
         // 后写者胜：本地这版已经成了服务端正文，再存它一份只会得到两条一样的笔记。
         // 真正会丢的是被覆盖的那一版——服务端随 conflicted 把它带回来，副本存它。
         // 只有正文冲突才带 previous_content；属性被覆盖不值得多出一条笔记。
         if (ack.conflicted && typeof ack.previous_content === 'string') {
           result.conflicts.push({ note_id: task.note_id, body: ack.previous_content })
+          emitRemoteApplied()
         }
 
-        await finalizeAck(task, ack)
         result.sent++
       } catch (error) {
         if (task.kind === 'create') blocked = true
@@ -262,14 +288,22 @@ export async function pushOnce(): Promise<PushResult> {
 
   let next = 0
   const worker = async (): Promise<void> => {
-    for (;;) {
-      if (stop !== 'none') return
-      const index = next++
-      if (index >= chains.length) return
-      await runChain(chains[index])
+    try {
+      for (;;) {
+        if (stop !== 'none') return
+        const index = next++
+        if (index >= chains.length) return
+        await runChain(chains[index])
+      }
+    } catch (error) {
+      // Local storage may fail even while recording a request failure. Stop
+      // dispatching, but keep the round/lock alive until other uploads settle.
+      if (stop === 'none') stop = 'unavailable'
+      throw error
     }
   }
-  await Promise.all(Array.from({ length: Math.min(PUSH_CONCURRENCY, chains.length) }, worker))
+  const workers = await Promise.allSettled(Array.from({ length: Math.min(PUSH_CONCURRENCY, chains.length) }, worker))
+  for (const result of workers) if (result.status === 'rejected') throw result.reason
 
   if (stopState() === 'reset') throw stopError
   result.failedTotal = await db.outbox.where('failed').equals(1).count()

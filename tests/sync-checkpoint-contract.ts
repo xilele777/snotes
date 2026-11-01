@@ -1,10 +1,30 @@
 import { expect, it } from 'vitest'
 import type { PullResponse } from '../shared/types'
 import type { Env } from '../worker/types'
-import { CHECKPOINT_TTL_MS } from '../worker/sync-checkpoint'
+import { CHECKPOINT_TTL_MS, issueCheckpoint, validCheckpoint } from '../worker/sync-checkpoint'
+import type { Database } from '../worker/storage'
 
 export function syncCheckpointContract(api: (path: string, body: unknown) => Response | Promise<Response>, environment: () => Env) {
   const pull = async (body: unknown): Promise<PullResponse> => (await api('/api/sync/pull', body)).json()
+  it('validates a receipt in one database call while retaining deployment and missing-clock fences', async () => {
+    const db = environment().DB
+    const first = await pull({ since: 0 })
+    const receipt = await issueCheckpoint(db, first.server_time, 'notes', 'deployment:one')
+    let queries = 0
+    const counted: Database = {
+      prepare(sql) { queries++; return db.prepare(sql) },
+      batch: statements => db.batch(statements),
+    }
+    expect(await validCheckpoint(counted, receipt, first.server_time, 'notes', 'deployment:one', true)).toBe(true)
+    expect(queries).toBe(1)
+    expect(await validCheckpoint(counted, receipt, first.server_time, 'notes', 'deployment:two')).toBe(false)
+    await db.prepare('DELETE FROM note_sync_clock').run()
+    try {
+      expect(await (await api('/api/sync/checkpoint', { since: first.server_time, checkpoint: first.checkpoint })).json()).toEqual({ valid: false })
+    } finally {
+      await db.prepare('INSERT INTO note_sync_clock (id, watermark) VALUES (1, ?)').bind(first.server_time).run()
+    }
+  })
   it('reuses idle receipts, validates the exact watermark and rejects receipts missing after backup restore', async () => {
     const first = await pull({ since: 0, checkpoint: null })
     expect(first.checkpoint).toBeTypeOf('string')

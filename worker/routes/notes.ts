@@ -1,8 +1,8 @@
 import { Hono } from 'hono'
 import { z } from 'zod'
 import { noteFits } from '../../shared/limits'
-import type { CreateNoteRequest, PatchNoteRequest, PatchNoteResponse } from '../../shared/types'
-import { latestNoteHistory, listNoteHistory, maybeRecordNoteHistory, nowMs, purgeNotes, recordNoteHistory } from '../db'
+import type { CreateNoteRequest, CreateNoteResponse, PatchNoteRequest, PatchNoteResponse } from '../../shared/types'
+import { latestNoteHistory, listNoteHistory, maybeRecordNoteHistory, noteHistoryStatements, nowMs, purgeNotes, recordNoteHistory } from '../db'
 import type { Env } from '../types'
 
 const PROP_FIELDS = ['group_id', 'star', 'top', 'skin_color', 'home_hidden'] as const
@@ -98,10 +98,10 @@ notesRoutes.post('/api/notes', async (c) => {
     // D1 meta.changes 包含触发器写入，不能要求恰好为 1。
     if (!results[1]?.meta.changes) return c.json({ error: 'write_conflict' }, 503)
     if (await c.env.DB.prepare('SELECT note_id FROM knowledge_base_deleted_note WHERE note_id = ?').bind(req.id).first()) return c.json({ error: 'permanently_deleted' }, 410)
-    return c.json({ id: req.id, version, prop_version: propVersion, update_time: now })
+    return c.json({ id: req.id, version, prop_version: propVersion, update_time: now, replayed: false } satisfies CreateNoteResponse)
   }
 
-  await c.env.DB.batch([
+  const inserted = await c.env.DB.batch([
     c.env.DB.prepare(
       `INSERT INTO note (id, group_id, title, summary, thumbnail, version, prop_version,
                          star, top, skin_color, home_hidden, invalid, create_time, update_time)
@@ -132,12 +132,16 @@ notesRoutes.post('/api/notes', async (c) => {
 
   if (!row || row.invalid === 2) return c.json({ error: 'permanently_deleted' }, 410)
 
+  // The post-insert read may already see another device's edit. A fresh create
+  // only confirms version 1; a replay accepts no payload and must be pulled.
+  const replayed = inserted[0].meta.changes === 0
   return c.json({
     id: req.id,
-    version: row!.version,
-    prop_version: row!.prop_version,
-    update_time: row!.update_time,
-  })
+    version: replayed ? row.version : 1,
+    prop_version: replayed ? row.prop_version : 1,
+    update_time: row.update_time,
+    replayed,
+  } satisfies CreateNoteResponse)
 })
 
 interface CurrentNote {
@@ -227,6 +231,7 @@ notesRoutes.patch('/api/notes/:id', async (c) => {
     }
 
     const bodyConflicted = changesBody && req.base_version! < current.version
+    const preserveConflict = bodyConflicted && !!current.content?.trim()
     const propConflicted = touchedProps.length > 0 && req.base_prop_version! < current.prop_version
 
     const now = nowMs()
@@ -268,6 +273,14 @@ notesRoutes.patch('/api/notes/:id', async (c) => {
       )
     }
 
+    if (preserveConflict) {
+      // Immediately follows the conditional body UPDATE. A failed CAS cannot
+      // create a snapshot; a successful conflict cannot lose it with the reply.
+      // Retention starts at conflict capture: the replaced version may itself
+      // be months old and must not be pruned immediately in this same batch.
+      statements.push(...noteHistoryStatements(c.env, id, current.content!, now, now, true))
+    }
+
     const [noteResult] = await c.env.DB.batch(statements)
     if (noteResult.meta.changes === 0) continue
 
@@ -278,7 +291,7 @@ notesRoutes.patch('/api/notes/:id', async (c) => {
 
     // 云端正文历史：被这次写入覆盖的旧正文按共用规则留一条，与本机历史同一套阈值。
     // 放在条件更新成功之后，落空重试时不会留下多余快照。
-    if (changesBody) {
+    if (changesBody && !preserveConflict) {
       await maybeRecordNoteHistory(c.env, id, current.content ?? '', req.content!, current.update_time, now)
     }
 

@@ -15,6 +15,7 @@ import { db } from '../db/schema'
 import { emitRemoteApplied } from './signal'
 import { enqueueOpensUnknownIn } from './opens'
 import { SYNC_CHECKPOINT_KEY } from './checkpoint'
+import { forEachConcurrent } from './concurrent'
 
 export const SYNC_CURSOR_KEY = 'sync_cursor'
 /** meta 表里缓存的回收站保留天数，回收站页在首次同步前也能给出提示 */
@@ -159,17 +160,24 @@ export async function pullOnce(reconcile = false): Promise<PullResult> {
     await applyGroups(response.groups)
     groups += response.groups.length
 
-    const states = await localStates(response.notes.map(note => note.id))
+    const purged = new Set((await db.outbox.where('kind').equals('purge').toArray()).map(task => task.note_id))
+    // A still-pending local purge wins over an older remote inventory, including
+    // during backoff/recovery. Do not recreate or download its old content.
+    const remoteNotes = response.notes.filter(note => !purged.has(note.id))
+    const states = await localStates(remoteNotes.map(note => note.id))
     if (reconcile) states.forEach(state => { state.body_version = -1; state.prop_version = -1 })
-    const plan = planPull(response.notes, states)
+    const plan = planPull(remoteNotes, states)
 
     if (plan.insert.length > 0) {
       // 必须是 bulkPut：since 用的是 >=，同一条笔记本就可能在一页里重复出现，
       // bulkAdd 会抛 ConstraintError 让整轮失败，游标永不推进，同步彻底卡死。
       // 新笔记的 open_others 未知，与插入同事务进 opens 点名队列。
-      await db.transaction('rw', db.notes, db.meta, async () => {
-        await db.notes.bulkPut(plan.insert.map(toLocalNote))
-        await enqueueOpensUnknownIn(plan.insert.map((note) => note.id))
+      await db.transaction('rw', db.notes, db.outbox, db.meta, async () => {
+        // A local purge can also happen after planning but before this write.
+        const purges = new Set((await db.outbox.where('kind').equals('purge').toArray()).map(task => task.note_id))
+        const insert = plan.insert.filter(note => !purges.has(note.id))
+        await db.notes.bulkPut(insert.map(toLocalNote))
+        await enqueueOpensUnknownIn(insert.map((note) => note.id))
       })
     }
 
@@ -239,28 +247,20 @@ export async function pullOnce(reconcile = false): Promise<PullResult> {
   // Independent requests share at most three connections. Apply each completed
   // batch immediately so one slow request cannot hold the first editor hostage.
   let firstBodiesShown = false
-  for (let offset = 0; offset < batches.length; offset += 3) {
-    // Bound concurrency/memory on devices with thousands of notes, and settle
-    // all requests before surfacing a failure so retries cannot overlap them.
-    const results = await Promise.allSettled(batches.slice(offset, offset + 3).map(async ids => {
-      const response = await apiFetch<BodiesResponse>('/api/sync/bodies', {
-        method: 'POST', body: JSON.stringify({ ids }),
-      })
-      if (ids.some(id => !response.bodies.some(body => body.note_id === id))) {
-        throw new Error('部分正文尚不可用，已保留本地内容与同步游标，请重试同步')
-      }
-      const count = await applyBodies(response.bodies, reconcile)
-      if (since === 0 && !firstBodiesShown && count > 0) {
-        firstBodiesShown = true
-        emitRemoteApplied()
-      }
-      return count
-    }))
-    for (const result of results) {
-      if (result.status === 'rejected') throw result.reason
-      bodies += result.value
+  await forEachConcurrent(batches, 3, async ids => {
+    const response = await apiFetch<BodiesResponse>('/api/sync/bodies', {
+      method: 'POST', body: JSON.stringify({ ids }),
+    })
+    if (ids.some(id => !response.bodies.some(body => body.note_id === id))) {
+      throw new Error('部分正文尚不可用，已保留本地内容与同步游标，请重试同步')
     }
-  }
+    const count = await applyBodies(response.bodies, reconcile)
+    if (since === 0 && !firstBodiesShown && count > 0) {
+      firstBodiesShown = true
+      emitRemoteApplied()
+    }
+    bodies += count
+  })
 
   // Full inventories span multiple requests. Refuse destructive reconciliation
   // if writes moved rows while pagination or body downloads were in flight.

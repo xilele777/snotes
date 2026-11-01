@@ -7,7 +7,8 @@ export { CONFLICT_SUFFIX }
 /**
  * 把 push 报上来的冲突各存一份副本。规格 §8.5：后写者胜，但被覆盖的正文不能消失。
  * conflict.body 是服务端随 conflicted 响应带回的、刚被本地这次推送覆盖掉的正文——
- * 它在服务端已经不存在了，这里是它唯一的落脚点，原笔记本地已不在也照样保存。
+ * 原笔记本地已不在也照样保存。push 在确认任务的同一个事务中调用，
+ * 服务端另有事务内历史快照兜底响应丢失。
  */
 export async function saveConflictCopies(conflicts: ConflictInfo[]): Promise<string[]> {
   const created: string[] = []

@@ -268,10 +268,9 @@ export async function purgeNote(id: string): Promise<void> {
 }
 
 /**
- * 清空回收站：本地批量删除所有 invalid=1 的笔记，入队一条 scope='trash' 的 purge 任务。
- * push 时走 POST /api/trash/clean（见 Task 20 Step 3 的 send()）。
- * 用固定 note_id '__trash__' 让 (note_id+kind) 复合索引不会和任何单条 purge 冲突，
- * 多次调用会合并成同一行（payload 都是 { scope: 'trash' }，幂等）。
+ * 清空回收站：固定本次确认的 id，取消其旧写入，再入队逐条 purge。
+ * 离线 trash 可能还没到服务端；全局 clean 会先于它执行，旧 create/trash
+ * 随后把已经清空的笔记重新同步回来。固定 id 也不会删除确认之后新增的云端回收站内容。
  */
 export async function purgeTrash(): Promise<void> {
   await db.transaction('rw', db.notes, db.bodies, db.outbox, db.history, db.knowledgeBaseNoteStates, async () => {
@@ -282,7 +281,8 @@ export async function purgeTrash(): Promise<void> {
     await db.notes.bulkDelete(trashed.map((n) => n.id))
     await db.bodies.bulkDelete(trashed.map((n) => n.id))
     await deleteHistoryIn(trashed.map((n) => n.id))
-    await enqueueIn(newTask({ note_id: '__trash__', kind: 'purge', payload: { scope: 'trash' } }))
+    await db.outbox.where('note_id').anyOf(trashed.map(n => n.id)).delete()
+    await db.outbox.bulkAdd(trashed.map(n => newTask({ note_id: n.id, kind: 'purge', payload: { scope: 'note' } })))
   })
   emitLocalWrite()
 }

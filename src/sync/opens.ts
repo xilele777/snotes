@@ -11,6 +11,8 @@ export const OPENS_THROTTLE_MS = 60_000
  * 不会丢）。
  */
 export const MAX_WANT = 90
+// The server accepts at most 500 counters per request. Keep the remainder dirty.
+const MAX_ITEMS = 500
 const DEVICE_ID_KEY = 'device_id'
 const CURSOR_KEY = 'opens_cursor'
 const DIRTY_KEY = 'opens_dirty'
@@ -93,7 +95,7 @@ export async function syncOpens(): Promise<void> {
       seedUnknownQueueOnce(),
     ])
     const { want, dropped } = await nextWant(queue)
-    const snapshot = [...new Set(dirty ?? [])]
+    const snapshot = [...new Set(dirty ?? [])].slice(0, MAX_ITEMS)
     const rows = await db.notes.bulkGet(snapshot)
     const items = rows.flatMap((note) => note ? [{
       note_id: note.id,

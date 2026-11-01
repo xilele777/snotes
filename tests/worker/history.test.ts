@@ -1,9 +1,11 @@
 import { env } from 'cloudflare:test'
 import { beforeEach, describe, expect, it } from 'vitest'
-import { HISTORY_KEEP } from '../../shared/history-rules'
+import { HISTORY_KEEP, HISTORY_MAX_AGE_MS } from '../../shared/history-rules'
 import { MAX_NOTE_BYTES } from '../../shared/limits'
 import type { NoteHistoryResponse } from '../../shared/types'
-import { api, json, noteReq, resetDb } from './helpers'
+import { createApp } from '../../worker/app'
+import type { Database } from '../../worker/storage'
+import { api, json, noteReq, resetDb, TOKEN } from './helpers'
 
 beforeEach(resetDb)
 
@@ -24,6 +26,52 @@ async function history(id: string) {
 }
 
 describe('云端正文历史', () => {
+  it('does not immediately expire a conflict snapshot of a long-unchanged note', async () => {
+    const req = await seedNote('old remote body')
+    await env.DB.prepare('UPDATE note SET update_time = ? WHERE id = ?').bind(Date.now() - HISTORY_MAX_AGE_MS - 1000, req.id).run()
+    const response = await patchBody(req.id, 'offline local body', 0)
+    expect(await response.json()).toMatchObject({ conflicted: true })
+    expect((await history(req.id)).map(row => row.body)).toContain('old remote body')
+  })
+
+  it('commits conflict history with the body even when execution stops immediately after the batch', async () => {
+    const req = await seedNote('initial')
+    await patchBody(req.id, 'device a', 1)
+    const interrupted: Database = {
+      prepare: sql => env.DB.prepare(sql),
+      async batch(statements) {
+        await env.DB.batch(statements as D1PreparedStatement[])
+        throw new Error('interrupted after commit')
+      },
+    }
+    const response = await createApp().request(`/api/notes/${req.id}`, {
+      method: 'PATCH', headers: { Authorization: `Bearer ${TOKEN}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ content: 'device b', title: 'device b', summary: 'device b', base_version: 1 }),
+    }, { ...env, DB: interrupted })
+    expect(response.status).toBe(500)
+    expect((await history(req.id)).map(row => row.body)).toContain('device a')
+    expect(await (await patchBody(req.id, 'device b', 1)).json()).toMatchObject({ version: 3, conflicted: false })
+    expect((await history(req.id)).filter(row => row.body === 'device a')).toHaveLength(1)
+  })
+
+  it('conflict snapshots still respect the history retention count', async () => {
+    const req = await seedNote('v0')
+    for (let i = 1; i <= HISTORY_KEEP + 3; i++) await patchBody(req.id, `v${i}`, 0)
+    const rows = await history(req.id)
+    expect(rows).toHaveLength(HISTORY_KEEP)
+    expect(rows.at(-1)?.body).toBe('v3')
+  })
+
+  it('retains a short conflicted body even if the response is lost and the write is replayed', async () => {
+    const req = await seedNote('initial')
+    await patchBody(req.id, 'device a', 1)
+    // Simulate a successful conflicting write whose response the client loses.
+    await patchBody(req.id, 'device b', 1)
+    const retry = await patchBody(req.id, 'device b', 1)
+    expect(await retry.json()).toMatchObject({ conflicted: false, version: 3 })
+    expect((await history(req.id)).map(row => row.body)).toContain('device a')
+  })
+
   it('第一次改正文时把被替换的旧正文存为快照，时间取旧正文的 update_time', async () => {
     const req = await seedNote('# 第一版')
     const before = await env.DB.prepare('SELECT update_time FROM note WHERE id = ?').bind(req.id).first<{ update_time: number }>()

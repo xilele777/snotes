@@ -129,6 +129,16 @@ export interface PatchNoteRequest {
   base_prop_version?: number
 }
 
+/** POST /api/notes 响应体。 */
+export interface CreateNoteResponse {
+  id: string
+  version: number
+  prop_version: number
+  update_time: number
+  /** Existing id; this request did not write its payload. Absent on older servers. */
+  replayed?: boolean
+}
+
 /** PATCH /api/notes/:id 响应体。 */
 export interface PatchNoteResponse {
   version: number

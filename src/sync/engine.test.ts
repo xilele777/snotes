@@ -59,11 +59,11 @@ afterEach(() => {
 })
 
 describe('syncNow', () => {
-  it('retains successful conflict copies but skips further requests after a connection failure', async () => {
+  it('does not duplicate already-persisted conflicts and skips downloads after a connection failure', async () => {
     const conflicts = [{ note_id: 'n1', body: 'remote text' }]
     pushOnce.mockResolvedValue({ sent: 1, failed: 1, failedTotal: 0, conflicts, interrupted: true })
     await syncNow()
-    expect(saveConflictCopies).toHaveBeenCalledWith(conflicts)
+    expect(saveConflictCopies).not.toHaveBeenCalled()
     expect(pullOnce).not.toHaveBeenCalled()
     expect(syncKnowledgeBases).not.toHaveBeenCalled()
     expect(useUiStore().lastSyncError).toContain('本地改动已保留')
@@ -95,7 +95,7 @@ describe('syncNow', () => {
     await retrySyncNow(false)
     expect((await db.outbox.where('note_id').equals('pending').first())!.next_at).toBe(0)
     expect(await db.outbox.where('note_id').equals('failed').first()).toMatchObject({ failed: 1, next_at: 999 })
-    expect(retryKnowledgeBases).not.toHaveBeenCalled()
+    expect(retryKnowledgeBases).toHaveBeenCalledTimes(1)
   })
 
   it('跨标签页锁等待期间不发送请求，拿到锁后才执行整轮同步', async () => {
@@ -146,7 +146,7 @@ describe('syncNow', () => {
     expect(order).toEqual(['push', 'pull'])
   })
 
-  it('push 报告冲突时生成副本', async () => {
+  it('push 已保存的冲突副本不在引擎中重复生成', async () => {
     pushOnce.mockResolvedValue({
       sent: 1,
       failed: 0,
@@ -156,7 +156,7 @@ describe('syncNow', () => {
 
     await syncNow()
 
-    expect(saveConflictCopies).toHaveBeenCalledWith([{ note_id: 'n1', body: '本地' }])
+    expect(saveConflictCopies).not.toHaveBeenCalled()
   })
 
   it('把失败任务数写进 ui.failedCount', async () => {

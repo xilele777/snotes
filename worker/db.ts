@@ -128,15 +128,21 @@ export async function latestNoteHistory(env: Env, noteId: string): Promise<Histo
     .first<HistoryRow>()
 }
 
-/** 写一条云端快照并按条数与时长修剪 */
-export async function recordNoteHistory(env: Env, noteId: string, body: string, time: number, now = nowMs()): Promise<void> {
-  await env.DB.batch([
-    env.DB.prepare('INSERT INTO note_history (note_id, time, body) VALUES (?, ?, ?)').bind(noteId, time, body),
+/** Compose with a guarded body write to preserve conflicts in the same transaction. */
+export function noteHistoryStatements(env: Env, noteId: string, body: string, time: number, now: number, requirePriorChange = false) {
+  return [
+    env.DB.prepare('INSERT INTO note_history (note_id, time, body) SELECT ?, ?, ? WHERE ? = 0 OR changes() = 1')
+      .bind(noteId, time, body, requirePriorChange ? 1 : 0),
     env.DB.prepare(
-      `DELETE FROM note_history WHERE note_id = ? AND (time < ? OR id NOT IN (
+      `DELETE FROM note_history WHERE note_id = ? AND changes() = 1 AND (time < ? OR id NOT IN (
          SELECT id FROM note_history WHERE note_id = ? ORDER BY time DESC, id DESC LIMIT ?))`
     ).bind(noteId, now - HISTORY_MAX_AGE_MS, noteId, HISTORY_KEEP),
-  ])
+  ]
+}
+
+/** 写一条云端快照并按条数与时长修剪 */
+export async function recordNoteHistory(env: Env, noteId: string, body: string, time: number, now = nowMs()): Promise<void> {
+  await env.DB.batch(noteHistoryStatements(env, noteId, body, time, now))
 }
 
 /**

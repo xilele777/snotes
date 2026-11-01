@@ -12,11 +12,13 @@ export async function instanceEpoch(db: Database, deploymentEpoch = ''): Promise
 export async function validCheckpoint(db: Database, token: unknown, since: number, domain: SyncDomain = 'notes', deploymentEpoch = '', requireCurrent = false): Promise<boolean> {
   if (typeof token !== 'string' || token.length > 100) return false
   const clock = domain === 'notes' ? '(SELECT watermark FROM note_sync_clock WHERE id = 1)' : '(SELECT seq FROM knowledge_base_clock WHERE id = 1)'
+  // Read the instance inside this statement as well: no extra D1 round trip,
+  // and epoch/clock/revision validation observes one database snapshot.
   return !!await db.prepare(`SELECT token FROM sync_checkpoint WHERE token = ? AND watermark = ? AND expires_at > ?
-    AND domain = ? AND epoch = ? AND watermark <= ${clock}
+    AND domain = ? AND epoch = (? || ':' || (SELECT epoch FROM sync_instance WHERE id = 1)) AND watermark <= ${clock}
     AND (? = 0 OR watermark = ${clock})
     AND (watermark < ${clock} OR revision = (SELECT revision FROM sync_revision WHERE domain = ?))`)
-    .bind(token, since, Date.now(), domain, await instanceEpoch(db, deploymentEpoch), requireCurrent ? 1 : 0, domain).first()
+    .bind(token, since, Date.now(), domain, deploymentEpoch, requireCurrent ? 1 : 0, domain).first()
 }
 
 export async function issueCheckpoint(db: Database, watermark: number, domain: SyncDomain = 'notes', deploymentEpoch = ''): Promise<string> {

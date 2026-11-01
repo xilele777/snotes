@@ -1,6 +1,5 @@
 import { useUiStore } from '../stores/ui'
 import { hasToken } from '../api/token'
-import { saveConflictCopies } from './conflict'
 import { pullOnce } from './pull'
 import { pushOnce } from './push'
 import { onLocalWrite } from './signal'
@@ -26,7 +25,9 @@ export function retrySyncNow(includeFailed = true): Promise<void> {
     // 失败原因和 payload 仍保留在 outbox，便于失败面板展示和放弃操作。
     if (includeFailed) await db.outbox.toCollection().modify({ failed: 0, next_at: 0 })
     else await db.outbox.where('failed').equals(0).modify({ next_at: 0 })
-    if (includeFailed) await retryKnowledgeBases()
+    // This only resets unblocked notebook tasks; conflicts still need the user.
+    // Network recovery must release notebook backoff as well as note backoff.
+    await retryKnowledgeBases()
     await syncNow()
   })().finally(() => { retryInFlight = null })
   return retryInFlight
@@ -54,10 +55,6 @@ export function syncNow(): Promise<void> {
         await completeRecoveryPreflight()
         const result = await pushOnce()
         ui.failedCount = result.failedTotal
-
-        if (result.conflicts.length > 0) {
-          await saveConflictCopies(result.conflicts)
-        }
 
         if (result.interrupted) {
           ui.lastSyncError = '连接暂时不可用，本地改动已保留，将在下次同步时重试。'
@@ -106,7 +103,7 @@ export function startSyncEngine(): () => void {
 
   // 规格 8.3 的第五个触发点：本地写入后 debounce 800 ms 再推。
   // 不 debounce 的话，连续敲字每次落库都会打一个请求。
-  // 走 syncNow 而不是直接 pushOnce，是因为冲突副本的处理只在 syncNow 里。
+  // 走 syncNow 完成恢复检查、上传和后续拉取。
   let writeTimer: ReturnType<typeof setTimeout> | undefined
   const offLocalWrite = onLocalWrite(() => {
     if (writeTimer !== undefined) clearTimeout(writeTimer)

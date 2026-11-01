@@ -1,7 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import Dexie from 'dexie'
 import type { LocalNoteWithBody, NoteMeta, PullResponse } from '../../shared/types'
 import { ApiError } from '../api/client'
-import { createNote, getMeta, setMeta, updateBody } from '../db/repo'
+import { createNote, getMeta, purgeNote, setMeta, updateBody } from '../db/repo'
 import { db } from '../db/schema'
 import { SYNC_CURSOR_KEY, pullOnce } from './pull'
 import { onRemoteApplied } from './signal'
@@ -61,6 +62,32 @@ function mockPull(...responses: PullResponse[]) {
 }
 
 describe('pullOnce', () => {
+  it('does not download and resurrect a note with an unconfirmed local purge', async () => {
+    const note = await createNote('removed locally')
+    await db.outbox.clear()
+    await setMeta(SYNC_CURSOR_KEY, 10)
+    await purgeNote(note.id)
+    mockPull(page({ notes: [meta({ id: note.id })] }))
+    await pullOnce()
+    expect(await db.notes.get(note.id)).toBeUndefined()
+    expect(await db.bodies.get(note.id)).toBeUndefined()
+    expect(apiFetch.mock.calls.some(([path]) => path === '/api/sync/bodies')).toBe(false)
+    expect((await db.outbox.where('note_id').equals(note.id).first())?.kind).toBe('purge')
+    expect(await getMeta(SYNC_CURSOR_KEY)).toBe(5000)
+  })
+
+  it('rechecks local purges between page planning and inserting metadata', async () => {
+    const note = await createNote('removed during planning')
+    await db.outbox.clear()
+    mockPull(page({ notes: [meta({ id: note.id })] }))
+    const read = vi.spyOn(db.notes, 'bulkGet').mockImplementationOnce(ids =>
+      Dexie.Promise.resolve(purgeNote(note.id)).then(() => ids.map(() => undefined)))
+    try { await pullOnce() } finally { read.mockRestore() }
+    expect(await db.notes.get(note.id)).toBeUndefined()
+    expect(await db.bodies.get(note.id)).toBeUndefined()
+    expect((await db.outbox.where('note_id').equals(note.id).first())?.kind).toBe('purge')
+  })
+
   it('a changing full inventory cannot remove local records or advance the receipt', async () => {
     await seedLocal({ ...meta({ id: 'gone' }), body: '保留正文', body_version: 1, dirty: 'none' })
     await setMeta(SYNC_CURSOR_KEY, 999)
@@ -412,6 +439,30 @@ describe('pullOnce', () => {
 })
 
 describe('pullOnce 落库前重新检查本地状态', () => {
+  it('a slow body batch does not hold up later batches, and the cursor waits for every body', async () => {
+    let release!: () => void
+    const slow = new Promise<void>(resolve => { release = resolve })
+    let active = 0
+    let peak = 0
+    apiFetch.mockImplementation(async (path: string, options: RequestInit) => {
+      if (path !== '/api/sync/bodies') return page({ notes: Array.from({ length: 201 }, (_, i) => meta({ id: `n${i}` })) })
+      const { ids } = JSON.parse(options.body as string) as { ids: string[] }
+      peak = Math.max(peak, ++active)
+      if (ids.includes('n200')) await slow
+      active--
+      return { bodies: ids.map(id => ({ note_id: id, content: `正文 ${id}`, version: 1 })) }
+    })
+    const syncing = pullOnce()
+    try {
+      await vi.waitFor(async () => expect(await getBody('n0')).toBe('正文 n0'))
+      expect(await getBody('n200')).toBeUndefined()
+      expect(peak).toBeLessThanOrEqual(3)
+      expect(await getMeta(SYNC_CURSOR_KEY)).toBeUndefined()
+    } finally { release(); await syncing }
+    expect(await getBody('n200')).toBe('正文 n200')
+    expect(await getMeta(SYNC_CURSOR_KEY)).toBe(5000)
+  })
+
   it('空缓存先显示元数据，快批次立即可读，慢批次期间保存的本地正文不会被覆盖', async () => {
     const notes = Array.from({ length: 120 }, (_, index) => meta({ id: `n${index}` }))
     let release!: () => void
@@ -449,20 +500,22 @@ describe('pullOnce 落库前重新检查本地状态', () => {
     let requests = 0
     let settled = false
     apiFetch.mockImplementation(async (path: string, options: RequestInit) => {
-      if (path !== '/api/sync/bodies') return page({ notes: Array.from({ length: 51 }, (_, i) => meta({ id: `n${i}` })) })
+      if (path !== '/api/sync/bodies') return page({ notes: Array.from({ length: 201 }, (_, i) => meta({ id: `n${i}` })) })
       requests++
       const { ids } = JSON.parse(options.body as string) as { ids: string[] }
-      if (ids.includes('n50')) throw new Error('一批失败')
+      if (ids.includes('n200')) throw new Error('一批失败')
       await slow
       return { bodies: ids.map(id => ({ note_id: id, content: '已下载正文', version: 1 })) }
     })
     const sync = pullOnce().catch(error => { settled = true; return error })
     try {
-      await vi.waitFor(() => expect(requests).toBe(2))
+      await vi.waitFor(() => expect(requests).toBe(3))
       expect(settled).toBe(false)
     } finally { release() }
     expect(await sync).toBeInstanceOf(Error)
-    expect(await getBody('n0')).toBe('已下载正文')
+    expect(await getBody('n100')).toBe('已下载正文')
+    expect(await getBody('n0')).toBeUndefined()
+    expect(requests).toBe(3)
     expect(await getMeta(SYNC_CURSOR_KEY)).toBeUndefined()
   })
 

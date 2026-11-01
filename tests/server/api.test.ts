@@ -38,6 +38,14 @@ async function createNote() {
   expect(response.status).toBe(200)
   return id
 }
+
+it('distinguishes a replayed creation from the later body and properties it did not submit', async () => {
+  const request = { id: crypto.randomUUID(), title: 'original', summary: '', content: 'original', create_time: 1 }
+  expect(await (await api('/api/notes', request)).json()).toMatchObject({ version: 1, prop_version: 1, replayed: false })
+  await api(`/api/notes/${request.id}`, { content: 'remote', title: 'remote', summary: '', base_version: 1, star: 1, base_prop_version: 1 }, 'PATCH')
+  expect(await (await api('/api/notes', request)).json()).toMatchObject({ version: 2, prop_version: 2, replayed: true })
+  expect(await db.prepare('SELECT content FROM note_body WHERE note_id = ?').bind(request.id).first()).toMatchObject({ content: 'remote' })
+})
 it('removes an unpublished object if image metadata persistence fails', async () => {
   const put: string[] = []
   const deleted: string[] = []

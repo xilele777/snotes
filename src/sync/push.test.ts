@@ -1,8 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { ApiError } from '../api/client'
-import { createNote, updateBody, updateProps } from '../db/repo'
+import { createNote, purgeNote, purgeTrash, recoverNote, trashNote, updateBody, updateProps } from '../db/repo'
 import { db } from '../db/schema'
 import { pushOnce } from './push'
+import { pullOnce } from './pull'
+import { onRemoteApplied } from './signal'
 
 const apiFetch = vi.hoisted(() => vi.fn())
 vi.mock('../api/client', async (importOriginal) => ({
@@ -18,6 +20,134 @@ beforeEach(async () => {
 })
 
 describe('pushOnce', () => {
+  it('drains in-flight uploads before exposing a local acknowledgement storage failure', async () => {
+    for (let i = 0; i < 4; i++) await createNote(`note ${i}`)
+    const tasks = await db.outbox.orderBy('id').toArray()
+    const pending: ((value: unknown) => void)[] = []
+    apiFetch.mockImplementation(() => new Promise(resolve => { pending.push(resolve) }))
+    let finished = false
+    const pushing = pushOnce().catch(error => { finished = true; return error })
+    await vi.waitFor(() => expect(pending).toHaveLength(3))
+    const get = db.outbox.get.bind(db.outbox)
+    const read = vi.spyOn(db.outbox, 'get').mockImplementation((id: unknown) => {
+      if (id === tasks[0].id) return Promise.reject(new Error('local storage unavailable')) as ReturnType<typeof get>
+      return get(id as number)
+    })
+    try {
+      pending[0]({ version: 1, prop_version: 1 })
+      await vi.waitFor(() => expect(read).toHaveBeenCalledTimes(2))
+      expect(finished).toBe(false)
+      expect(pending).toHaveLength(3)
+    } finally {
+      pending[1]({ version: 1, prop_version: 1 })
+      pending[2]({ version: 1, prop_version: 1 })
+      await pushing
+      read.mockRestore()
+    }
+    expect(await pushing).toMatchObject({ message: 'local storage unavailable' })
+    expect(apiFetch).toHaveBeenCalledTimes(3)
+    expect(await db.outbox.bulkGet([tasks[1].id!, tasks[2].id!])).toEqual([undefined, undefined])
+    expect(await db.outbox.get(tasks[3].id!)).toEqual(tasks[3])
+  })
+
+  it('clearing offline trash cannot replay its queued create and restore the deleted note', async () => {
+    const note = await createNote('offline')
+    await trashNote(note.id)
+    await purgeTrash()
+    const remote = new Map<string, number>()
+    apiFetch.mockImplementation(async (path: string, init: RequestInit) => {
+      if (path === '/api/notes') remote.set(JSON.parse(init.body as string).id, 0)
+      else if (path.endsWith('/trash')) remote.set(note.id, 1)
+      else if (path.endsWith('/purge')) remote.delete(note.id)
+      else if (path === '/api/trash/clean') for (const [id, state] of remote) if (state === 1) remote.delete(id)
+      return { version: 1, prop_version: 1, update_time: 1 }
+    })
+    await pushOnce()
+    expect(remote.size).toBe(0)
+    expect(await db.outbox.count()).toBe(0)
+    expect(apiFetch.mock.calls.some(([path]) => path === '/api/notes')).toBe(false)
+  })
+
+  it('does not send a queued body cancelled while the create ahead of it is in flight', async () => {
+    const note = await createNote('original')
+    await updateBody(note.id, 'cancelled edit')
+    let release!: (value: unknown) => void
+    apiFetch.mockImplementationOnce(() => new Promise(resolve => { release = resolve }))
+    const pushing = pushOnce()
+    await vi.waitFor(() => expect(apiFetch).toHaveBeenCalledTimes(1))
+    await purgeNote(note.id)
+    release({ version: 1, prop_version: 1, update_time: 1 })
+    await pushing
+    expect(apiFetch).toHaveBeenCalledTimes(1)
+    expect((await db.outbox.toArray()).map(task => task.kind)).toEqual(['purge'])
+    await pushOnce()
+    expect(apiFetch.mock.calls[1][0]).toBe(`/api/notes/${note.id}/purge`)
+  })
+
+  it('keeps a newer queued edit when the round still holds an older body snapshot', async () => {
+    const note = await createNote('original')
+    apiFetch.mockResolvedValue({ version: 1, prop_version: 1, update_time: 1 })
+    await pushOnce()
+    await updateProps(note.id, { top: 1 })
+    await updateBody(note.id, 'queued before sync')
+    apiFetch.mockClear()
+    let release!: (value: unknown) => void
+    apiFetch.mockImplementationOnce(() => new Promise(resolve => { release = resolve }))
+    const pushing = pushOnce()
+    await vi.waitFor(() => expect(apiFetch).toHaveBeenCalledTimes(1))
+    await updateBody(note.id, 'newest edit')
+    release({ version: 1, prop_version: 2, update_time: 2 })
+    await pushing
+    expect(apiFetch).toHaveBeenCalledTimes(1)
+    expect((await db.outbox.toArray())[0].payload).toMatchObject({ content: 'newest edit' })
+    await pushOnce()
+    expect(JSON.parse(apiFetch.mock.calls[1][1].body as string)).toMatchObject({ content: 'newest edit', base_version: 1 })
+  })
+
+  it.each(['body', 'prop', 'trash', 'recover'] as const)('%s acknowledgement does not hide remote changes to other properties', async kind => {
+    const note = await createNote('original')
+    apiFetch.mockResolvedValue({ version: 1, prop_version: 1, update_time: 1 })
+    await pushOnce()
+    if (kind === 'body') await updateBody(note.id, 'edited')
+    else if (kind === 'prop') await updateProps(note.id, { top: 1 })
+    else if (kind === 'trash') await trashNote(note.id)
+    else await recoverNote(note.id)
+    const version = kind === 'body' ? 2 : 1
+    apiFetch.mockResolvedValue({ version, prop_version: 3, update_time: 3 })
+    await pushOnce()
+    const remote = { ...(await db.notes.get(note.id))!, version, prop_version: 3, star: 1, update_time: 3 }
+    apiFetch.mockResolvedValue({ notes: [remote], groups: [], server_time: 3, next_cursor: null })
+    await pullOnce()
+    expect(await db.notes.get(note.id)).toMatchObject({ star: 1, prop_version: 3 })
+  })
+
+  it('a property acknowledgement cannot advance the base for an unseen remote body', async () => {
+    const note = await createNote('original')
+    apiFetch.mockResolvedValue({ version: 1, prop_version: 1, update_time: 1 })
+    await pushOnce()
+    await updateProps(note.id, { top: 1 })
+    await updateBody(note.id, 'local edit')
+    apiFetch.mockImplementation(async (_path: string, init: RequestInit) => {
+      const payload = JSON.parse(init.body as string)
+      if (!('content' in payload)) return { version: 2, prop_version: 2, update_time: 2 }
+      const conflicted = payload.base_version < 2
+      return { version: 3, prop_version: 2, update_time: 3, conflicted, ...(conflicted ? { previous_content: 'other device edit' } : {}) }
+    })
+    expect((await pushOnce()).conflicts).toEqual([{ note_id: note.id, body: 'other device edit' }])
+  })
+
+  it('a replayed creation downloads changes made by another device after the original create', async () => {
+    const note = await createNote('original create')
+    apiFetch.mockResolvedValue({ version: 3, prop_version: 3, update_time: 3, replayed: true })
+    await pushOnce()
+    apiFetch.mockImplementation(async (path: string) => path === '/api/sync/bodies'
+      ? { bodies: [{ note_id: note.id, content: 'other device edit', version: 3 }] }
+      : { notes: [{ ...note, version: 3, prop_version: 3, star: 1 }], groups: [], server_time: 3, next_cursor: null })
+    await pullOnce()
+    expect((await db.bodies.get(note.id))?.body).toBe('other device edit')
+    expect(await db.notes.get(note.id)).toMatchObject({ star: 1, body_version: 3, prop_version: 3 })
+  })
+
   it.each([0, 408, 429, 503])('stops scheduling after transient status %s and keeps unsent work untouched', async status => {
     for (let i = 0; i < 10; i++) await createNote(`pending ${i}`)
     const before = await db.outbox.toArray()
@@ -279,10 +409,11 @@ describe('pushOnce', () => {
 
     const result = await pushOnce()
 
-    // 并行窗口内两个链同时起跑，各自收到一次 401；再多任务也只会漏出
-    // PUSH_CONCURRENCY 个请求，而不是整队空转。outbox 里两条都原样留着，登录后首轮续推
-    expect(apiFetch).toHaveBeenCalledTimes(2)
-    expect(result.failed).toBe(2)
+    // Only already-started requests may receive 401; tasks still being checked
+    // in IndexedDB should stop as soon as the first rejection is known.
+    expect(apiFetch.mock.calls.length).toBeGreaterThanOrEqual(1)
+    expect(apiFetch.mock.calls.length).toBeLessThanOrEqual(2)
+    expect(result.failed).toBe(apiFetch.mock.calls.length)
     expect(await db.outbox.count()).toBe(2)
   })
 
@@ -360,14 +491,18 @@ describe('pushOnce', () => {
     expect(await db.outbox.count()).toBe(1)
   })
 
-  it('一条任务失败不阻塞后续任务', async () => {
+  it('一条在途任务失败时，其他在途成功仍会确认', async () => {
     await createNote('a')
     await createNote('b')
+    let rejectFirst!: (error: Error) => void
     apiFetch
-      .mockRejectedValueOnce(new ApiError(500, 'boom'))
+      .mockImplementationOnce(() => new Promise((_resolve, reject) => { rejectFirst = reject }))
       .mockResolvedValueOnce({ version: 1, prop_version: 1, update_time: 1 })
 
-    const result = await pushOnce()
+    const pushing = pushOnce()
+    await vi.waitFor(() => expect(apiFetch).toHaveBeenCalledTimes(2))
+    rejectFirst(new ApiError(500, 'boom'))
+    const result = await pushing
 
     expect(result.sent).toBe(1)
     expect(result.failed).toBe(1)
@@ -441,6 +576,59 @@ describe('pushOnce', () => {
 })
 
 describe('pushOnce 冲突副本取被覆盖的服务端正文', () => {
+  it('persists and announces a conflict before another upload forces a recovery reset', async () => {
+    const a = await createNote('a')
+    const b = await createNote('b')
+    await pushOnce()
+    await updateBody(a.id, 'new a')
+    await updateBody(b.id, 'new b')
+    const pending = new Map<string, { resolve: (value: unknown) => void; reject: (error: Error) => void }>()
+    apiFetch.mockImplementation((path: string) => new Promise((resolve, reject) => { pending.set(path, { resolve, reject }) }))
+    const listener = vi.fn()
+    const off = onRemoteApplied(listener)
+    const pushing = pushOnce()
+    const rejected = expect(pushing).rejects.toThrow('reset')
+    await vi.waitFor(() => expect(pending.size).toBe(2))
+    pending.get(`/api/notes/${a.id}`)!.resolve({ version: 3, prop_version: 1, conflicted: true, previous_content: 'remote a' })
+    pending.get(`/api/notes/${b.id}`)!.reject(new ApiError(409, 'reset', { error: 'sync_reset_required' }))
+    try {
+      await rejected
+      const copies = (await db.notes.toArray()).filter(note => note.id !== a.id && note.id !== b.id)
+      expect(copies).toHaveLength(1)
+      expect((await db.bodies.get(copies[0].id))?.body).toContain('remote a')
+      expect(await db.outbox.where('note_id').equals(copies[0].id).count()).toBe(1)
+      expect(listener).toHaveBeenCalled()
+    } finally { off() }
+  })
+
+  it('rolls back acknowledgement when saving its conflict copy fails', async () => {
+    const note = await createNote('original')
+    await pushOnce()
+    await updateBody(note.id, 'edited')
+    apiFetch.mockResolvedValue({ version: 3, prop_version: 1, conflicted: true, previous_content: 'remote text' })
+    const write = vi.spyOn(db.bodies, 'put').mockRejectedValueOnce(new Error('disk full'))
+    try {
+      expect((await pushOnce()).failed).toBe(1)
+      expect(await db.notes.count()).toBe(1)
+      expect(await db.outbox.where('[note_id+kind]').equals([note.id, 'body']).count()).toBe(1)
+      expect((await db.notes.get(note.id))?.body_version).not.toBe(3)
+    } finally { write.mockRestore() }
+  })
+
+  it('saves an acknowledged conflict even if its original task was purged in flight', async () => {
+    const note = await createNote('original')
+    await pushOnce()
+    await updateBody(note.id, 'edited')
+    apiFetch.mockImplementationOnce(async () => {
+      await purgeNote(note.id)
+      return { version: 3, prop_version: 1, conflicted: true, previous_content: 'remote text' }
+    })
+    await pushOnce()
+    expect(await db.notes.get(note.id)).toBeUndefined()
+    expect((await db.bodies.toArray()).some(row => row.body.includes('remote text'))).toBe(true)
+    expect((await db.outbox.where('note_id').equals(note.id).first())?.kind).toBe('purge')
+  })
+
   it('服务端返回 conflicted 时，上报的是随响应带回的被覆盖正文', async () => {
     const note = await createNote('本地内容')
     await pushOnce()
@@ -555,14 +743,14 @@ describe('pushOnce 在 create 未成功时挂起同一笔记的后续任务', ()
     expect(await db.outbox.where('note_id').equals(note.id).count()).toBe(2)
   })
 
-  it('其他笔记的任务不受影响', async () => {
+  it('一条笔记创建失败的业务错误不影响其他笔记', async () => {
     const a = await createNote('a')
     await updateBody(a.id, 'a2')
     const b = await createNote('b')
 
     apiFetch.mockImplementation(async (path: string, init: RequestInit) => {
       const body = JSON.parse(init.body as string) as { id?: string }
-      if (path === '/api/notes' && body.id === a.id) throw new ApiError(503, 'unavailable')
+      if (path === '/api/notes' && body.id === a.id) throw new ApiError(400, 'invalid_body')
       return { version: 1, prop_version: 1, update_time: 1, conflicted: false }
     })
 

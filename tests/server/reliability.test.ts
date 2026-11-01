@@ -32,6 +32,28 @@ const create = (id: string, content: string, extra = {}) => app.request('/api/no
   body: JSON.stringify({ id, content, title: content.slice(0, 40), summary: '', create_time: 1, ...extra }),
 }, env)
 
+it.each(['rollback', 'response lost'])('conflict history stays consistent when a write ends with %s', async mode => {
+  await create('conflict', 'initial')
+  const patch = (content: string, base: number, database: Database = db) => app.request('/api/notes/conflict', {
+    method: 'PATCH', headers: { Authorization: 'Bearer test', 'Content-Type': 'application/json' },
+    body: JSON.stringify({ content, title: content, summary: '', base_version: base }),
+  }, { ...env, DB: database })
+  expect((await patch('device a', 1)).status).toBe(200)
+  const faulty: Database = {
+    prepare: sql => db.prepare(sql),
+    async batch(statements) {
+      if (mode === 'rollback') return db.batch([...statements, db.prepare('SELECT * FROM missing_table')])
+      await db.batch(statements)
+      throw new Error('response lost after commit')
+    },
+  }
+  expect((await patch('device b', 1, faulty)).status).toBe(500)
+  const history = await db.prepare('SELECT body FROM note_history WHERE note_id = ?').bind('conflict').all<{ body: string }>()
+  expect(history.results.map(row => row.body).sort()).toEqual(mode === 'rollback' ? ['initial'] : ['device a', 'initial'])
+  expect(await db.prepare('SELECT content FROM note_body WHERE note_id = ?').bind('conflict').first()).toEqual({ content: mode === 'rollback' ? 'device a' : 'device b' })
+  if (mode === 'response lost') expect(await (await patch('device b', 1)).json()).toMatchObject({ conflicted: false, version: 3 })
+})
+
 it('concurrent tombstone revival keeps metadata and body from one winner', async () => {
   await create('revive', 'original')
   await purgeNotes(env, ['revive'])

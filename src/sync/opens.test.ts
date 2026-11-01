@@ -85,6 +85,26 @@ describe('syncOpens 补齐未知的聚合值', () => {
 
   const sentBody = () => JSON.parse((apiFetch.mock.calls[0][1] as RequestInit).body as string)
 
+  it('drains more than 500 offline counters in bounded requests without losing unsent items', async () => {
+    const ids = Array.from({ length: 501 }, (_, i) => `n${i}`)
+    await db.notes.bulkAdd(ids.map(id => note({ id })) as never[])
+    await setMeta('opens_dirty', ids)
+    apiFetch.mockImplementation(async (_path: string, init: RequestInit) => {
+      const request = JSON.parse(init.body as string)
+      if (request.items.length > 500) throw new Error('invalid_opens_request')
+      return { opens: [], server_time: 123 }
+    })
+    await syncOpens()
+    expect(sentBody().items).toHaveLength(500)
+    expect((await db.meta.get('opens_dirty'))?.value).toEqual(['n500'])
+    apiFetch.mockRejectedValueOnce(new Error('offline'))
+    await expect(syncOpens()).rejects.toThrow('offline')
+    expect((await db.meta.get('opens_dirty'))?.value).toEqual(['n500'])
+    await syncOpens()
+    expect(JSON.parse(apiFetch.mock.calls[2][1].body).items).toHaveLength(1)
+    expect((await db.meta.get('opens_dirty'))?.value).toEqual([])
+  })
+
   it('open_others 未知的笔记会被点名，并按服务端的回答写回', async () => {
     await db.notes.add(note() as never)
     await setMeta('device_id', 'device-a')

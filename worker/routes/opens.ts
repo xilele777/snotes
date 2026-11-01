@@ -39,14 +39,16 @@ opensRoutes.post('/api/notes/opens', async (c) => {
   if (!validRequest(req)) return c.json({ error: 'invalid_opens_request' }, 400)
 
   if (req.items.length > 0) {
+    // Tabs share a device id but can arrive out of order. Cumulative counters
+    // and their timestamps must never roll back when an older request arrives.
     await c.env.DB.batch(req.items.map((item) =>
       c.env.DB.prepare(
         `INSERT INTO note_open (note_id, device_id, count, last_open_time, update_time)
          VALUES (?, ?, ?, ?, ?)
          ON CONFLICT(note_id, device_id) DO UPDATE SET
-           count = excluded.count,
-           last_open_time = excluded.last_open_time,
-           update_time = excluded.update_time`
+           count = MAX(note_open.count, excluded.count),
+           last_open_time = MAX(note_open.last_open_time, excluded.last_open_time),
+           update_time = MAX(note_open.update_time, excluded.update_time)`
       ).bind(item.note_id, req.device_id, item.count, item.last_open_time, serverTime)
     ))
   }

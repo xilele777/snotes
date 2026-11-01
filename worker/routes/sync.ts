@@ -15,8 +15,8 @@ syncRoutes.get('/api/sync/instance', async c => c.json({ epoch: await instanceEp
 syncRoutes.post('/api/sync/checkpoint', async c => {
   const req = await c.req.json().catch(() => null)
   if (!req || !Number.isSafeInteger(req.since) || req.since < 0) return c.json({ error: 'invalid_since' }, 400)
-  const clock = await c.env.DB.prepare('SELECT watermark FROM note_sync_clock WHERE id = 1').first<{ watermark: number }>()
-  return c.json({ valid: !!clock && (req.require_current ? req.since === clock.watermark : req.since <= clock.watermark) && await validCheckpoint(c.env.DB, req.checkpoint, req.since, 'notes', c.env.SYNC_INSTANCE_EPOCH, !!req.require_current) })
+  // validCheckpoint checks the clock, revision and epoch in the same SQL read.
+  return c.json({ valid: await validCheckpoint(c.env.DB, req.checkpoint, req.since, 'notes', c.env.SYNC_INSTANCE_EPOCH, !!req.require_current) })
 })
 
 syncRoutes.post('/api/sync/pull', async (c) => {
