@@ -3,7 +3,7 @@ import { ApiError, apiFetch } from '../api/client'
 import { db } from '../db/schema'
 import { createNote } from '../db/repo'
 import { addKnowledgeBaseNode, createKnowledgeBase, deleteKnowledgeBase, resolveKnowledgeBaseConflict, taskId, updateKnowledgeBase } from '../db/knowledge-base-repo'
-import { KNOWLEDGE_BASE_CURSOR, retryKnowledgeBases, syncKnowledgeBases } from './knowledge-bases'
+import { KNOWLEDGE_BASE_CURSOR, KNOWLEDGE_BASE_RECONCILED, retryKnowledgeBases, syncKnowledgeBases } from './knowledge-bases'
 import type { KnowledgeBaseRemote, TocNode } from '../../shared/knowledge-base'
 vi.mock('../api/client', async original => ({ ...await original<typeof import('../api/client')>(), apiFetch: vi.fn() }))
 const fetchMock = vi.mocked(apiFetch)
@@ -39,6 +39,47 @@ function remote(id: string, version = 1): KnowledgeBaseRemote {
   return { book: { id, ...meta, meta_version: 1, toc_version: version, update_time: 2, create_time: 1, change_seq: 2 },
     toc: { knowledge_base_id: id, version, nodes: [folder('remote')], update_time: 2 }, note_states: {} }
 }
+
+it('downloads all incremental pages when next_id is null and advances only after the last page', async () => {
+  await db.meta.bulkPut([
+    { key: KNOWLEDGE_BASE_CURSOR, value: 1 },
+    { key: KNOWLEDGE_BASE_RECONCILED, value: Date.now() },
+  ])
+  const books = Array.from({ length: 51 }, (_, i) => remote(`book-${i}`, i + 2))
+  const cursors: number[] = []
+  fetchMock.mockImplementation(async (path, init) => {
+    if (path.endsWith('/sync/checkpoint')) return { valid: true }
+    if (path.endsWith('/sync/pull')) {
+      const request = JSON.parse(init!.body as string)
+      cursors.push(request.after)
+      expect((await db.meta.get(KNOWLEDGE_BASE_CURSOR))?.value).toBe(1)
+      return { books: (request.after === 1 ? books.slice(0, 50) : books.slice(50)).map(r => r.book),
+        until: 52, next_after: request.after === 1 ? 51 : null, next_id: null }
+    }
+    return books.find(r => path === `/api/knowledge-bases/${r.book.id}/toc`)!
+  })
+  expect((await syncKnowledgeBases()).error).toBeNull()
+  expect(cursors).toEqual([1, 51])
+  expect(await db.knowledgeBases.count()).toBe(51)
+  expect((await db.meta.get(KNOWLEDGE_BASE_CURSOR))?.value).toBe(52)
+})
+
+it('keeps the incremental cursor when a later page fails', async () => {
+  await db.meta.bulkPut([
+    { key: KNOWLEDGE_BASE_CURSOR, value: 1 },
+    { key: KNOWLEDGE_BASE_RECONCILED, value: Date.now() },
+  ])
+  fetchMock.mockImplementation(async (path, init) => {
+    if (path.endsWith('/sync/checkpoint')) return { valid: true }
+    if (path.endsWith('/sync/pull')) {
+      if (JSON.parse(init!.body as string).after !== 1) throw new Error('second page offline')
+      return { books: [remote('first').book], until: 3, next_after: 2, next_id: null }
+    }
+    return remote('first')
+  })
+  expect((await syncKnowledgeBases()).error).toContain('second page offline')
+  expect((await db.meta.get(KNOWLEDGE_BASE_CURSOR))?.value).toBe(1)
+})
 
 it('applies permanent remote deletion instead of offering to resurrect an offline edit', async () => {
   const book = await confirmedBook()

@@ -109,7 +109,9 @@ async function pull(reconcile = false): Promise<void> {
       await applyKnowledgeBaseRemote(remote, reconcile)
       changed = true
     }
-    if (page.next_id === null || page.next_id === undefined && page.next_after === null) break
+    // next_id is only an inventory cursor. Incremental pages deliberately send
+    // next_id: null even when next_after still points to another page.
+    if (full && page.next_id !== undefined ? page.next_id === null : page.next_after === null) break
     afterId = page.next_id ?? undefined
     after = page.next_after ?? after
   }
