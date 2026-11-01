@@ -59,6 +59,16 @@ afterEach(() => {
 })
 
 describe('syncNow', () => {
+  it('retains successful conflict copies but skips further requests after a connection failure', async () => {
+    const conflicts = [{ note_id: 'n1', body: 'remote text' }]
+    pushOnce.mockResolvedValue({ sent: 1, failed: 1, failedTotal: 0, conflicts, interrupted: true })
+    await syncNow()
+    expect(saveConflictCopies).toHaveBeenCalledWith(conflicts)
+    expect(pullOnce).not.toHaveBeenCalled()
+    expect(syncKnowledgeBases).not.toHaveBeenCalled()
+    expect(useUiStore().lastSyncError).toContain('本地改动已保留')
+    expect(useUiStore().syncing).toBe(false)
+  })
   it('checks and reconciles a restored server before sending pending writes', async () => {
     vi.useRealTimers()
     needsReconciliation.mockResolvedValue(true)

@@ -81,6 +81,19 @@ it('keeps the incremental cursor when a later page fails', async () => {
   expect((await db.meta.get(KNOWLEDGE_BASE_CURSOR))?.value).toBe(1)
 })
 
+it('stops notebook uploads after a transient failure and retains unsent operations', async () => {
+  for (let i = 0; i < 4; i++) await createKnowledgeBase(meta, `book-${i}`)
+  const before = await db.knowledgeBaseOutbox.toArray()
+  fetchMock.mockRejectedValue(new TypeError('offline'))
+  const result = await syncKnowledgeBases(true)
+  expect(result.error).toContain('连接暂时不可用')
+  expect(fetchMock).toHaveBeenCalledTimes(1)
+  const after = await db.knowledgeBaseOutbox.toArray()
+  expect(after).toHaveLength(before.length)
+  expect(after.filter(t => t.retry === 1)).toHaveLength(1)
+  expect(after.filter(t => t.retry === 0)).toHaveLength(before.length - 1)
+})
+
 it('applies permanent remote deletion instead of offering to resurrect an offline edit', async () => {
   const book = await confirmedBook()
   await addKnowledgeBaseNode(book.id, { kind: 'folder', title: '离线修改', note_id: null })

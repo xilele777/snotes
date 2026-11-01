@@ -17,6 +17,8 @@ export interface PushResult {
   /** outbox 里累计处于失败态的任务数，界面据此提示用户 */
   failedTotal: number
   conflicts: ConflictInfo[]
+  /** A transient connection/service failure stopped this round early. */
+  interrupted?: boolean
 }
 
 interface ServerAck {
@@ -161,7 +163,7 @@ export async function pushOnce(): Promise<PushResult> {
 
   // unauthorized：令牌已失效（clearToken 已发生），剩余任务注定 401，停止起链、
   // 在途请求各自收尾。reset：恢复围栏命中，必须终止整轮并在结束时向上抛出。
-  let stop: 'none' | 'unauthorized' | 'reset' = 'none'
+  let stop: 'none' | 'unauthorized' | 'reset' | 'unavailable' = 'none'
   let stopError: unknown
   // 读取走函数：stop 只在 runChain 闭包里被改写，直接读会被 TS 收窄成 'none'
   const stopState = () => stop
@@ -212,7 +214,7 @@ export async function pushOnce(): Promise<PushResult> {
         // 切回 TokenGate。停掉后这些任务原样留在库里，重新登录后的首轮继续推。
         if (status === 401) {
           result.failed++
-          stop = 'unauthorized'
+          if (stopState() !== 'reset') stop = 'unauthorized'
           return
         }
 
@@ -248,6 +250,10 @@ export async function pushOnce(): Promise<PushResult> {
         }
 
         const retry = task.retry + 1
+        // Stop scheduling immediately, before awaiting IndexedDB. Otherwise
+        // N queued notes can consume ceil(N / 3) consecutive 15s timeouts.
+        if (stop === 'none') stop = 'unavailable'
+        result.interrupted = true
         await failIfCurrent(task, { retry, next_at: Date.now() + backoffDelay(retry - 1), ...failure })
         result.failed++
       }

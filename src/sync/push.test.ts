@@ -18,6 +18,23 @@ beforeEach(async () => {
 })
 
 describe('pushOnce', () => {
+  it.each([0, 408, 429, 503])('stops scheduling after transient status %s and keeps unsent work untouched', async status => {
+    for (let i = 0; i < 10; i++) await createNote(`pending ${i}`)
+    const before = await db.outbox.toArray()
+    const pending: { resolve: (ack: unknown) => void; reject: (error: Error) => void }[] = []
+    apiFetch.mockImplementation(() => new Promise((resolve, reject) => { pending.push({ resolve, reject }) }))
+    let finished = false
+    const pushing = pushOnce().then(result => { finished = true; return result })
+    await vi.waitFor(() => expect(pending).toHaveLength(3))
+    pending[0].reject(status ? new ApiError(status, 'unavailable') : new TypeError('offline'))
+    await vi.waitFor(async () => expect((await db.outbox.get(before[0].id!))?.retry).toBe(1))
+    expect(finished).toBe(false)
+    pending[1].resolve({ version: 1, prop_version: 1 })
+    pending[2].resolve({ version: 1, prop_version: 1 })
+    expect(await pushing).toMatchObject({ sent: 2, failed: 1, interrupted: true })
+    expect(apiFetch).toHaveBeenCalledTimes(3)
+    expect(await db.outbox.bulkGet(before.slice(3).map(t => t.id!))).toEqual(before.slice(3))
+  })
   it('stops a fenced recovery write without failing or consuming pending work', async () => {
     await createNote('恢复前本地输入')
     const before = await db.outbox.toArray()

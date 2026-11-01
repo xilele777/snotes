@@ -5,6 +5,7 @@ import { db } from '../db/schema'
 import { acknowledgeKnowledgeBaseTask, applyKnowledgeBaseRemote, blockKnowledgeBaseConflict, createKnowledgeBase, knowledgeBaseTables, metadata, snapshotIn, taskId } from '../db/knowledge-base-repo'
 import type { KnowledgeBaseTask } from '../db/knowledge-base-types'
 import { emitRemoteApplied } from './signal'
+import { isRetriableStatus } from '../../shared/backoff'
 
 export const KNOWLEDGE_BASE_CURSOR = 'knowledge_base_cursor'
 export const KNOWLEDGE_BASE_RECONCILED = 'knowledge_base_reconciled_at'
@@ -26,7 +27,7 @@ async function prepareTask(id: string, preserveMissing = false, archivedVersion?
   })
 }
 
-async function push(): Promise<void> {
+async function push(): Promise<boolean> {
   const tasks = (await db.knowledgeBaseOutbox.toArray()).sort((a, b) => Number(a.kind === 'toc') - Number(b.kind === 'toc'))
   for (const queued of tasks) {
     const book = await db.knowledgeBases.get(queued.book_id)
@@ -70,8 +71,12 @@ async function push(): Promise<void> {
           : error instanceof ApiError && error.status === 422 ? '引用的笔记尚未在服务端创建，请先同步笔记' : error instanceof Error ? error.message : String(error)
         await db.knowledgeBaseOutbox.update(task.id, { retry, next_at: Date.now() + Math.min(300_000, 1000 * 2 ** Math.min(retry, 8)), error: message })
       })
+      // An unavailable connection/service affects the remaining queue too.
+      // Retain unsent operations without spending another timeout on each one.
+      if (!(error instanceof ApiError) || isRetriableStatus(error.status)) return false
     }
   }
+  return true
 }
 
 async function pull(reconcile = false): Promise<void> {
@@ -169,9 +174,9 @@ export async function prepareKnowledgeBaseSync(): Promise<void> {
  */
 export async function syncKnowledgeBases(prepared = false): Promise<{ error: string | null; failed: number }> {
   if (!prepared) await prepareKnowledgeBaseSync()
-  await push()
-  let error: string | null = null
-  try { await pull() } catch (e) {
+  const pushed = await push()
+  let error: string | null = pushed ? null : '连接暂时不可用，本地笔记本改动已保留，请稍后重试'
+  try { if (pushed) await pull() } catch (e) {
     if (e instanceof ApiError && e.status === 401) throw e
     error = e instanceof ApiError && e.status === 404 ? '服务端尚未支持笔记本，请升级服务端' : e instanceof Error ? e.message : String(e)
   }

@@ -59,6 +59,11 @@ export function syncNow(): Promise<void> {
           await saveConflictCopies(result.conflicts)
         }
 
+        if (result.interrupted) {
+          ui.lastSyncError = '连接暂时不可用，本地改动已保留，将在下次同步时重试。'
+          return
+        }
+
         // 401 会清掉令牌，此时不再发送注定失败的 pull。
         if (!hasToken.value) return
 
