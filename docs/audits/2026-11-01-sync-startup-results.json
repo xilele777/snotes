@@ -1,0 +1,80 @@
+[
+  {
+    "label": "optimized",
+    "run": 1,
+    "notes": 500,
+    "largeNote": false,
+    "cpu": "4x slowdown",
+    "network": "4 Mbps / 40 ms",
+    "coldListMs": 2392,
+    "firstEditorMs": 1653,
+    "searchTitleMs": 22,
+    "searchBodyMs": 179,
+    "storageBytes": 10212270,
+    "storageDetails": {
+      "caches": 9936386,
+      "indexedDB": 250326,
+      "serviceWorkerRegistrations": 25558
+    },
+    "cacheEntries": 31,
+    "coldSyncXhr": 0,
+    "coldLongTaskMs": 1579,
+    "warmListMs": 347,
+    "warmEditorMs": 711,
+    "warmSyncXhr": 0,
+    "warmLongTaskMs": 416,
+    "errors": []
+  },
+  {
+    "label": "optimized",
+    "run": 2,
+    "notes": 500,
+    "largeNote": false,
+    "cpu": "4x slowdown",
+    "network": "4 Mbps / 40 ms",
+    "coldListMs": 1715,
+    "firstEditorMs": 1416,
+    "searchTitleMs": 9,
+    "searchBodyMs": 320,
+    "storageBytes": 10212549,
+    "storageDetails": {
+      "caches": 9936386,
+      "indexedDB": 250605,
+      "serviceWorkerRegistrations": 25558
+    },
+    "cacheEntries": 31,
+    "coldSyncXhr": 0,
+    "coldLongTaskMs": 1505,
+    "warmListMs": 305,
+    "warmEditorMs": 669,
+    "warmSyncXhr": 0,
+    "warmLongTaskMs": 369,
+    "errors": []
+  },
+  {
+    "label": "optimized",
+    "run": 3,
+    "notes": 500,
+    "largeNote": false,
+    "cpu": "4x slowdown",
+    "network": "4 Mbps / 40 ms",
+    "coldListMs": 1679,
+    "firstEditorMs": 1540,
+    "searchTitleMs": 10,
+    "searchBodyMs": 323,
+    "storageBytes": 10212694,
+    "storageDetails": {
+      "caches": 9936386,
+      "indexedDB": 250750,
+      "serviceWorkerRegistrations": 25558
+    },
+    "cacheEntries": 31,
+    "coldSyncXhr": 0,
+    "coldLongTaskMs": 1432,
+    "warmListMs": 310,
+    "warmEditorMs": 621,
+    "warmSyncXhr": 0,
+    "warmLongTaskMs": 318,
+    "errors": []
+  }
+]
