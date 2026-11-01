@@ -44,7 +44,16 @@ export async function needsReconciliation(): Promise<boolean> {
   const since = await getMeta<number>('sync_cursor') ?? 0
   const checkpoint = await getMeta<string>(SYNC_CHECKPOINT_KEY) ?? null
   try {
-    const instance = await fetchInstance()
+    // Both reads validate the same saved baseline and can share a network wait.
+    // Settle both before returning, including recovery/legacy early exits.
+    const [instanceResult, checkpointResult] = await Promise.allSettled([
+      fetchInstance(),
+      since ? apiFetch<{ valid: boolean }>('/api/sync/checkpoint', {
+        method: 'POST', body: JSON.stringify({ since, checkpoint }),
+      }) : Promise.resolve({ valid: true }),
+    ])
+    if (instanceResult.status === 'rejected') throw instanceResult.reason
+    const instance = instanceResult.value
     if (instance.epoch) {
       const previous = await getMeta<string>('sync_instance_epoch')
       if (previous && previous !== instance.epoch) {
@@ -57,10 +66,8 @@ export async function needsReconciliation(): Promise<boolean> {
       if (!since) acceptSyncEpoch(instance.epoch)
     }
     if (!since) return false
-    const result = await apiFetch<{ valid: boolean }>('/api/sync/checkpoint', {
-      method: 'POST', body: JSON.stringify({ since, checkpoint }),
-    })
-    return !result.valid
+    if (checkpointResult.status === 'rejected') throw checkpointResult.reason
+    return !checkpointResult.value.valid
   } catch (error) {
     // Rolling upgrades may briefly serve the old API. Other failures must stop
     // this round rather than assuming that pending writes are safe to upload.

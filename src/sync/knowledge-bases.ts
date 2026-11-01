@@ -103,16 +103,21 @@ async function pull(reconcile = false): Promise<void> {
       throw error
     }
     if (until === undefined) { until = page.until; receipt = page.checkpoint }
-    for (const book of page.books) {
-      seen.add(book.id)
-      const remote = await apiFetch<KnowledgeBaseRemote>(`/api/knowledge-bases/${book.id}/toc`)
-      validateToc(remote.toc.nodes)
-      if (reconcile) {
-        const pending = await db.knowledgeBaseOutbox.where('book_id').equals(book.id).toArray()
-        for (const task of pending) await blockKnowledgeBaseConflict(task, remote)
-      }
-      await applyKnowledgeBaseRemote(remote, reconcile)
-      changed = true
+    for (let offset = 0; offset < page.books.length; offset += 3) {
+      // Settle every in-flight write before reporting a failure: the next round
+      // must not race this round's late IndexedDB updates.
+      const results = await Promise.allSettled(page.books.slice(offset, offset + 3).map(async book => {
+        seen.add(book.id)
+        const remote = await apiFetch<KnowledgeBaseRemote>(`/api/knowledge-bases/${book.id}/toc`)
+        validateToc(remote.toc.nodes)
+        if (reconcile) {
+          const pending = await db.knowledgeBaseOutbox.where('book_id').equals(book.id).toArray()
+          for (const task of pending) await blockKnowledgeBaseConflict(task, remote)
+        }
+        await applyKnowledgeBaseRemote(remote, reconcile)
+        changed = true
+      }))
+      for (const result of results) if (result.status === 'rejected') throw result.reason
     }
     // next_id is only an inventory cursor. Incremental pages deliberately send
     // next_id: null even when next_after still points to another page.

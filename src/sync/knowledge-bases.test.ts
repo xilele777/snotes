@@ -81,6 +81,28 @@ it('keeps the incremental cursor when a later page fails', async () => {
   expect((await db.meta.get(KNOWLEDGE_BASE_CURSOR))?.value).toBe(1)
 })
 
+it('loads three directories concurrently and settles in-flight work before returning a failure', async () => {
+  const books = Array.from({ length: 4 }, (_, i) => remote(`book-${i}`))
+  const pending: { resolve: (r: KnowledgeBaseRemote) => void; reject: (e: Error) => void }[] = []
+  fetchMock.mockImplementation(async path => {
+    if (path.endsWith('/sync/pull')) return { books: books.map(r => r.book), until: 4, next_after: null }
+    return new Promise<KnowledgeBaseRemote>((resolve, reject) => { pending.push({ resolve, reject }) })
+  })
+  let finished = false
+  const syncing = syncKnowledgeBases().then(result => { finished = true; return result })
+  await vi.waitFor(() => expect(pending).toHaveLength(3))
+  pending[0].reject(new Error('directory offline'))
+  pending[1].resolve(books[1])
+  await vi.waitFor(async () => expect(await db.knowledgeBases.get('book-1')).toBeDefined())
+  expect(finished).toBe(false)
+  expect(pending).toHaveLength(3)
+  pending[2].resolve(books[2])
+  expect((await syncing).error).toContain('directory offline')
+  expect(await db.knowledgeBases.get('book-2')).toBeDefined()
+  expect(await db.meta.get(KNOWLEDGE_BASE_CURSOR)).toBeUndefined()
+  expect(pending).toHaveLength(3)
+})
+
 it('stops notebook uploads after a transient failure and retains unsent operations', async () => {
   for (let i = 0; i < 4; i++) await createKnowledgeBase(meta, `book-${i}`)
   const before = await db.knowledgeBaseOutbox.toArray()

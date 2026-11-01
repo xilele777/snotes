@@ -10,6 +10,21 @@ beforeEach(async () => {
   vi.clearAllMocks()
   resetInstanceEpochCache()
 })
+it('starts independent preflight reads together and waits for both even if one fails', async () => {
+  await setMeta('sync_cursor', 100)
+  await setMeta('sync_instance_epoch', 'e1')
+  let resolveInstance!: (value: { epoch: string }) => void
+  vi.mocked(apiFetch).mockImplementation(async path => {
+    if (path === '/api/sync/instance') return new Promise(resolve => { resolveInstance = resolve })
+    throw new Error('checkpoint offline')
+  })
+  let finished = false
+  const checking = needsReconciliation().catch(error => { finished = true; return error })
+  await vi.waitFor(() => expect(apiFetch).toHaveBeenCalledTimes(2))
+  expect(finished).toBe(false)
+  resolveInstance({ epoch: 'e1' })
+  expect(await checking).toMatchObject({ message: 'checkpoint offline' })
+})
 it('checks the persisted receipt before allowing an incremental sync', async () => {
   await setMeta('sync_cursor', 100)
   await setMeta(SYNC_CHECKPOINT_KEY, 'receipt')
