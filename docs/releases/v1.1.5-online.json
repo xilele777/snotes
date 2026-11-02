@@ -1,0 +1,128 @@
+{
+  "origin": "https://note.alover.me",
+  "at": "2026-11-02T07:09:32.636Z",
+  "app_version": "1.1.5",
+  "checks": [
+    {
+      "path": "/api/health",
+      "status": 200,
+      "ok": true
+    },
+    {
+      "path": "/",
+      "status": 200,
+      "sha256": "4081924bef24e4350944e1c4b6ff5a9d27088c76ae72af89753e81ea568d261f",
+      "hash_equal": true,
+      "cache_control": "no-cache"
+    },
+    {
+      "path": "/assets/index-DSFJrXHE.js",
+      "status": 200,
+      "sha256": "78c7019e61b9a83f835334501f3620122f0e0d4f4f80bb92071de34ea9e00b3c",
+      "hash_equal": true,
+      "cache_control": "public, max-age=31536000, immutable",
+      "contains_app_version": "1.1.5"
+    },
+    {
+      "path": "/assets/index-C-g3ccn8.css",
+      "status": 200,
+      "sha256": "a954ac1dc276e72ac147493a2b638a365197c2f216909efd6378eccc60f7a850",
+      "hash_equal": true,
+      "cache_control": "public, max-age=31536000, immutable"
+    },
+    {
+      "path": "/assets/insights-CHkReEOX.css",
+      "status": 200,
+      "sha256": "e71950958bf90e462241294fb0ec786542c100f3a207e388eb08548acac04e53",
+      "hash_equal": true,
+      "cache_control": "public, max-age=31536000, immutable"
+    },
+    {
+      "path": "/assets/KnowledgeBaseHome-4RObaW3y.css",
+      "status": 200,
+      "sha256": "14fb42debbe57a2954505a5462a44bf16888155f1cd532b83efab7e112334a62",
+      "hash_equal": true,
+      "cache_control": "public, max-age=31536000, immutable"
+    },
+    {
+      "path": "/assets/KnowledgeBaseWorkspace-DOJnjsb9.css",
+      "status": 200,
+      "sha256": "db4272fbc0e3392a3224a40d31588a36d0d54474163e0cf0f208b855f26ca850",
+      "hash_equal": true,
+      "cache_control": "public, max-age=31536000, immutable"
+    },
+    {
+      "path": "/assets/VditorEditor-cdeYxcYE.css",
+      "status": 200,
+      "sha256": "ab0321d463272519e83ab32553878fd9a8f30e7a246830675fa27f8b361d8b2c",
+      "hash_equal": true,
+      "cache_control": "public, max-age=31536000, immutable"
+    },
+    {
+      "path": "/sw.js",
+      "status": 200,
+      "sha256": "f3807ed5b0750a855fa43dac3e5fde574646b4bcf418506e63f119716228d4ba",
+      "hash_equal": true,
+      "cache_control": "no-cache"
+    },
+    {
+      "path": "/snotes.svg",
+      "status": 200,
+      "sha256": "df95513fa9d63f46cf8a763538f39c4ac4458f9957fb461e1c5d386a5eb471bd",
+      "hash_equal": true,
+      "cache_control": "public, max-age=0, must-revalidate"
+    },
+    {
+      "path": "/favicon-32.png",
+      "status": 200,
+      "sha256": "3739d90f2bbe60555b8767de8a1aa3ffaf134b3f09d2710e229825c116f72f66",
+      "hash_equal": true,
+      "cache_control": "public, max-age=0, must-revalidate"
+    },
+    {
+      "path": "/apple-touch-icon.png",
+      "status": 200,
+      "sha256": "117a1bfe7832f5c29abeb47ba377acddc12e014b8a25dbb6ca434973ff946987",
+      "hash_equal": true,
+      "cache_control": "public, max-age=0, must-revalidate"
+    },
+    {
+      "path": "/snotes-192.png",
+      "status": 200,
+      "sha256": "372f541221f0a42118c6c80f70495333d51d991bd376207b737feca493737c8d",
+      "hash_equal": true,
+      "cache_control": "public, max-age=0, must-revalidate"
+    },
+    {
+      "path": "/snotes-512.png",
+      "status": 200,
+      "sha256": "1c3a0aeb7191f6b49f4dcecdbcc1fa69362db8ab6785e74d58424f90bde99e0e",
+      "hash_equal": true,
+      "cache_control": "public, max-age=0, must-revalidate"
+    },
+    {
+      "path": "/snotes-maskable-512.png",
+      "status": 200,
+      "sha256": "40bae606cdd47d006d10c1c7e96a2aacb135315c7b21cd0032af4e234dee9555",
+      "hash_equal": true,
+      "cache_control": "public, max-age=0, must-revalidate"
+    },
+    {
+      "path": "/api/sync/instance",
+      "method": "GET",
+      "status": 401
+    },
+    {
+      "path": "/api/notes/opens",
+      "method": "POST",
+      "status": 401
+    },
+    {
+      "path": "/assets/VditorEditor--gz_YUXl.js",
+      "status": 200,
+      "sha256": "13642a34a4fca8d1ff59375586bf331339f9fbc882c8fdf390293ec625d84905",
+      "hash_equal": true,
+      "cache_control": "public, max-age=31536000, immutable"
+    }
+  ]
+}
