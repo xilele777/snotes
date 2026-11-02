@@ -27,6 +27,36 @@ beforeEach(() => {
 afterEach(() => { mounted.splice(0).forEach(wrapper => wrapper.unmount()); vi.useRealTimers(); vi.clearAllMocks(); vi.restoreAllMocks() })
 
 describe('Vditor 保存与同步边界', () => {
+  it('空正文回写保留浮层焦点，切换到另一篇空笔记仍自动聚焦', async () => {
+    const { wrapper, editor } = await create('')
+    const choice = document.createElement('button')
+    document.body.append(choice)
+    try {
+      choice.focus()
+      editor.focus.mockClear()
+      await wrapper.setProps({ modelValue: '\n' })
+      expect(editor.focus).not.toHaveBeenCalled()
+      expect(document.activeElement).toBe(choice)
+      await wrapper.setProps({ noteId: 'b', modelValue: '' })
+      expect(editor.focus).toHaveBeenCalledOnce()
+    } finally { choice.remove() }
+  })
+
+  it('等待编辑器资源期间转入其他控件，就绪后不抢焦点', async () => {
+    let resolve!: () => void
+    vi.mocked(loadVditorAssets).mockReturnValueOnce(new Promise<void>(done => { resolve = done }))
+    const wrapper = mount(VditorEditor, { props: { noteId: 'a', modelValue: '' }, attachTo: document.body })
+    mounted.push(wrapper)
+    const choice = document.createElement('button')
+    document.body.append(choice)
+    try {
+      choice.focus()
+      resolve()
+      await flushPromises()
+      expect(MockVditor.instances.at(-1)!.focus).not.toHaveBeenCalled()
+      expect(document.activeElement).toBe(choice)
+    } finally { choice.remove() }
+  })
   it('初始化及只读切换保留 Vditor 的主题和全屏样式类', async () => {
     const { wrapper } = await create()
     const root = wrapper.get('.snotes-vditor')

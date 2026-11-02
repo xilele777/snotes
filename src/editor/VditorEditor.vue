@@ -106,6 +106,7 @@ function replace(markdown: string, resetHistory: boolean) {
 }
 
 watch(() => [props.noteId, props.modelValue] as const, ([id, value]) => {
+  const changedDocument = id !== documentId
   if (id === documentId) {
     // A save echo must not reset the caret, undo stack or pending input.
     if (value === base) return
@@ -123,7 +124,8 @@ watch(() => [props.noteId, props.modelValue] as const, ([id, value]) => {
   clearTimer()
   replace(value, true)
   applyEditable()
-  if (!value.trim() && props.editable !== false) focus()
+  // Normalizing/syncing an empty body must not steal focus from a selector.
+  if (changedDocument && !value.trim() && props.editable !== false) focus()
 })
 
 function applyEditable() {
@@ -634,6 +636,7 @@ function onLinkChange(event: Event) {
 }
 async function initialize() {
   loadError.value = ''
+  const initialFocus = document.activeElement
   try { await loadVditorAssets() }
   catch (error) {
     if (!disposed) loadError.value = error instanceof Error ? error.message : String(error)
@@ -709,7 +712,11 @@ async function initialize() {
       rememberMode()
       root.value?.querySelector('[data-type="mobile-format"]')?.setAttribute('aria-expanded', 'false')
       emit('ready')
-      if (!props.modelValue.trim()) void nextTick(() => { if (!disposed) focus() })
+      if (!props.modelValue.trim()) void nextTick(() => {
+        // The user may have opened a menu while editor assets were loading.
+        const active = document.activeElement
+        if (!disposed && (active === initialFocus || active === document.body || root.value?.contains(active))) focus()
+      })
     },
   })
   observer = new MutationObserver(applyTheme)

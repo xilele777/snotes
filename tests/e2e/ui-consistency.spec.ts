@@ -48,6 +48,7 @@ test('顶部中心线一致，手机控件保留点击区域，选择浮层在�
   for (const width of [390, 320]) {
     await page.setViewportSize({ width, height: 844 })
     await expect(page.locator('.editor-top-bar')).toHaveCSS('min-height', '60px')
+    await expect(page.locator('.desktop-direct-op')).toHaveCount(0)
     const targets = await page.locator('.editor-top-bar button:visible').evaluateAll(es => es.map(el => {
       const rect = el.getBoundingClientRect()
       return { name: el.getAttribute('aria-label'), width: rect.width, height: rect.height }
@@ -77,7 +78,7 @@ test('顶部中心线一致，手机控件保留点击区域，选择浮层在�
     await more.click()
     await page.locator(`[data-action=${action}]`).click()
     await withinViewport(page.locator(panel))
-    expect(await page.locator(panel).evaluate(el => el.contains(document.activeElement))).toBe(true)
+    await expect.poll(() => page.locator(panel).evaluate(el => el.contains(document.activeElement))).toBe(true)
     await page.screenshot({ path: testInfo.outputPath(`short-viewport-${action}.png`) })
     await page.keyboard.press('Escape')
     await expect(more).toBeFocused()
