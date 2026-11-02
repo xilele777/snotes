@@ -40,33 +40,34 @@ test.beforeEach(async ({ page }) => {
   await expect(body(page)).toBeFocused()
 })
 
-test('资源未就绪时仅显示稳定加载提示，不闪现原始正文或挤动编辑区', async ({ page, context }) => {
-  await page.keyboard.insertText('# 加载布局回归\n\n**正文不应先作为 Markdown 预览出现**')
-  await expect.poll(() => saved(page)).toContain('加载布局回归')
-  await page.evaluate(async () => {
-    for (const registration of await navigator.serviceWorker.getRegistrations()) await registration.unregister()
-    for (const key of await caches.keys()) await caches.delete(key)
+test.describe('编辑器资源冷启动', () => {
+  // 主动阻塞解析器请求时禁用 SW，避免后台预缓存与路由门闩竞争。
+  // 离线缓存和 SW 更新由独立用例覆盖。
+  test.use({ serviceWorkers: 'block' })
+  test('资源未就绪时仅显示稳定加载提示，不闪现原始正文或挤动编辑区', async ({ page, context }) => {
+    await page.keyboard.insertText('# 加载布局回归\n\n**正文不应先作为 Markdown 预览出现**')
+    await expect.poll(() => saved(page)).toContain('加载布局回归')
+    let release!: () => void
+    const gate = new Promise<void>(resolve => { release = resolve })
+    await context.route('**/vendor/vditor/**/dist/js/lute/lute.min.js', async route => { await gate; await route.continue() })
+    try {
+      await page.reload({ waitUntil: 'domcontentloaded' })
+      const loading = page.locator('.editor-loading')
+      await expect(loading).toBeVisible()
+      await expect(loading).toHaveText('正在打开编辑器…')
+      await expect(page.locator('.editor-body pre')).toHaveCount(0)
+      await expect(page.locator('.snotes-vditor')).toBeHidden()
+      const before = (await page.locator('.editor-body').boundingBox())!
+      release()
+      await expect(body(page)).toContainText('加载布局回归')
+      await expect(loading).toHaveCount(0)
+      const after = (await page.locator('.editor-body').boundingBox())!
+      expect(Math.abs(before.y - after.y)).toBeLessThan(1)
+      expect(Math.abs(before.height - after.height)).toBeLessThan(1)
+      const toolbar = (await page.locator('.vditor-toolbar').boundingBox())!
+      expect(Math.abs(toolbar.y - after.y)).toBeLessThan(2)
+    } finally { release(); await context.unrouteAll({ behavior: 'wait' }) }
   })
-  let release!: () => void
-  const gate = new Promise<void>(resolve => { release = resolve })
-  await context.route('**/vendor/vditor/**/dist/js/lute/lute.min.js', async route => { await gate; await route.continue() })
-  try {
-    await page.reload({ waitUntil: 'domcontentloaded' })
-    const loading = page.locator('.editor-loading')
-    await expect(loading).toBeVisible()
-    await expect(loading).toHaveText('正在打开编辑器…')
-    await expect(page.locator('.editor-body pre')).toHaveCount(0)
-    await expect(page.locator('.snotes-vditor')).toBeHidden()
-    const before = (await page.locator('.editor-body').boundingBox())!
-    release()
-    await expect(body(page)).toContainText('加载布局回归')
-    await expect(loading).toHaveCount(0)
-    const after = (await page.locator('.editor-body').boundingBox())!
-    expect(Math.abs(before.y - after.y)).toBeLessThan(1)
-    expect(Math.abs(before.height - after.height)).toBeLessThan(1)
-    const toolbar = (await page.locator('.vditor-toolbar').boundingBox())!
-    expect(Math.abs(toolbar.y - after.y)).toBeLessThan(2)
-  } finally { release(); await context.unrouteAll({ behavior: 'wait' }) }
 })
 
 test('原生三种编辑模式、Markdown 往返与本设备模式记忆', async ({ page }) => {
