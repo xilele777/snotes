@@ -118,7 +118,7 @@ test('桌面侧栏收起后保留入口、记住偏好，切到手机仍能打�
   await page.setViewportSize({ width: 390, height: 844 })
   await sidebar(page)
   await expect(page.locator('.sidebar-scroll')).toBeVisible()
-  await expect(page.locator('.brand-name')).toBeVisible()
+  await expect(page.locator('.brand-home .brand-wordmark')).toBeVisible()
   await page.getByRole('button', { name: '关闭侧栏', exact: true }).click()
   await expect(page.getByRole('button', { name: '打开侧栏', exact: true })).toBeFocused()
   await page.setViewportSize({ width: 1024, height: 900 })
