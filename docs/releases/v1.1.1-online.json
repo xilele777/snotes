@@ -1,0 +1,44 @@
+{
+  "origin": "https://note.alover.me",
+  "at": "2026-11-02T01:17:55.945Z",
+  "app_version": "1.1.1",
+  "checks": [
+    {
+      "path": "/api/health",
+      "status": 200,
+      "ok": true
+    },
+    {
+      "path": "/",
+      "status": 200,
+      "sha256": "ea8da0a3f4c4a0f0516fa0327b5f5e0a8882e4c5978e50a6301b776acf25f64b",
+      "hash_equal": true,
+      "cache_control": "no-cache"
+    },
+    {
+      "path": "/assets/index-C2DdXSGZ.js",
+      "status": 200,
+      "sha256": "c7e3d111b00128ea56184498e6973640e627fe146adba6f0b201f91c31a2f1b5",
+      "hash_equal": true,
+      "cache_control": "public, max-age=31536000, immutable",
+      "contains_app_version": "1.1.1"
+    },
+    {
+      "path": "/sw.js",
+      "status": 200,
+      "sha256": "cc7a27a7b4df7301925d784970c58127987b5ae672cb02deacfd74c388410400",
+      "hash_equal": true,
+      "cache_control": "no-cache"
+    },
+    {
+      "path": "/api/sync/instance",
+      "method": "GET",
+      "status": 401
+    },
+    {
+      "path": "/api/notes/opens",
+      "method": "POST",
+      "status": 401
+    }
+  ]
+}
