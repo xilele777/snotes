@@ -1,0 +1,79 @@
+{
+  "origin": "https://note.alover.me",
+  "at": "2026-11-02T02:10:41.020Z",
+  "app_version": "1.1.3",
+  "checks": [
+    {
+      "path": "/api/health",
+      "status": 200,
+      "ok": true
+    },
+    {
+      "path": "/",
+      "status": 200,
+      "sha256": "5559fd991c0a62f742898c2a0be6de6a7df8ef25a5f41f87934e252036d151fd",
+      "hash_equal": true,
+      "cache_control": "no-cache"
+    },
+    {
+      "path": "/assets/index-q1IaUpXj.js",
+      "status": 200,
+      "sha256": "8af4e80e0559ff4ca46406de419bfbf383bc1f5a1cf39e5e4bfd908067cfd258",
+      "hash_equal": true,
+      "cache_control": "public, max-age=31536000, immutable",
+      "contains_app_version": "1.1.3"
+    },
+    {
+      "path": "/assets/index-OiVNc7Re.css",
+      "status": 200,
+      "sha256": "418862034f3f9c053ba2148ac0c25d266c49b3db603c15f32ac98d695d6cbb47",
+      "hash_equal": true,
+      "cache_control": "public, max-age=31536000, immutable"
+    },
+    {
+      "path": "/assets/insights-CHkReEOX.css",
+      "status": 200,
+      "sha256": "e71950958bf90e462241294fb0ec786542c100f3a207e388eb08548acac04e53",
+      "hash_equal": true,
+      "cache_control": "public, max-age=31536000, immutable"
+    },
+    {
+      "path": "/assets/KnowledgeBaseHome-4RObaW3y.css",
+      "status": 200,
+      "sha256": "14fb42debbe57a2954505a5462a44bf16888155f1cd532b83efab7e112334a62",
+      "hash_equal": true,
+      "cache_control": "public, max-age=31536000, immutable"
+    },
+    {
+      "path": "/assets/KnowledgeBaseWorkspace-DOJnjsb9.css",
+      "status": 200,
+      "sha256": "db4272fbc0e3392a3224a40d31588a36d0d54474163e0cf0f208b855f26ca850",
+      "hash_equal": true,
+      "cache_control": "public, max-age=31536000, immutable"
+    },
+    {
+      "path": "/assets/VditorEditor-BvX7YG4g.css",
+      "status": 200,
+      "sha256": "15fa0becc2d2db1eacb9e0fc276945c7da7013058256c2b82b21ef2ae374e9cd",
+      "hash_equal": true,
+      "cache_control": "public, max-age=31536000, immutable"
+    },
+    {
+      "path": "/sw.js",
+      "status": 200,
+      "sha256": "d8d73da5456cadba3607dc48268c4855ec05e62156111c0692e42d3bafea74e6",
+      "hash_equal": true,
+      "cache_control": "no-cache"
+    },
+    {
+      "path": "/api/sync/instance",
+      "method": "GET",
+      "status": 401
+    },
+    {
+      "path": "/api/notes/opens",
+      "method": "POST",
+      "status": 401
+    }
+  ]
+}
