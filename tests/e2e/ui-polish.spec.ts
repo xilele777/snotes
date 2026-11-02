@@ -69,7 +69,7 @@ for (const reducedMotion of ['no-preference', 'reduce'] as const) {
     await expect(editor).toContainText('END')
     await page.getByRole('button', { name: '返回列表', exact: true }).click()
     await page.getByRole('searchbox', { name: '搜索笔记' }).fill('保留')
-    await expect(page.locator('.search-scope')).toContainText('全部笔记（含笔记本）')
+    await expect(page.locator('.search-scope')).toHaveCount(0)
     await expect(page.locator('.note-item')).toHaveCount(1)
     await page.screenshot({ path: testInfo.outputPath('mobile-search-scope.png'), animations: 'disabled' })
   })

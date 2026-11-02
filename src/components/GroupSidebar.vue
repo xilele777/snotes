@@ -194,7 +194,7 @@ watch(() => ui.drawerOpen, (open) => { if (!open) menuGroup.value = null })
           <button type="button" aria-label="星标笔记" title="星标笔记" :aria-current="!ui.workspacePage && ui.view === 'star' ? 'page' : undefined"><AppIcon name="star" /><span>星标笔记</span></button>
         </li>
         <li data-view="hidden" :class="{ active: !ui.workspacePage && ui.view === 'hidden' }" @click="switchListView('hidden')">
-          <button type="button" aria-label="已隐藏笔记" title="从随手记隐藏；全部笔记中仍可找到" :aria-current="!ui.workspacePage && ui.view === 'hidden' ? 'page' : undefined"><AppIcon name="eyeOff" /><span>随手记已隐藏</span></button>
+          <button type="button" aria-label="已隐藏" :aria-current="!ui.workspacePage && ui.view === 'hidden' ? 'page' : undefined"><AppIcon name="eyeOff" /><span>已隐藏</span></button>
         </li>
       </ul>
       <div class="nav-section-label">整理</div>

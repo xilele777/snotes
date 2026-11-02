@@ -27,7 +27,7 @@ for (const width of [1440, 720, 390, 320]) {
     await expect(page.locator('.note-item')).toHaveCount(1)
     const listWidth = (await page.locator('.list-pane').boundingBox())!.width
     await sidebar(page)
-    await expect(page.getByRole('button', { name: '已隐藏笔记', exact: true })).toBeVisible()
+    await expect(page.getByRole('button', { name: '已隐藏', exact: true })).toBeVisible()
     await expect(page.locator('.group-sidebar .app-rail')).toHaveCount(0)
     const footer = await page.locator('.sidebar-tools > button').evaluateAll(buttons => buttons.map(button => {
       const { x, y, width, height } = button.getBoundingClientRect()
@@ -59,7 +59,7 @@ for (const width of [1440, 720, 390, 320]) {
     await page.keyboard.press('Escape')
     await expect(page.getByRole('button', { name: '笔记本操作', exact: true })).toBeFocused()
     await sidebar(page)
-    await page.getByRole('button', { name: '已隐藏笔记', exact: true }).click()
+    await page.getByRole('button', { name: '已隐藏', exact: true }).click()
     await expect(page.locator('.layout')).toHaveAttribute('data-view', 'hidden')
     await expect(page.locator('.workspace-notice')).toHaveCount(0)
     await expect(page.getByRole('region', { name: '设置', exact: true })).toHaveCount(0)
@@ -68,7 +68,7 @@ for (const width of [1440, 720, 390, 320]) {
     await page.reload()
     await sidebar(page)
     await expect(page.getByRole('button', { name: '展开分组' })).toHaveAttribute('aria-expanded', 'false')
-    await expect(page.getByRole('button', { name: '已隐藏笔记', exact: true })).toBeVisible()
+    await expect(page.getByRole('button', { name: '已隐藏', exact: true })).toBeVisible()
     await page.getByRole('navigation').getByRole('button', { name: '笔记本', exact: true }).click()
     await page.getByRole('button', { name: '笔记本「产品设计手册」操作', exact: true }).click()
     await expect(page.getByRole('menuitemcheckbox', { name: '取消固定', exact: true })).toHaveAttribute('aria-checked', 'true')

@@ -514,6 +514,7 @@ for (const width of [320, 390]) {
     await tool(page, 'headings').click()
     const headingsMenu = tool(page, 'headings').locator('..').locator('.vditor-hint')
     await expect(headingsMenu).toBeVisible()
+    await expect(headingsMenu).toHaveCSS('position', 'fixed')
     const menuBounds = (await headingsMenu.boundingBox())!
     expect(menuBounds.x).toBeGreaterThanOrEqual(0)
     expect(menuBounds.x + menuBounds.width).toBeLessThanOrEqual(width)

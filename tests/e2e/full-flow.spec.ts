@@ -36,7 +36,7 @@ async function createGroup(page: Page, name: string) {
   await page.locator('.group-add').click()
   await expect(page.locator('.dialog')).toBeVisible()
   await page.locator('.dialog-input').fill(name)
-  await page.locator('.dialog-btn.ok').click()
+  await page.locator('.dialog').getByRole('button', { name: '确定', exact: true }).click()
   await expect(page.locator('.dialog')).toHaveCount(0)
 }
 

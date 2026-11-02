@@ -141,7 +141,6 @@ function heatTip(cell: { date: string; count: number }): string {
         统计读取失败。<button class="metrics-retry" type="button" @click="load">重试</button>
       </div>
       <div v-else-if="stats" class="stats-layout">
-        <p class="metrics-hint">包含全部未删除笔记（含笔记本和隐藏笔记）。时间分布按每篇笔记的创建时间、最后更新时间计算，包含属性修改，不代表逐日写作记录。</p>
         <main class="stats-main">
           <div class="stats-grid">
             <section class="stats-panel panel-overview" aria-label="总体数据">

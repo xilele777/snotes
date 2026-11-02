@@ -35,6 +35,9 @@ for (const width of [1440, 320]) test(`Agent credential, MCP document, deep link
   const refresh = pane.getByRole('button', { name: '刷新', exact: true })
   await expect(refresh).toBeDisabled()
   await expect(refresh).toHaveText('加载中')
+  await page.locator('.settings-content').evaluate(async el => {
+    await Promise.all(el.getAnimations().map(animation => animation.finished.catch(() => {})))
+  })
   const loadingHeading = await pane.locator('#agent-create-heading').boundingBox()
   const loadingConnection = await pane.locator('#agent-connect-heading').boundingBox()
   const loadingRefresh = await refresh.boundingBox()

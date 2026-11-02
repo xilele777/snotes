@@ -124,7 +124,7 @@ describe('GroupSidebar', () => {
     const wrapper = mount(GroupSidebar)
     await wrapper.get('[data-view="hidden"]').trigger('click')
     expect(useUiStore().view).toBe('hidden')
-    expect(wrapper.get('[aria-label="已隐藏笔记"]').attributes('aria-current')).toBe('page')
+    expect(wrapper.get('[aria-label="已隐藏"]').attributes('aria-current')).toBe('page')
     await wrapper.get('[aria-label="收起侧栏"]').trigger('click')
     expect(workspacePreferences.value.sidebarCollapsed).toBe(true)
     await wrapper.get('[aria-label="展开侧栏"]').trigger('click')

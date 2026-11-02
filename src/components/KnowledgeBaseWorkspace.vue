@@ -342,7 +342,6 @@ watch(() => ui.restorePosition, async position => { if (position?.view === 'know
     <p v-if="error || libraries.error" class="kb-error" role="alert">{{ error || libraries.error }}</p>
     <div v-if="conflicts.length" class="kb-sync-warning" role="status">笔记本有同步冲突，两份修改已保留。<button @click="dialog = 'conflict'">查看并选择</button></div>
     <template v-if="!book">
-      <p class="kb-organize-hint">笔记本用章节目录整理项目、读书和长期资料。只需按主题归类时，可以使用侧栏的分组。</p>
       <div class="kb-overview-tools">
         <label class="kb-search"><AppIcon name="search" :size="16" /><input v-model="ui.query" type="search" aria-label="搜索笔记本" placeholder="搜索笔记本名称或简介" /><button v-if="ui.query" class="search-clear" aria-label="清除笔记本搜索" @click="ui.query = ''"><AppIcon name="close" :size="14" /></button></label>
         <SortMenu label="笔记本排序" :model-value="preferences.librarySort" :options="[{ value: 'updated', label: '最近更新' }, { value: 'name', label: '名称顺序' }]" @update:model-value="updateWorkspacePreferences({ librarySort: $event as LibrarySort })" />

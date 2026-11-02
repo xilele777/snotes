@@ -39,7 +39,6 @@
 .note-search-block { min-width: 0; margin: 0 18px 12px; }
 .note-search-block .note-search { margin: 0; }
 .list-search-tools .note-search-block { flex: 1; min-width: 0; margin: 0; }
-.search-scope { margin: 5px 0 0; color: var(--text-tertiary); font-size: 12px; line-height: 1.5; overflow-wrap: anywhere; }
 .list-search-tools .note-search { flex: 1; min-width: 0; margin: 0; padding: 0 8px; gap: 6px; }
 .list-search-tools .note-search kbd { display: none; }
 .sort-trigger { display: inline-flex; align-items: center; justify-content: center; gap: 5px; flex: none; min-height: 36px; padding: 0 8px; border: 1px solid var(--border-default); border-radius: 6px; background: var(--bg-surface); color: var(--text-secondary); font-size: 12px; white-space: nowrap; }
@@ -154,7 +153,6 @@
 @media print { .editor-status-bar { display: none; } }
 .editor-welcome p { max-width: 340px; margin: 12px 0 20px; color: var(--text-tertiary); font-size: 14px; }
 @media (min-width: 721px) { .empty-library-list .empty-state .empty-action { display: none; } }
-.kb-organize-hint { margin: 0; padding: 0 24px 16px; color: var(--text-tertiary); font-size: 13px; line-height: 1.7; }
 .token-help { margin-top: 18px; text-align: left; color: var(--text-secondary); font-size: 13px; }
 .token-help summary { cursor: pointer; color: var(--accent); }
 .token-help p { margin: 10px 0 0; line-height: 1.7; overflow-wrap: anywhere; }
