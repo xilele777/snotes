@@ -20,15 +20,15 @@ async function main() {
     const page = await browser.newPage({ deviceScaleFactor: 1 })
     for (const { name, size, fullBleed } of icons) {
       await page.setViewportSize({ width: size, height: size })
+      // Installed apps need an opaque background. Scale the free-standing mark
+      // into the central safe circle without adding a tile to the web logo.
+      const artwork = fullBleed
+        ? `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><rect width="64" height="64" fill="#F1F4FF"/><g transform="translate(6.4 6.4) scale(.8)">${svg.replace(/<svg[^>]*>|<\/svg>/g, '')}</g></svg>`
+        : svg
       await page.setContent(`<!doctype html><html><head><style>
         html, body { margin: 0; width: 100%; height: 100%; }
         svg { display: block; width: 100%; height: 100%; }
-      </style></head><body>${svg}</body></html>`)
-      if (fullBleed) {
-        // iOS and Android apply their own masks. Keep the background opaque;
-        // The notebook artwork fits inside the central 80% diameter safe circle.
-        await page.locator('svg > rect').first().evaluate(rect => rect.setAttribute('rx', '0'))
-      }
+      </style></head><body>${artwork}</body></html>`)
       await page.screenshot({ path: path.join(publicDir, name), omitBackground: true })
       console.log(`${name}: ${size} x ${size}`)
     }

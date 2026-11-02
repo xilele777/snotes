@@ -6,6 +6,7 @@ import { apiFetch } from '../../api/client'
 import { closeWorkspacePage } from '../../navigation'
 import { RELEASES_URL, updateInfo } from '../../update-check'
 import AppIcon from '../AppIcon.vue'
+import BrandWordmark from '../BrandWordmark.vue'
 import ConfirmDialog from '../ConfirmDialog.vue'
 import SettingsHint from './SettingsHint.vue'
 
@@ -41,7 +42,7 @@ function runLogout() {
     <header class="about-identity">
       <img :src="brandIconUrl" alt="" width="56" height="56" />
       <div>
-        <h2>snotes</h2>
+        <h2><BrandWordmark /></h2>
         <p class="about-status" :class="{ 'has-update': hasUpdate }"><span class="about-version">{{ versionLabel }}</span><span>{{ hasUpdate ? '有新版本可用' : latestLabel ? '已是最新版本' : '当前运行版本' }}</span></p>
       </div>
     </header>
@@ -92,7 +93,7 @@ function runLogout() {
 <style scoped>
 .about-identity { display: flex; flex-direction: column; align-items: center; gap: 16px; padding: 8px 0 24px; text-align: center; }
 .about-identity img { flex: none; width: 64px; height: 64px; }
-.about-identity h2 { margin: 0 0 12px; font-size: 28px; font-weight: 650; letter-spacing: -.5px; line-height: 1.2; }
+.about-identity h2 { display: flex; justify-content: center; margin: 0 0 12px; font-size: 28px; font-weight: 650; letter-spacing: -.5px; line-height: 1.2; }
 .about-status { display: flex; align-items: center; justify-content: center; flex-wrap: wrap; gap: 10px; margin: 0; font-size: 13px; color: var(--text-secondary); }
 .about-version { padding: 3px 9px; border-radius: 5px; background: var(--bg-app); color: var(--text-primary); font-variant-numeric: tabular-nums; }
 .has-update { color: var(--accent); }

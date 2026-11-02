@@ -5,6 +5,7 @@ import { openWorkspacePage, showKnowledgeBases, showNotes, switchListView } from
 import { retrySyncNow } from '../sync/engine'
 import { notify } from '../notify'
 import AppIcon from './AppIcon.vue'
+import BrandWordmark from './BrandWordmark.vue'
 import ConfirmDialog from './ConfirmDialog.vue'
 import GroupDialog from './GroupDialog.vue'
 import GroupMenu from './GroupMenu.vue'
@@ -177,7 +178,7 @@ watch(() => ui.drawerOpen, (open) => { if (!open) menuGroup.value = null })
   <nav class="group-sidebar" aria-label="便签导航">
     <div class="sidebar-content">
       <div class="sidebar-brand">
-        <button class="brand-home" aria-label="笔记" title="回到上次的笔记位置" @click="showNotes"><img class="brand-mark" :src="brandIconUrl" alt="" width="26" height="26" /><span class="brand-name">snotes</span></button>
+        <button class="brand-home" aria-label="笔记" title="回到上次的笔记位置" @click="showNotes"><img class="brand-mark" :src="brandIconUrl" alt="" width="28" height="28" /><BrandWordmark aria-hidden="true" /></button>
         <button class="sidebar-toggle icon-button" :aria-label="preferences.sidebarCollapsed ? '展开侧栏' : '收起侧栏'" :title="preferences.sidebarCollapsed ? '展开侧栏' : '收起侧栏'" :aria-expanded="!preferences.sidebarCollapsed" @click="updateWorkspacePreferences({ sidebarCollapsed: !preferences.sidebarCollapsed })"><AppIcon name="sidebar" :size="18" /></button>
         <button class="sidebar-close icon-button" aria-label="关闭侧栏" title="关闭侧栏" @click="ui.drawerOpen = false"><AppIcon name="close" /></button>
       </div>

@@ -4,8 +4,9 @@
 /* Shared navigation and workspace controls. Colors follow the existing theme. */
 .sidebar-content { height: 100%; padding: 0 12px; }
 .sidebar-brand { padding: 0 var(--space-2); gap: var(--space-2); border-bottom-color: transparent; }
-.brand-home { display: flex; align-items: center; gap: 10px; padding: 5px 0; border: 0; background: transparent; color: var(--text-primary); }
-.brand-home .brand-mark { width: 26px; height: 26px; }
+.brand-home { --brand-wordmark-width: 80px; --brand-wordmark-height: 28px; display: flex; align-items: center; gap: 6px; padding: 5px 0; border: 0; border-radius: 5px; background: transparent; color: var(--text-primary); }
+.brand-home .brand-mark { width: 28px; height: 28px; }
+.brand-home:hover { color: var(--accent); }
 .sidebar-scroll { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding-bottom: 12px; scrollbar-width: thin; }
 .sidebar-scroll .groups { overflow: visible; padding: 0; }
 .sidebar-content > .views { padding-bottom: 8px; }
