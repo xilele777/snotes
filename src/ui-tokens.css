@@ -1,0 +1,24 @@
+/* Current UI dimensions. Component styles consume these instead of redefining sizes. */
+:root {
+  --header-height: 64px;
+  --control-size: 36px;
+  --control-compact-size: 32px;
+  --touch-target: 44px;
+  --radius-control: 6px;
+  --radius-popover: 8px;
+  --radius-card: 12px;
+  --font-title: 18px;
+  --font-label: 14px;
+  --font-compact: 13px;
+  --font-caption: 12px;
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-6: 24px;
+  --space-8: 32px;
+}
+@media (max-width: 720px) { :root { --header-height: 60px; } }
+@media (max-width: 720px), (pointer: coarse) {
+  :root { --control-size: var(--touch-target); --control-compact-size: var(--touch-target); }
+}

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, defineAsyncComponent, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
+import { computed, defineAsyncComponent, onMounted, onUnmounted, ref, watch } from 'vue'
 import { countWords } from '../../shared/derive'
 import type { KnowledgeBaseMeta } from '../../shared/knowledge-base'
 import { homeHiddenGroupIds, isHiddenFromHome } from '../../shared/home-feed'
@@ -12,6 +12,7 @@ import NoteInfoDialog from './NoteInfoDialog.vue'
 import NoteMenu, { type NoteMenuAction } from './NoteMenu.vue'
 import WordCountDialog from './WordCountDialog.vue'
 import AppIcon from './AppIcon.vue'
+import ActionMenu from './ActionMenu.vue'
 import EditorLoading from './EditorLoading.vue'
 import NoteSaveStatus from './NoteSaveStatus.vue'
 import ImageLightbox from './ImageLightbox.vue'
@@ -188,43 +189,19 @@ async function resetHomeFeed() {
 /** 颜色、分组和笔记本浮层一次只展开一个。 */
 const openPop = ref<'color' | 'group' | 'notebook' | null>(null)
 
-async function toggle(pop: 'color' | 'group' | 'notebook') {
+const popoverAnchor = ref<HTMLElement | null>(null)
+function toggle(pop: 'color' | 'group' | 'notebook', event?: MouseEvent) {
   menuOpen.value = false
+  popoverAnchor.value = event?.currentTarget as HTMLElement | null ?? moreButton.value
   openPop.value = openPop.value === pop ? null : pop
-  if (openPop.value) {
-    await nextTick()
-    document.querySelector<HTMLButtonElement>('.op-popover button')?.focus()
-  }
-}
-
-function onDocClick(e: MouseEvent) {
-  const target = e.target as HTMLElement
-  // 菜单是 Teleport 到 body 的，所以点它的条目时 target 不在 .op-wrap 里。
-  // 那条路径要先让菜单项自己的动作跑完（比如打开笔记本浮层），这里不能顺手关掉浮层。
-  if (target?.closest?.('.action-menu')) return
-  if (openPop.value && !target.closest('.op-wrap')) openPop.value = null
-}
-
-function onPopoverKeydown(event: KeyboardEvent) {
-  if (event.key !== 'Escape' || !openPop.value) return
-  const trigger = openPop.value
-  event.preventDefault()
-  event.stopPropagation()
-  openPop.value = null
-  const focusTarget = document.querySelector<HTMLButtonElement>(`[data-op="${trigger}"]`) ?? moreButton.value
-  focusTarget?.focus()
 }
 
 /** 顶栏的笔记本浮层要现取「哪几本收录了这条笔记」，所以这里也要订阅笔记本数据。 */
 let librarySubscription: ReturnType<typeof libraries.subscribe> | undefined
 onMounted(() => {
-  document.addEventListener('click', onDocClick)
-  window.addEventListener('keydown', onPopoverKeydown, true)
   librarySubscription = libraries.subscribeMembership()
 })
 onUnmounted(() => {
-  document.removeEventListener('click', onDocClick)
-  window.removeEventListener('keydown', onPopoverKeydown, true)
   librarySubscription?.unsubscribe()
 })
 
@@ -245,9 +222,9 @@ async function onMenuAction(action: NoteMenuAction) {
   // 先把焦点交还给 ⋯，随后打开的弹窗会记住它，关闭后焦点仍回到顶栏
   moreButton.value?.focus({ preventScroll: true })
   switch (action) {
-    case 'color': openPop.value = 'color'; return
+    case 'color': toggle('color'); return
     case 'info': showInfo.value = true; return
-    case 'notebooks': if (!props.readonly) openPop.value = 'notebook'; return
+    case 'notebooks': if (!props.readonly) toggle('notebook'); return
     case 'history': showHistory.value = true; return
     case 'wordcount': showWordCount.value = true; return
     case 'home-feed': await toggleHomeFeed(); return
@@ -449,14 +426,14 @@ async function runShare() {
             aria-label="移至分组"
             aria-haspopup="true"
             :aria-expanded="openPop === 'group'"
-            @click="toggle('group')"
+            @click="toggle('group', $event)"
           >
             <AppIcon name="folder" :size="16" />
             <span>{{ currentGroup }}</span>
             <AppIcon name="chevron" :size="12" class="group-chevron" />
           </button>
 
-          <Transition name="menu"><div v-if="openPop === 'group'" class="op-popover groups-pop" role="group" aria-label="选择分组">
+          <ActionMenu :open="openPop === 'group'" :anchor="popoverAnchor" role="group" menu-class="op-popover groups-pop" label="选择分组" align="start" focus-checked @close="openPop = null">
             <span class="popover-heading">移至分组</span>
             <button
               class="group-opt"
@@ -476,7 +453,7 @@ async function runShare() {
             >
               {{ g.name }}
             </button>
-          </div></Transition>
+          </ActionMenu>
         </div>
 
       </div>
@@ -516,7 +493,7 @@ async function runShare() {
           <AppIcon name="star" />
         </button>
 
-        <button v-if="directActions" class="op-btn desktop-direct-op" data-op="notebooks" :title="`笔记本${memberBooks.length ? `（已加入 ${memberBooks.length} 本）` : ''}`" aria-label="笔记本" aria-haspopup="true" :aria-expanded="openPop === 'notebook'" @click.stop="toggle('notebook')">
+        <button v-if="directActions" class="op-btn desktop-direct-op" data-op="notebooks" :title="`笔记本${memberBooks.length ? `（已加入 ${memberBooks.length} 本）` : ''}`" aria-label="笔记本" aria-haspopup="true" :aria-expanded="openPop === 'notebook'" @click.stop="toggle('notebook', $event)">
           <AppIcon name="book" />
         </button>
         <button v-if="directActions" class="op-btn desktop-direct-op" data-op="history" title="历史版本" aria-label="历史版本" @click="showHistory = true">
@@ -528,23 +505,23 @@ async function runShare() {
 
         <!-- 管理浮层靠右对齐，窄编辑区从更多菜单进入。 -->
         <div class="op-wrap notebook-wrap">
-          <Transition name="menu"><div v-if="openPop === 'color'" class="op-popover colors" role="group" aria-label="选择标记颜色">
+          <ActionMenu :open="openPop === 'color'" :anchor="popoverAnchor" role="group" menu-class="op-popover colors" label="选择标记颜色" focus-checked @close="openPop = null">
             <button
               v-for="color in SKIN_COLORS"
               :key="color ?? 'none'"
               class="more-swatch"
               :class="{ 'is-none': color === null }"
               :aria-pressed="notes.current.skin_color === color"
-              :style="color ? { backgroundColor: color } : undefined"
+              :style="color ? { '--swatch-color': color } : undefined"
               :title="color ? '标记颜色' : '清除颜色'"
               :aria-label="color ? `标记颜色 ${color}` : '清除颜色'"
               @click="notes.current && notes.setProps(notes.current.id, { skin_color: color }); openPop = null"
             />
-          </div></Transition>
+          </ActionMenu>
           <button ref="moreButton" class="op-btn" data-op="more" :class="{ open: menuOpen }" title="更多操作" aria-label="更多操作" aria-haspopup="menu" :aria-expanded="menuOpen" @click="toggleMenu">
             <AppIcon name="more" />
           </button>
-          <Transition name="menu"><div v-if="openPop === 'notebook'" class="op-popover groups-pop notebook-pop" role="group" :aria-label="memberBooks.length ? '所属笔记本' : '加入笔记本'">
+          <ActionMenu :open="openPop === 'notebook'" :anchor="popoverAnchor" role="group" menu-class="op-popover groups-pop notebook-pop" :label="memberBooks.length ? '所属笔记本' : '加入笔记本'"  @close="openPop = null">
             <span class="popover-heading">{{ memberBooks.length ? '所属笔记本' : '加入笔记本' }}</span>
             <p class="notebook-pop-hint">{{ memberBooks.length ? '移出只改变归属，正文会保留在全部笔记中。' : '用章节整理长期资料；加入后仍可在全部笔记中找到。' }}</p>
             <div v-if="memberBooks.length" class="notebook-pop-members">
@@ -577,7 +554,7 @@ async function runShare() {
                 <AppIcon name="plus" :size="14" /><span>新建笔记本并加入</span>
               </button>
             </div>
-          </div></Transition>
+          </ActionMenu>
         </div>
       </div>
     </div>
@@ -673,12 +650,10 @@ async function runShare() {
  * 笔记本浮层：沿用分组浮层的外观，但每行要能同时表达「已加入」和「可加入」两种状态。
  * 这里只写 .book-opt / .notebook-pop，不动全局的 .group-opt，避免影响分组浮层。
  */
-.notebook-pop { width: min(240px, calc(100vw - 48px)); }
-.notebook-wrap .notebook-pop { right: 0; left: auto; }
 .notebook-pop-hint { margin: 0 0 4px; padding: 0 10px 8px; border-bottom: 1px solid var(--border-light); color: var(--text-tertiary); font-size: 11px; line-height: 1.6; }
 .notebook-pop-heading { margin-top: 4px; padding-top: 10px; border-top: 1px solid var(--border-light); }
 .notebook-pop-empty { margin: 0; padding: 6px 10px; color: var(--text-tertiary); font-size: 12px; }
-.book-opt { display: flex; align-items: center; gap: 8px; padding: 8px 10px; border: 0; border-radius: 5px; background: transparent; color: var(--text-primary); font-size: 13px; text-align: left; }
+.book-opt { min-height: var(--control-size); width: 100%; display: flex; align-items: center; gap: 8px; padding: 8px 10px; border: 0; border-radius: var(--radius-control); background: transparent; color: var(--text-primary); font-size: 13px; text-align: left; }
 button.book-opt:hover:not(:disabled) { background: var(--bg-hover); }
 .book-opt:disabled { opacity: .5; }
 .book-opt .app-icon { flex: none; }

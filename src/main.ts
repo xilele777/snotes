@@ -1,3 +1,4 @@
+import './ui-tokens.css'
 import './styles.css'
 import './workspace.css'
 import './pages.css'

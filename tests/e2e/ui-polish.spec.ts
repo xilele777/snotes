@@ -97,7 +97,7 @@ test('当前笔记状态位于底部，顶栏在桌面与手机保持单行对�
     })
     await expect.poll(async () => (await layout()).aligned).toBeLessThan(1)
     const before = await layout()
-    expect(before.header).toBe(width <= 720 ? 56 : 64)
+    expect(before.header).toBe(width <= 720 ? 60 : 64)
     expect(before.footerHeight).toBe(width <= 720 ? 44 : 32)
     expect(before.footerBottom).toBeLessThanOrEqual(844)
     expect(Math.abs(before.bodyBottom - before.footerTop)).toBeLessThan(1)

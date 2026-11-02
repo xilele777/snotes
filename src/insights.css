@@ -288,7 +288,7 @@
   .streak-summary { max-width: 100px; gap: 3px; }
   .streak-summary span { width: 100%; text-align: right; }
 }
-@media (max-width: 720px) { .metrics-topbar { min-height: 64px; padding: 0 16px; } .metrics-body { padding: 16px; } }
+@media (max-width: 720px) { .metrics-topbar { padding: 0 16px; } .metrics-body { padding: 16px; } }
 
 [data-theme="dark"] .heatmap-cell[data-level='1'] { background: #344675; }
 [data-theme="dark"] .heatmap-cell[data-level='2'] { background: #526db0; }

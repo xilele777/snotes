@@ -43,4 +43,5 @@ onUnmounted(() => {
 .settings-hint-button:hover, .settings-hint-button:focus-visible { color: var(--accent); background: var(--bg-hover); }
 .settings-hint-tooltip { position: absolute; z-index: 2; left: 0; top: calc(100% + 6px); width: 280px; max-width: 100%; padding: 10px 12px; border: 1px solid var(--border-default); border-radius: 7px; background: var(--bg-surface); color: var(--text-secondary); box-shadow: 0 6px 20px rgb(0 0 0 / 10%); font-size: 12px; line-height: 1.7; white-space: normal; }
 .settings-hint-tooltip::before { content: ''; position: absolute; left: 0; right: 0; top: -7px; height: 7px; }
+@media (max-width: 720px), (pointer: coarse) { .settings-hint-button { width: var(--touch-target); height: var(--touch-target); } }
 </style>

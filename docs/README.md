@@ -38,7 +38,8 @@
 
 以下文档用于解释设计过程与历史决策，**不一定反映当前界面或数据行为**。使用和部署请优先参考上面的指南，已发布行为以更新日志为准。
 
-- [界面设计与验收](ui-refresh.md)
+- [当前 UI 规范](ui-guidelines.md)
+- [界面设计与验收历史](ui-refresh.md)
 - [最初的应用设计](superpowers/specs/2026-08-22-snotes-design.md)
 - [最初的实施计划](superpowers/plans/2026-08-22-snotes.md)
 - [笔记本设计](superpowers/specs/2026-10-14-knowledge-base-design.md)

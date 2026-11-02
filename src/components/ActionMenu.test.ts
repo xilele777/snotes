@@ -36,6 +36,25 @@ async function openMenu(wrapper: ReturnType<typeof mount>) {
 }
 
 describe('ActionMenu', () => {
+  it('选择器初次打开聚焦已选按钮，方向键与关闭统一处理', async () => {
+    const trigger = document.createElement('button')
+    document.body.append(trigger)
+    const wrapper = mount(ActionMenu, {
+      props: { open: true, anchor: trigger, label: '颜色', role: 'group', focusChecked: true },
+      slots: { default: '<button aria-pressed="false">清除</button><button aria-pressed="true">蓝色</button>' },
+      attachTo: document.body,
+    })
+    try {
+      await nextTick()
+      expect(document.activeElement?.textContent).toBe('蓝色')
+      window.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true }))
+      expect(document.activeElement?.textContent).toBe('清除')
+      window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))
+      expect(wrapper.emitted('close')).toHaveLength(1)
+      await wrapper.setProps({ open: false })
+      expect(document.activeElement).toBe(trigger)
+    } finally { wrapper.unmount(); trigger.remove() }
+  })
   it('宿主同时清空 anchor 与 open 时仍把焦点还给原触发按钮', async () => {
     const trigger = document.createElement('button')
     document.body.append(trigger)

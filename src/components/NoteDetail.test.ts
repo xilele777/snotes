@@ -1,4 +1,4 @@
-import { flushPromises, mount } from '@vue/test-utils'
+import { DOMWrapper, flushPromises, mount } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { db } from '../db/schema'
@@ -127,18 +127,18 @@ describe('NoteDetail 顶栏操作条', () => {
     const wrapper = mount(NoteDetail, { attachTo: document.body })
     await wrapper.vm.$nextTick()
 
-    expect(wrapper.find('.op-popover.colors').exists()).toBe(false)
+    expect(new DOMWrapper(document.body).find('.op-popover.colors').exists()).toBe(false)
     await chooseMore(wrapper, 'color')
-    expect(wrapper.find('.op-popover.colors').exists()).toBe(true)
+    expect(new DOMWrapper(document.body).find('.op-popover.colors').exists()).toBe(true)
 
     // 第一个是「清除颜色」，第二个是暖黄色。
-    await wrapper.findAll('.more-swatch')[1].trigger('click')
+    await new DOMWrapper(document.body).findAll('.more-swatch')[1].trigger('click')
 
     await vi.waitFor(() => {
       expect(notes.notes.find((n) => n.id === note.id)?.skin_color).toBe('#d8b46a')
     })
     expect((await db.notes.get(note.id))!.skin_color).toBe('#d8b46a')
-    expect(wrapper.find('.op-popover.colors').exists()).toBe(false)
+    expect(new DOMWrapper(document.body).find('.op-popover.colors').exists()).toBe(false)
     wrapper.unmount()
   })
 
@@ -153,7 +153,7 @@ describe('NoteDetail 顶栏操作条', () => {
     await wrapper.vm.$nextTick()
     await op(wrapper, 'group').trigger('click')
 
-    const opts = wrapper.findAll('.group-opt')
+    const opts = new DOMWrapper(document.body).findAll('.group-opt')
     // 第一项固定是「未分组」，分组接在后面
     expect(opts[0].text()).toBe('未分组')
     await opts[1].trigger('click')
@@ -176,7 +176,7 @@ describe('NoteDetail 顶栏操作条', () => {
     const wrapper = mount(NoteDetail, { attachTo: document.body })
     await wrapper.vm.$nextTick()
     await op(wrapper, 'group').trigger('click')
-    await wrapper.findAll('.group-opt')[0].trigger('click')
+    await new DOMWrapper(document.body).findAll('.group-opt')[0].trigger('click')
 
     await vi.waitFor(() => {
       expect(notes.notes.find((n) => n.id === note.id)?.group_id).toBeNull()
@@ -227,12 +227,12 @@ describe('NoteDetail 顶栏操作条', () => {
     const wrapper = mount(NoteDetail, { attachTo: document.body })
     await wrapper.vm.$nextTick()
     await chooseMore(wrapper, 'color')
-    expect(wrapper.find('.op-popover.colors').exists()).toBe(true)
+    expect(new DOMWrapper(document.body).find('.op-popover.colors').exists()).toBe(true)
 
     document.body.dispatchEvent(new MouseEvent('click', { bubbles: true }))
     await wrapper.vm.$nextTick()
 
-    expect(wrapper.find('.op-popover.colors').exists()).toBe(false)
+    expect(new DOMWrapper(document.body).find('.op-popover.colors').exists()).toBe(false)
     wrapper.unmount()
   })
 
