@@ -1107,7 +1107,7 @@ test('富文本列表的空起点默认是 1，嵌套与显式起点保存后不
 test.describe('手机操作', () => {
   test.use({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true })
 
-  test('启动显示目录，搜索随手可用，320px 下编辑工具栏可展开且不溢出', async ({ page }) => {
+  test('启动显示目录，搜索随手可用，320px 下编辑工具栏可横向滚动且不溢出', async ({ page }) => {
     await createNote(page)
     const editor = page.getByRole('textbox', { name: '笔记正文' })
     await expect(editor).toBeFocused()
@@ -1135,11 +1135,10 @@ test.describe('手机操作', () => {
     expect(formatBar!.x).toBeGreaterThanOrEqual(0)
     expect(formatBar!.x + formatBar!.width).toBeLessThanOrEqual(320)
     expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(320)
-    await expect(page.locator('.vditor-toolbar [data-type="bold"]')).toBeHidden()
-    await page.locator('.vditor-toolbar [data-type="mobile-format"]').click()
     await expect(page.locator('.vditor-toolbar [data-type="bold"]')).toBeVisible()
+    await page.locator('.vditor-toolbar [data-type="edit-mode"]').scrollIntoViewIfNeeded()
+    await expect(page.locator('.vditor-toolbar [data-type="edit-mode"]')).toBeInViewport()
     expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(320)
-    await page.locator('.vditor-toolbar [data-type="mobile-format"]').click()
     // 手机顶栏没有余量：删除、字数、信息、历史都让位给「⋯」，从菜单里进；没有底栏
     await expect(page.locator('[data-op="trash"]')).toHaveCount(0)
     await expect(page.locator('[data-op="wordcount"]')).toHaveCount(0)

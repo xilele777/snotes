@@ -618,11 +618,13 @@ describe('NoteDetail 首页信息流开关', () => {
 
     expect(menuAction('home-feed')!.textContent).toContain('不在随手记中显示')
     menuAction('home-feed')!.click()
-    // 等属性写入与列表刷新完成。
+    // 数据库字段先落盘，成功提示在 setProps 的列表刷新结束后才出现。
+    // 必须等整个菜单动作完成，下一用例才能关闭并重建数据库。
     await vi.waitFor(async () => {
       expect((await db.notes.get(note.id))!.home_hidden).toBe(1)
       expect(ui.view).toBe('all')
       expect(notes.currentBody).toBe('归档内容')
+      expect(notice.value).toBe('已从随手记隐藏，仍可在「全部笔记」和「已隐藏」里找到')
     })
     // 列表筛选照常生效，当前编辑内容继续保留。
     expect(notes.currentId).toBe(note.id)
@@ -647,6 +649,7 @@ describe('NoteDetail 首页信息流开关', () => {
     await vi.waitFor(async () => {
       expect((await db.notes.get(note.id))!.home_hidden).toBe(0)
       expect(ui.view).toBe('hidden')
+      expect(notice.value).toBe('这条笔记已显示在随手记中')
     })
     wrapper.unmount()
   })
@@ -670,6 +673,7 @@ describe('NoteDetail 首页信息流开关', () => {
     menuAction('home-follow')!.click()
     await vi.waitFor(async () => {
       expect((await db.notes.get(note.id))!.home_hidden).toBeNull()
+      expect(notice.value).toBe('已恢复跟随分组设置')
     })
     wrapper.unmount()
   })

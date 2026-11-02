@@ -42,7 +42,6 @@ let timer: ReturnType<typeof setTimeout> | undefined
 let observer: MutationObserver | undefined
 let contentObserver: MutationObserver | undefined
 let controlsFrame: number | undefined
-let toolbarAnimation: Animation | undefined
 let controlsNeedUpdate = false
 let observedMode: string | undefined
 let historyValue = ''
@@ -452,9 +451,39 @@ function interceptTableButton(event: Event, target: EventTarget | null): boolean
   openTableDialog()
   return true
 }
-function onToolbarTouch(event: Event) {
+let toolbarTouch: { target: Element; x: number; y: number; moved: boolean } | undefined
+let replayingToolbarTap = false
+function onToolbarTouch(event: TouchEvent) {
+  // Vditor uses touchstart on iPhone. Defer that handler until a stationary
+  // touch ends so dragging across tools remains native horizontal scrolling.
+  if (!replayingToolbarTap) {
+    if (!navigator.userAgent.includes('iPhone') || !(event.target instanceof Element)
+      || !event.target.closest('.vditor-toolbar')) return
+    // File inputs require the browser's trusted tap to open the picker.
+    if (event.target.closest('input')) return
+    const touch = event.touches[0]
+    if (touch) toolbarTouch = { target: event.target, x: touch.clientX, y: touch.clientY, moved: false }
+    event.stopPropagation()
+    return
+  }
   if (interceptHistory(event)) return
   interceptTableButton(event, event.target)
+}
+function onToolbarTouchMove(event: TouchEvent) {
+  const touch = event.touches[0]
+  if (toolbarTouch && touch && Math.hypot(touch.clientX - toolbarTouch.x, touch.clientY - toolbarTouch.y) > 8) toolbarTouch.moved = true
+}
+function onToolbarTouchEnd(event: TouchEvent) {
+  const gesture = toolbarTouch
+  toolbarTouch = undefined
+  if (!gesture) return
+  event.stopPropagation()
+  if (gesture.moved || !gesture.target.isConnected) return
+  event.preventDefault()
+  replayingToolbarTap = true
+  try { gesture.target.dispatchEvent(new Event('touchstart', { bubbles: true, cancelable: true })) }
+  finally { replayingToolbarTap = false }
+  setTimeout(() => { rememberMode(); positionToolbarPanels() }, 0)
 }
 function interceptHistory(event: Event): boolean {
   const history = event.target instanceof Element ? event.target.closest<HTMLElement>('.vditor-toolbar [data-type="undo"], .vditor-toolbar [data-type="redo"]') : null
@@ -557,35 +586,6 @@ function onClick(event: MouseEvent) {
   }, 0)
 }
 
-function toggleMobileTools() {
-  const host = root.value
-  const toolbar = host?.querySelector<HTMLElement>('.vditor-toolbar')
-  if (!host || !toolbar) return
-  const before = toolbar.getBoundingClientRect().height
-  toolbarAnimation?.cancel()
-  const expanded = host.classList.toggle('mobile-tools-expanded')
-  host.querySelector('[data-type="mobile-format"]')?.setAttribute('aria-expanded', String(expanded))
-  if (!expanded) {
-    const selection = window.getSelection()
-    const range = selection?.rangeCount ? selection.getRangeAt(0).cloneRange() : undefined
-    const start = range?.startContainer
-    const element = start instanceof Element ? start : start?.parentElement
-    const input = element?.closest<HTMLElement>('[contenteditable="true"]')
-    if (input && host.contains(input) && range) {
-      input.focus({ preventScroll: true })
-      selection!.removeAllRanges()
-      selection!.addRange(range)
-    }
-  }
-  const after = toolbar.getBoundingClientRect().height
-  // Animate only the toolbar: never recreate the editor or replace its selection.
-  if (toolbar.animate && !window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
-    toolbarAnimation = toolbar.animate([{ height: `${before}px`, overflow: 'hidden' }, { height: `${after}px`, overflow: 'hidden' }], {
-      duration: 180, easing: 'cubic-bezier(.2, .7, .2, 1)',
-    })
-  }
-}
-
 function positionToolbarPanels() {
   const toolbar = root.value?.querySelector<HTMLElement>('.vditor-toolbar')
   if (!toolbar) return
@@ -664,7 +664,6 @@ async function initialize() {
       'link', '|', 'list', 'ordered-list', 'check', 'outdent', 'indent', '|',
       'quote', 'line', 'code', 'inline-code', '|',
       'upload', 'table', '|', 'undo', 'redo', '|', 'outline', 'fullscreen', 'edit-mode',
-      { name: 'mobile-format', tip: '展开或收起格式工具', icon: '<svg viewBox="0 0 24 24"><circle cx="5" cy="12" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="19" cy="12" r="2"/></svg>', click: toggleMobileTools },
     ],
     hint: { emojiPath: `${VDITOR_CDN}/dist/images/emoji` },
     preview: {
@@ -717,7 +716,6 @@ async function initialize() {
       applyTheme()
       applyEditable()
       rememberMode()
-      root.value?.querySelector('[data-type="mobile-format"]')?.setAttribute('aria-expanded', 'false')
       emit('ready')
       if (!props.modelValue.trim()) void nextTick(() => {
         // The user may have opened a menu while editor assets were loading.
@@ -759,7 +757,6 @@ onBeforeUnmount(() => {
   clearImageUploads()
   clearTimer()
   cancelLongPress()
-  toolbarAnimation?.cancel()
   observer?.disconnect()
   contentObserver?.disconnect()
   if (controlsFrame !== undefined) cancelAnimationFrame(controlsFrame)
@@ -781,7 +778,7 @@ defineExpose({ flush, focus, insertImages })
   <!-- Vditor owns runtime classes (theme/fullscreen). Keep Vue's host class static. -->
   <div ref="root" class="snotes-vditor vditor is-initializing" :inert="!initialized" :aria-hidden="!initialized"
     @mouseover="onOutlineHover"
-    @input="onInput" @keydown.capture="onHistoryKeydown" @paste.capture="onPaste" @click.capture="onClick" @touchstart.capture="onToolbarTouch" @change.capture="onLinkChange" @keyup="rememberMode" @dblclick.capture="onDoubleClick" @pointerdown.capture="onPointerDown"
+    @input="onInput" @keydown.capture="onHistoryKeydown" @paste.capture="onPaste" @click.capture="onClick" @touchstart.capture="onToolbarTouch" @touchmove.capture="onToolbarTouchMove" @touchend.capture="onToolbarTouchEnd" @touchcancel.capture="toolbarTouch = undefined" @change.capture="onLinkChange" @keyup="rememberMode" @dblclick.capture="onDoubleClick" @pointerdown.capture="onPointerDown"
     @pointerup="cancelLongPress" @pointercancel="cancelLongPress" @pointermove="cancelLongPress" />
   <TableDialog :open="tableOpen" @submit="insertTable" @close="tableOpen = false" />
   <Teleport to="body">

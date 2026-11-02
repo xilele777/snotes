@@ -23,7 +23,6 @@ async function saved(page: Page) {
 }
 
 async function switchMode(page: Page, mode: string) {
-  if (!await tool(page, 'edit-mode').isVisible()) await tool(page, 'mobile-format').click()
   await tool(page, 'edit-mode').click()
   await page.locator(`.vditor-toolbar button[data-mode="${mode}"]`).click()
   await expect(page.locator('.snotes-vditor')).toHaveAttribute('data-mode', mode)
@@ -503,10 +502,39 @@ test('公式与流程图在线按需加载，已用过的渲染器离线仍可�
   await expect.poll(() => saved(page)).toContain('兼容性笔记')
 })
 
+test.describe('iPhone 工具栏手势', () => {
+  test.use({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true,
+    userAgent: 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 Version/18.0 Mobile/15E148 Safari/604.1' })
+  test('滑动仅滚动，轻点仍可打开格式与模式菜单', async ({ page }) => {
+    const toolbar = page.locator('.vditor-toolbar')
+    const bold = (await tool(page, 'bold').boundingBox())!
+    const client = await page.context().newCDPSession(page)
+    const x = bold.x + bold.width / 2
+    const y = bold.y + bold.height / 2
+    await client.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x, y }] })
+    for (let step = 1; step <= 5; step++) {
+      await client.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [{ x: x - step * 10, y }] })
+    }
+    await client.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] })
+    await expect.poll(() => toolbar.evaluate(el => el.scrollLeft)).toBeGreaterThan(0)
+    await expect.poll(() => saved(page)).not.toContain('**')
+    await tool(page, 'headings').tap()
+    const headingsMenu = tool(page, 'headings').locator('..').locator('.vditor-hint')
+    await expect(headingsMenu).toBeVisible()
+    await headingsMenu.locator('[data-tag="h1"]').tap()
+    await expect(headingsMenu).toBeHidden()
+    await tool(page, 'edit-mode').tap()
+    await page.locator('.vditor-toolbar button[data-mode="sv"]').tap()
+    await expect(page.locator('.snotes-vditor')).toHaveAttribute('data-mode', 'sv')
+  })
+})
+
 for (const width of [320, 390]) {
   test(`${width}px 原生工具栏可用且页面不横向溢出`, async ({ page }) => {
     await page.setViewportSize({ width, height: 844 })
-    await tool(page, 'mobile-format').click()
+    const toolbar = page.locator('.vditor-toolbar')
+    await expect(toolbar).toHaveCSS('flex-wrap', 'nowrap')
+    expect(await toolbar.evaluate(el => el.scrollWidth > el.clientWidth)).toBe(true)
     await tool(page, 'edit-mode').scrollIntoViewIfNeeded()
     await expect(tool(page, 'edit-mode')).toBeInViewport()
     await tool(page, 'upload').scrollIntoViewIfNeeded()

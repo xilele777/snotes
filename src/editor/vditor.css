@@ -1,7 +1,6 @@
 .snotes-vditor.vditor { border: 0; border-radius: 0; min-height: 100%; color: var(--text-primary); background: var(--bg-surface); --panel-background-color: var(--bg-surface); --toolbar-background-color: var(--bg-surface); --textarea-background-color: var(--bg-surface); --border-color: var(--border-light); --second-color: var(--text-secondary); --toolbar-icon-color: var(--text-secondary); --toolbar-icon-hover-color: var(--accent); --toolbar-height: 36px; }
 .snotes-vditor .vditor-toolbar { display: flex; align-items: center; justify-content: flex-start; flex-wrap: nowrap; gap: 3px; overflow-x: auto; scrollbar-width: thin; padding: 6px 18px !important; background: var(--bg-surface); border-bottom: 1px solid var(--border-light); z-index: 10; }
 .snotes-vditor .vditor-toolbar > .vditor-toolbar__item { float: none; flex: 0 0 auto; padding: 0; }
-.snotes-vditor .vditor-toolbar > .vditor-toolbar__item:has([data-type='mobile-format']) { display: none; }
 .snotes-vditor .vditor-toolbar > .vditor-toolbar__item > .vditor-tooltipped { width: 28px; border-radius: 5px; }
 .snotes-vditor .vditor-toolbar__item input[type='file'] { width: 100%; }
 .snotes-vditor .vditor-toolbar > .vditor-toolbar__divider { float: none; flex: 0 0 auto; margin-inline: 4px; opacity: .35; }
@@ -44,15 +43,7 @@
 }
 @container (max-width: 620px) {
   .snotes-vditor .vditor-toolbar { padding: 6px 8px !important; gap: 1px; }
-  .snotes-vditor .vditor-toolbar { flex-wrap: wrap; overflow: visible; }
   .snotes-vditor .vditor-toolbar > .vditor-toolbar__item > .vditor-tooltipped { width: 44px; height: 44px; }
-  /* Vditor sets inline display on indent/outline tools when changing mode. */
-  .snotes-vditor:not(.mobile-tools-expanded) .vditor-toolbar > .vditor-toolbar__item:not(:has([data-type='undo'], [data-type='redo'], [data-type='check'], [data-type='upload'], [data-type='mobile-format'])) { display: none !important; }
-  .snotes-vditor .vditor-toolbar > .vditor-toolbar__item:has([data-type='undo']) { order: -5; }
-  .snotes-vditor .vditor-toolbar > .vditor-toolbar__item:has([data-type='redo']) { order: -4; }
-  .snotes-vditor .vditor-toolbar > .vditor-toolbar__item:has([data-type='check']) { order: -3; }
-  .snotes-vditor .vditor-toolbar > .vditor-toolbar__item:has([data-type='upload']) { order: -2; }
-  .snotes-vditor .vditor-toolbar > .vditor-toolbar__item:has([data-type='mobile-format']) { display: block; order: -1; }
   .snotes-vditor .vditor-toolbar > .vditor-toolbar__divider { display: none; }
   .snotes-vditor .vditor-outline { display: none !important; }
   .snotes-vditor .vditor-toolbar > .vditor-toolbar__item:has([data-type='outline']) { display: none !important; }

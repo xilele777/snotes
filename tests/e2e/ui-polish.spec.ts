@@ -34,7 +34,7 @@ test('归属展示不会删除笔记，移出后正文仍可打开', async ({ pa
 })
 
 for (const reducedMotion of ['no-preference', 'reduce'] as const) {
-  test(`手机格式展开保留选区、正文和撤销，动态效果设置 ${reducedMotion}`, async ({ page }, testInfo) => {
+  test(`手机工具栏横向滚动保留选区、正文和撤销，动态效果设置 ${reducedMotion}`, async ({ page }, testInfo) => {
     await page.setViewportSize({ width: 390, height: 844 })
     await page.emulateMedia({ reducedMotion })
     await signIn(page)
@@ -49,17 +49,19 @@ for (const reducedMotion of ['no-preference', 'reduce'] as const) {
     })
     const before = await selection()
     expect(before).not.toBeNull()
-    const more = page.locator('[data-type=mobile-format]')
-    await more.click()
-    await expect(more).toHaveAttribute('aria-expanded', 'true')
+    const toolbar = page.locator('.vditor-toolbar')
+    const height = (await toolbar.boundingBox())!.height
+    await toolbar.evaluate(el => { el.scrollLeft = el.scrollWidth })
+    await expect(page.locator('[data-type=edit-mode]')).toBeInViewport()
     expect(await selection()).toEqual(before)
     await expect(page.locator('[data-type=outline]')).toBeHidden()
     if (reducedMotion === 'reduce') {
       expect(await page.locator('.vditor-toolbar').evaluate(el => el.getAnimations().length)).toBe(0)
       await expect(page.locator('.editor-pane')).toHaveCSS('animation-name', 'none')
     }
-    await more.click()
-    await expect(more).toHaveAttribute('aria-expanded', 'false')
+    await toolbar.evaluate(el => { el.scrollLeft = 0 })
+    await expect(page.locator('[data-type=headings]')).toBeInViewport()
+    expect((await toolbar.boundingBox())!.height).toBe(height)
     expect(await selection()).toEqual(before)
     await page.keyboard.type(' END')
     await expect(editor).toContainText('保留这段正文 END')
