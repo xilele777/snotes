@@ -24,15 +24,8 @@ async function saved(page: Page) {
 
 async function switchMode(page: Page, mode: string) {
   if (!await tool(page, 'edit-mode').isVisible()) await tool(page, 'mobile-format').click()
-  // Async editor rendering can dismiss the menu between opening and clicking.
-  // Reopen it if necessary, while still exercising a real, actionable click.
-  const option = page.locator(`.vditor-toolbar button[data-mode="${mode}"]`)
-  await expect(async () => {
-    if (await page.locator('.snotes-vditor').getAttribute('data-mode') === mode) return
-    if (!await option.isVisible()) await tool(page, 'edit-mode').click()
-    await option.click({ timeout: 1000 })
-    await expect(page.locator('.snotes-vditor')).toHaveAttribute('data-mode', mode)
-  }).toPass({ timeout: 10000 })
+  await tool(page, 'edit-mode').click()
+  await page.locator(`.vditor-toolbar button[data-mode="${mode}"]`).click()
   await expect(page.locator('.snotes-vditor')).toHaveAttribute('data-mode', mode)
 }
 

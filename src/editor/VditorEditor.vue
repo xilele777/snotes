@@ -11,6 +11,7 @@ import { isAllowedImage, MAX_BYTES, uploadImage } from './image-upload'
 import { VDITOR_CDN, LARGE_DOCUMENT_CHARS, editorMode, rememberEditorMode } from './vditor-options'
 import { markdownFromClipboard } from './markdown-clipboard'
 import { tableMarkdown } from './table'
+import { guardHistoryFocus } from './history-focus'
 
 const props = defineProps<{ noteId: string; modelValue: string; editable?: boolean }>()
 const emit = defineEmits<{
@@ -693,6 +694,12 @@ async function initialize() {
       root.value?.classList.remove('is-initializing')
       const instance = editor?.vditor
       if (instance?.undo) {
+        // addCaret is a runtime method in the pinned Vditor 4 implementation.
+        guardHistoryFocus(instance.undo as unknown as Parameters<typeof guardHistoryFocus>[0], () => {
+          const active = document.activeElement
+          return active instanceof HTMLElement && !!root.value?.contains(active)
+            && active.getAttribute('role') === 'textbox'
+        })
         const record = instance.undo.addToUndoStack.bind(instance.undo)
         instance.undo.addToUndoStack = state => {
           record(state)
