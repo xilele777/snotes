@@ -131,6 +131,43 @@ class SyncEngine(private val store: SyncStore, private val client: ApiClient, pr
         pushChains(tasks.filter { it.entityType == "group" }, epoch)
         checkRunning()
         pushChains(tasks.filter { it.entityType == "note" }, epoch)
+        checkRunning()
+        pushBooks(epoch)
+    }
+    private suspend fun pushBooks(epoch: String) {
+        val books = io.github.xilele777.snotes.core.data.BookRepository(store.repository)
+        for (task in store.transaction { store.dao.tasks().filter { it.entityType == "book" } }) {
+            checkRunning()
+            val blocked = store.transaction {
+                store.dao.tasks().any { it.entityType == "book" && it.entityId == task.entityId && it.id < task.id } ||
+                    books.desired(task.entityId)?.toc?.nodes?.mapNotNull { it.noteId }?.any { id ->
+                        store.dao.task("note", id, "create") != null || task.kind == "delete" && store.protectedBody(id)
+                    } == true
+            }
+            if (blocked) continue
+            val sent = books.prepare(task) ?: continue
+            try {
+                if (sent.kind == "delete") {
+                    val remote = client.call { deleteBook(sent.bookId, epoch, sent.payload) }
+                    store.applyBook(remote)
+                    store.transaction { store.dao.consumeTask(sent.taskId, sent.seq); store.dao.deleteMeta("book_sent:${sent.taskId}") }
+                } else {
+                    val ack = client.call { when (sent.kind) {
+                        "create" -> createBook(epoch, sent.payload)
+                        "meta" -> patchBook(sent.bookId, epoch, sent.payload)
+                        "toc" -> putToc(sent.bookId, epoch, sent.payload)
+                        else -> throw ApiError(400, "unsupported_operation")
+                    } }
+                    books.acknowledge(sent, ack)
+                }
+            } catch (error: ApiError) {
+                if (error.code == "sync_reset_required") { store.markRecovery(); throw error }
+                if (error.status == 401) throw error
+                val remote = if (error.status in setOf(409, 410)) client.call { toc(sent.bookId) } else null
+                books.fail(sent, error, remote)
+                if (error.status == 0 || isRetriableStatus(error.status)) throw error
+            }
+        }
     }
     private suspend fun pushChains(tasks: List<io.github.xilele777.snotes.core.database.TaskEntity>, epoch: String) {
         val failure = AtomicReference<Throwable?>(null)

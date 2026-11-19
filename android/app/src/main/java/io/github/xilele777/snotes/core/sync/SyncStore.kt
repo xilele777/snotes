@@ -172,12 +172,7 @@ class SyncStore(val repository: NotesRepository, private val clock: () -> Long =
     fun applyBook(remote: BookRemoteDto) = transaction {
         validateToc(remote)
         val book = remote.book
-        dao.putBook(KnowledgeBaseEntity(book.id, book.name, book.description, book.tocVersion, book.invalid))
-        put("book:${book.id}", syncJson.encodeToString(remote))
-        dao.clearToc(book.id)
-        if (book.deleted == 0) remote.toc.nodes.forEach { node ->
-            dao.putToc(TocEntity(book.id, node.id, node.parentId, node.noteId, node.title ?: "", node.ord))
-        }
+        io.github.xilele777.snotes.core.data.BookRepository(repository).acceptRemote(remote)
         remote.noteStates.forEach { (id, state) ->
             dao.putNoteState(NoteStateEntity(id, state))
             if (state == "purged") tombstoneIn(id, false)
@@ -186,6 +181,7 @@ class SyncStore(val repository: NotesRepository, private val clock: () -> Long =
     }
     fun finishBooks(original: Set<String>, seen: Set<String>, until: Long, checkpoint: String, reconcile: Boolean) = transaction {
         if (reconcile) (original - seen).forEach { id ->
+            if (dao.tasks().any { it.entityType == "book" && it.entityId == id }) return@forEach
             // A missing book alone is not evidence that its referenced notes were purged.
             dao.clearToc(id); dao.deleteBook(id); dao.deleteMeta("book:$id")
         }
