@@ -25,3 +25,6 @@ tmp/
 test-results/
 playwright-report/
 .playwright-mcp/
+
+# Internal Android acceptance packages
+artifacts/android/
