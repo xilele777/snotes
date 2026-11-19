@@ -1,0 +1,11 @@
+{
+  "$schema": "../../node_modules/wrangler/config-schema.json",
+  "name": "android-m3-test",
+  "main": "m3-worker.ts",
+  "compatibility_date": "2026-08-22",
+  "d1_databases": [{ "binding": "DB", "database_name": "android-m3-test", "database_id": "00000000-0000-0000-0000-000000000003", "migrations_dir": "../../migrations" }],
+  "r2_buckets": [{ "binding": "R2", "bucket_name": "android-m3-test-images" }],
+  "vars": { "ACCESS_TOKEN": "android-m3-test-token", "SYNC_INSTANCE_EPOCH": "android-m3-worker", "SYNC_REQUIRE_EPOCH": "true" },
+  "dev": { "ip": "127.0.0.1", "port": 18788 },
+  "workers_dev": false
+}
