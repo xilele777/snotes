@@ -2,7 +2,7 @@
 
 [客户端设计](../docs/android/README.md) · [同步契约](../docs/android/sync-contract.md) · [实施计划](../docs/android/implementation-plan.md)
 
-当前 M0–M3 已实现：Room / Paging 本地笔记与离线编辑器、Keystore 连接配置、双域恢复预检与服务端同步、失败任务恢复。编辑区默认源码 + 预览，短文 IR 保留试用状态；Debug 首页仍可打开样例原型。正在推进 M4–M6 与人工验收包，结果见 [M2](../docs/android/acceptance/2026-11-20-m2.md) 和 [M3](../docs/android/acceptance/2026-11-20-m3.md)。
+M0–M6 的内部交付实现已完成：离线编辑与同步、手机导航、独立实例、图片缓存和分享队列、桌面小组件、笔记本管理、格式 3 备份与打开统计。编辑区默认源码 + 预览，短文 IR 保留试用状态。内部安装包与自动验证见 [M4–M6 记录](../docs/android/acceptance/2026-11-20-m4-m6.md)，真机、中文输入法、系统选择器及正式签名门禁见 [人工验收清单](../docs/android/acceptance/manual-checklist.md)。这次是本地内部交付，尚未正式发布。
 
 ## 工具链
 
@@ -71,7 +71,19 @@ APK：`android/app/build/outputs/apk/debug/app-debug.apk`。JVM 报告：`androi
 
 [release-sequence.properties](release-sequence.properties) 只保存 Android `versionCode` 安装顺序。每个不同的公开 APK / AAB（包括预发布）在发布前递增；未发布的本地构建可以重用当前 code。debug 使用独立 applicationId，不覆盖正式应用。
 
-release 未配置生产签名。正式发布时从受保护的本机 / CI 配置读取签名信息，签名文件、口令、SDK 路径与构建结果已忽略。发布沿用根 [AGENTS.md](../AGENTS.md)，不会因本地 assemble 自动推送或部署。
+内部包使用 debug 签名，正式签名从环境变量 `SNOTES_KEYSTORE`、`SNOTES_STORE_PASSWORD`、`SNOTES_KEY_ALIAS`、`SNOTES_KEY_PASSWORD` 读取；未设置时 release 产物为未签名 APK，仅用于 R8 构建检查。签名文件、口令、SDK 路径与构建结果已忽略。CI 当前生成 debug 包与报告，生产密钥需存受保护的 Secret。发布沿用根 [AGENTS.md](../AGENTS.md)。
+
+## 性能基线
+
+`:benchmark` 使用独立 `.benchmark` applicationId，目标应用沿用 release 的 R8 / 资源压缩、非 debuggable、profileable、debug 签名。测量 APK 为自 instrumenting 测试模块，种子 Activity 只存在于目标 benchmark 变体。正式 debug / release 主包不包含种子 Activity。
+
+```powershell
+.\android\gradlew.bat -p android :benchmark:connectedBenchmarkAndroidTest --console plain --max-workers=2
+# 仅模拟器采样时附加；不能用结果宣布真机预算达标
+# '-Pandroid.testInstrumentationRunnerArguments.androidx.benchmark.suppressErrors=EMULATOR'
+```
+
+各 10 轮无预编译冷启动，500 条元数据与约 2,000 字符已缓存笔记；首帧和本机列表 / 编辑器准备完成分别记录。原始 JSON 与 trace 在 `benchmark/build/outputs/connected_android_test_additional_output/`，交付记录保存统计与设备信息。
 
 ## 开发后端
 
@@ -81,12 +93,14 @@ release 未配置生产签名。正式发布时从受保护的本机 / CI 配置
 - Worker：先在根目录应用本地迁移，再运行 `npm run dev:worker`；不用生产数据库。
 - 模拟器访问宿主机地址为 `10.0.2.2`；debug 网络策略只允许 `10.0.2.2`、`127.0.0.1`、`localhost` 明文访问。release 全部使用 HTTPS。
 
-默认活跃 profile 为 `local-default`，数据库、WAL、草稿与图片目录分别隔离在应用私有 `files/profiles/<profile-id>/`。M3 支持首次实例接入、当前令牌修复与手动同步；实例更换在 M4 增加。生产源码不会读取根 `.dev.vars` 或将服务端令牌打入 APK；专用测试 token 仅存在于显式运行的隔离后端与 androidTest 夹具中。
+默认活跃 profile 为 `local-default`，数据库、WAL、草稿与图片目录分别隔离在应用私有 `files/profiles/<profile-id>/`。更换 origin 创建新 profile，设置可切回旧空间；先停止同步并等待在途请求，拒绝旧编辑会话与旧 Worker 的写入。生产源码不会读取根 `.dev.vars` 或将服务端令牌打入 APK；专用测试 token 仅存在于显式运行的隔离后端与 androidTest 夹具中。
 
 ## 数据与系统边界
 
 主 Manifest 关闭自动备份，同时配置旧版 full backup 与新版 cloud / device transfer 排除规则。编辑器与本地库接入后继续沿用这些规则，显式导出负责数据携带。
 
-Compose 处理 edge-to-edge 与系统主题。M0 仅申请网络权限，不申请照片、存储、相机或通知权限。系统选择器与相应操作在功能实现时接入。
+Compose 处理 edge-to-edge 与系统主题。应用直接申请网络权限，WorkManager 合并唤醒 / 开机接收 / 前台服务权限；当前没有启动常驻前台服务。图片使用 Photo Picker，导入导出使用 SAF，无宽泛照片 / 存储权限。接收分享在临时 URI 权限有效时先复制图片至私有目录；文字先落库，离线附件后台重试。小组件只读本机最近五篇，不初始化编辑器。
+
+图片私有缓存上限 128 MiB，达到上限仍可联网显示 / 上传，不删除未同步文件。格式 3 备份包含正文、回收站、历史、图片与分享队列，解压总量上限 128 MiB，校验并准备文件后在一次 Room 事务内导入。导入相同 ID 保留已有正文，备份中的不同正文进入历史。偏好使用 SharedPreferences；令牌独立使用 Keystore 加密文件。
 
 当前验收采用用户指定的模拟器，记录见 [M0](../docs/android/acceptance/2026-11-19-m0.md)、[M1](../docs/android/acceptance/2026-11-19-m1.md) 和 [M2](../docs/android/acceptance/2026-11-20-m2.md)。模拟器自动化与人工输入法、真机性能验收分开记录。

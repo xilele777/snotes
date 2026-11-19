@@ -1,0 +1,146 @@
+{
+  "p95Method": "nearest-rank; ceil(0.95*n), no samples removed",
+  "device": "Pixel 9a API36 x86_64 emulator",
+  "measurements": [
+    {
+      "scenario": "cachedNote2000Characters",
+      "metric": "timeToFullDisplayMs",
+      "samples": 10,
+      "medianMs": 1729.0390235,
+      "p95Ms": 1911.770305,
+      "runsMs": [
+        1880.763469,
+        1739.354175,
+        1719.327145,
+        1911.770305,
+        1746.009133,
+        1637.004838,
+        1683.445333,
+        1694.194404,
+        1708.803192,
+        1738.750902
+      ],
+      "source": "cached-note-original.json"
+    },
+    {
+      "scenario": "cachedNote2000Characters",
+      "metric": "timeToInitialDisplayMs",
+      "samples": 10,
+      "medianMs": 555.2550229999999,
+      "p95Ms": 670.224206,
+      "runsMs": [
+        556.368569,
+        616.834559,
+        554.141477,
+        670.224206,
+        550.357131,
+        512.934213,
+        559.68614,
+        545.032465,
+        527.180668,
+        571.423326
+      ],
+      "source": "cached-note-original.json"
+    },
+    {
+      "scenario": "coldList500Notes",
+      "metric": "timeToFullDisplayMs",
+      "samples": 10,
+      "medianMs": 971.2230775,
+      "p95Ms": 1111.982768,
+      "runsMs": [
+        991.334747,
+        1111.982768,
+        981.767201,
+        1016.739695,
+        948.745035,
+        936.458837,
+        996.620996,
+        945.180875,
+        912.169198,
+        960.678954
+      ],
+      "source": "cold-list-original.json"
+    },
+    {
+      "scenario": "coldList500Notes",
+      "metric": "timeToInitialDisplayMs",
+      "samples": 10,
+      "medianMs": 624.1098375,
+      "p95Ms": 764.306455,
+      "runsMs": [
+        625.440649,
+        764.306455,
+        653.407607,
+        646.741983,
+        622.779026,
+        611.421038,
+        632.019774,
+        615.400504,
+        612.52304,
+        588.637559
+      ],
+      "source": "cold-list-original.json"
+    }
+  ],
+  "applicationVersion": "1.1.5",
+  "versionCode": 2,
+  "targetBuild": "non-debuggable, release R8/resource shrinking, profileable, debug signed .benchmark",
+  "compilationMode": "None / run-from-apk",
+  "network": "No configured server; only local cached data. Emulator network left enabled.",
+  "bodyCharacterCount": 1760,
+  "limitations": [
+    "Emulator baseline, not real-device budget approval",
+    "Actual sample is about 1,800 characters; scenario name preserves initial 2,000-character target",
+    "List test initially failed because trace ended before reportFullyDrawn frame; only failed list remeasured after waitForIdle fix",
+    "No slow samples removed; 10-sample nearest-rank P95 equals maximum"
+  ],
+  "contexts": [
+    {
+      "build": {
+        "brand": "google",
+        "device": "emu64xa",
+        "fingerprint": "google/sdk_gphone64_x86_64/emu64xa:16/BE2A.250530.026.D1/13818094:user/release-keys",
+        "id": "BE2A.250530.026.D1",
+        "model": "sdk_gphone64_x86_64",
+        "type": "user",
+        "version": {
+          "codename": "REL",
+          "sdk": 36
+        }
+      },
+      "cpuCoreCount": 4,
+      "cpuLocked": false,
+      "cpuMaxFreqHz": 2000,
+      "memTotalBytes": 2592595968,
+      "sustainedPerformanceModeEnabled": false,
+      "artMainlineVersion": 360527520,
+      "osCodenameAbbreviated": "REL",
+      "compilationMode": "run-from-apk",
+      "payload": {}
+    },
+    {
+      "build": {
+        "brand": "google",
+        "device": "emu64xa",
+        "fingerprint": "google/sdk_gphone64_x86_64/emu64xa:16/BE2A.250530.026.D1/13818094:user/release-keys",
+        "id": "BE2A.250530.026.D1",
+        "model": "sdk_gphone64_x86_64",
+        "type": "user",
+        "version": {
+          "codename": "REL",
+          "sdk": 36
+        }
+      },
+      "cpuCoreCount": 4,
+      "cpuLocked": false,
+      "cpuMaxFreqHz": 2000,
+      "memTotalBytes": 2592595968,
+      "sustainedPerformanceModeEnabled": false,
+      "artMainlineVersion": 360527520,
+      "osCodenameAbbreviated": "REL",
+      "compilationMode": "run-from-apk",
+      "payload": {}
+    }
+  ]
+}
