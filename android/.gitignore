@@ -1,0 +1,11 @@
+.gradle/
+.kotlin/
+.idea/
+**/build/
+local.properties
+*.jks
+*.keystore
+keystore.properties
+captures/
+.cxx/
+editor-web/node_modules/

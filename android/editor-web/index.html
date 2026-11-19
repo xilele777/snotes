@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'none'; frame-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'">
+  <title>snotes 编辑器</title>
+  <link rel="stylesheet" href="vendor/vditor/dist/index.css">
+  <link rel="stylesheet" href="editor.css">
+  <script src="vendor/vditor/dist/js/lute/lute.min.js" id="vditorLuteScript" defer></script>
+  <script src="vendor/vditor/dist/js/i18n/zh_CN.js" id="vditorI18nScriptzh_CN" defer></script>
+  <script src="vendor/vditor/dist/js/icons/ant.js" id="vditorIconScript" defer></script>
+  <script src="editor.js" type="module"></script>
+</head>
+<body>
+  <nav aria-label="编辑模式" id="modes">
+    <button type="button" data-mode="source" aria-pressed="true">源码</button>
+    <button type="button" data-mode="preview" aria-pressed="false">预览</button>
+    <button type="button" data-mode="ir" aria-pressed="false">即时渲染（试用）</button>
+  </nav>
+  <nav aria-label="格式工具" id="format">
+    <button type="button" data-action="bold">加粗</button>
+    <button type="button" data-action="mark">高亮</button>
+    <button type="button" data-action="heading">标题</button>
+    <button type="button" data-action="undo">撤销</button>
+    <button type="button" data-action="redo">重做</button>
+  </nav>
+  <p id="notice" role="status"></p>
+  <main>
+    <section id="source-pane">
+      <label for="source">笔记正文 · Markdown</label>
+      <textarea id="source" name="markdown" autocomplete="off" aria-describedby="notice" placeholder="首行写标题，接着记录正文…"></textarea>
+    </section>
+    <section id="rich-pane" aria-label="即时渲染编辑" hidden><div id="rich"></div></section>
+    <article id="preview" class="vditor-reset" aria-label="正文预览" tabindex="0" hidden></article>
+  </main>
+</body>
+</html>

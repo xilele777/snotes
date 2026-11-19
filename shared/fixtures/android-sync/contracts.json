@@ -1,0 +1,78 @@
+{
+  "schemaVersion": 1,
+  "defaults": {
+    "note": { "id": "n1", "group_id": null, "title": "标题", "summary": "摘要", "thumbnail": null, "version": 1, "prop_version": 1, "star": 0, "top": 0, "skin_color": null, "home_hidden": null, "invalid": 0, "create_time": 1, "update_time": 1 },
+    "local": { "id": "n1", "version": 1, "body_version": 1, "prop_version": 1, "body_pending": false },
+    "task": { "note_id": "n1", "kind": "body", "payload": { "content": "原稿" }, "retry": 0, "next_at": 0, "seq": 0, "failed": 0 }
+  },
+  "derive": [
+    { "name": "empty-body-is-valid", "markdown": "", "expected": { "title": "", "summary": "", "thumbnail": null } },
+    { "name": "title-does-not-repeat-in-summary", "markdown": "# 今天\n\n记录第一件事\n记录第二件事", "expected": { "title": "今天", "summary": "记录第一件事 记录第二件事", "thumbnail": null } },
+    { "name": "image-only-has-no-title", "markdown": "![照片](/api/images/n1/a.png)", "expected": { "title": "", "summary": "", "thumbnail": "n1/a.png" } },
+    { "name": "skip-external-image-for-thumbnail", "markdown": "![外链](https://example.com/a.png)\n![本地](</api/images/n1/b.png> \"标题\")\n内容", "expected": { "title": "内容", "summary": "", "thumbnail": "n1/b.png" } },
+    { "name": "lists-links-and-emphasis", "markdown": "- **计划**\n1) [参考](https://example.com)\n> ~~完成~~", "expected": { "title": "计划", "summary": "参考 完成", "thumbnail": null } },
+    { "name": "seven-hashes-are-not-a-heading", "markdown": "####### 文本\n## 没有重复", "expected": { "title": "####### 文本", "summary": "没有重复", "thumbnail": null } },
+    { "name": "ecmascript-whitespace", "markdown": "\ufeff# 标题\u00a0\n正文\u3000内容", "expected": { "title": "标题", "summary": "正文 内容", "thumbnail": null } },
+    { "name": "zero-width-space-is-not-whitespace", "markdown": "\u200b\n正文", "expected": { "title": "\u200b", "summary": "正文", "thumbnail": null } },
+    { "name": "truncate-title-by-utf16-units", "markdown": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa😀\n摘要", "expected": { "title": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\ud83d", "summary": "摘要", "thumbnail": null } },
+    { "name": "truncate-summary-at-120", "markdown": "标题\n012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789EXTRA", "expected": { "title": "标题", "summary": "012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789", "thumbnail": null } }
+  ],
+  "sanitize": [
+    { "name": "empty-body", "markdown": "", "legacy": "", "escaped": "" },
+    { "name": "legacy-blank-lines", "markdown": "a\n<br />\n <br> \n<br >\n<br/>\nz", "legacy": "a\n\u200b\n\u200b\n\u200b\n\u200b\nz", "escaped": "a\n\u200b\n\u200b\n\u200b\n\u200b\nz" },
+    { "name": "html-becomes-visible-text", "markdown": "<b>文字</b><!-- 注释 -->", "legacy": "<b>文字</b><!-- 注释 -->", "escaped": "&lt;b>文字&lt;/b>&lt;!-- 注释 -->" },
+    { "name": "math-is-not-html", "markdown": "a < b，3<5", "legacy": "a < b，3<5", "escaped": "a < b，3<5" },
+    { "name": "inline-code-and-uri-links", "markdown": "`<b>` <https://example.com> <me@example.com> <div>", "legacy": "`<b>` <https://example.com> <me@example.com> <div>", "escaped": "`<b>` <https://example.com> <me@example.com> &lt;div>" },
+    { "name": "code-fence-skips-br-and-html", "markdown": "```html\n<br>\n<div>\n```\n<br>", "legacy": "```html\n<br>\n<div>\n```\n\u200b", "escaped": "```html\n<br>\n<div>\n```\n\u200b" },
+    { "name": "indented-and-inline-br-stay", "markdown": "    <br>\n\t<div>\n`<br>`\n文字<br>", "legacy": "    <br>\n\t<div>\n`<br>`\n文字<br>", "escaped": "    <br>\n\t<div>\n`<br>`\n文字&lt;br>" },
+    { "name": "private-character-does-not-collide", "markdown": "\ue0000\ue000 `<b>` <div>", "legacy": "\ue0000\ue000 `<b>` <div>", "escaped": "\ue0000\ue000 `<b>` &lt;div>" },
+    { "name": "preserve-trailing-newline", "markdown": "~~~\n<b>\n~~~\n<div>\n", "legacy": "~~~\n<b>\n~~~\n<div>\n", "escaped": "~~~\n<b>\n~~~\n&lt;div>\n" },
+    { "name": "autolink-with-inline-code-masking", "markdown": "<https://example.com/`x`> <i>", "legacy": "<https://example.com/`x`> <i>", "escaped": "<https://example.com/`x`> &lt;i>" }
+  ],
+  "pull": [
+    { "name": "new-note-downloads-body", "remote": [{ "id": "a" }], "local": [], "expected": { "insert": ["a"], "updateProp": [], "deleteLocal": [], "fetchBody": ["a"] } },
+    { "name": "missing-body-compares-body-version", "remote": [{ "id": "a", "version": 5 }], "local": [{ "id": "a", "version": 5, "body_version": 0 }], "expected": { "insert": [], "updateProp": [], "deleteLocal": [], "fetchBody": ["a"] } },
+    { "name": "body-and-property-advance-independently", "remote": [{ "id": "a", "version": 9, "prop_version": 8 }], "local": [{ "id": "a" }], "expected": { "insert": [], "updateProp": ["a"], "deleteLocal": [], "fetchBody": ["a"] } },
+    { "name": "pending-body-is-protected-not-properties", "remote": [{ "id": "a", "version": 9, "prop_version": 8 }], "local": [{ "id": "a", "body_pending": true }], "expected": { "insert": [], "updateProp": ["a"], "deleteLocal": [], "fetchBody": [] } },
+    { "name": "equal-and-older-versions-are-idempotent", "remote": [{ "id": "a", "version": 2, "prop_version": 2 }, { "id": "b", "version": 5, "prop_version": 5 }], "local": [{ "id": "a", "version": 5, "body_version": 5, "prop_version": 5 }, { "id": "b", "version": 5, "body_version": 5, "prop_version": 5 }], "expected": { "insert": [], "updateProp": [], "deleteLocal": [], "fetchBody": [] } },
+    { "name": "tombstone-precedes-pending-body", "remote": [{ "id": "a", "invalid": 2, "version": 9 }], "local": [{ "id": "a", "body_pending": true }], "expected": { "insert": [], "updateProp": [], "deleteLocal": ["a"], "fetchBody": [] } },
+    { "name": "unknown-tombstone-is-not-inserted", "remote": [{ "id": "a", "invalid": 2 }], "local": [], "expected": { "insert": [], "updateProp": [], "deleteLocal": [], "fetchBody": [] } },
+    { "name": "trash-still-has-a-body", "remote": [{ "id": "a", "invalid": 1, "prop_version": 2 }], "local": [{ "id": "a" }], "expected": { "insert": [], "updateProp": ["a"], "deleteLocal": [], "fetchBody": [] } },
+    { "name": "reconciliation-sentinels-refetch", "remote": [{ "id": "a" }], "local": [{ "id": "a", "body_version": -1, "prop_version": -1 }], "expected": { "insert": [], "updateProp": ["a"], "deleteLocal": [], "fetchBody": ["a"] } },
+    { "name": "duplicate-metadata-remains-safe-to-upsert", "remote": [{ "id": "a" }, { "id": "a" }], "local": [], "expected": { "insert": ["a", "a"], "updateProp": [], "deleteLocal": [], "fetchBody": ["a", "a"] } }
+  ],
+  "outbox": [
+    { "name": "first-task-starts-at-one", "existing": null, "incoming": { "payload": { "content": "" } }, "expected": { "note_id": "n1", "kind": "body", "payload": { "content": "" }, "retry": 0, "next_at": 0, "seq": 1, "failed": 0 } },
+    { "name": "new-edit-keeps-id-and-resets-failure", "existing": { "id": 7, "seq": 4, "retry": 5, "next_at": 999999, "failed": 1 }, "incoming": { "payload": { "content": "新稿" } }, "expected": { "id": 7, "note_id": "n1", "kind": "body", "payload": { "content": "新稿" }, "retry": 0, "next_at": 0, "seq": 5, "failed": 0 } },
+    { "name": "incoming-id-does-not-reorder-new-task", "existing": null, "incoming": { "id": 99, "seq": 200 }, "expected": { "note_id": "n1", "kind": "body", "payload": { "content": "原稿" }, "retry": 0, "next_at": 0, "seq": 1, "failed": 0 } },
+    { "name": "repository-accumulated-props-remain", "existing": { "id": 8, "kind": "prop", "seq": 2, "payload": { "star": 1 } }, "incoming": { "kind": "prop", "payload": { "star": 1, "top": 1, "base_prop_version": 2 } }, "expected": { "id": 8, "note_id": "n1", "kind": "prop", "payload": { "star": 1, "top": 1, "base_prop_version": 2 }, "retry": 0, "next_at": 0, "seq": 3, "failed": 0 } }
+  ],
+  "limits": [
+    { "name": "empty", "unit": "", "repeat": 1, "suffix": "", "bytes": 0, "fits": true },
+    { "name": "ascii-exact-limit", "unit": "a", "repeat": 1048576, "suffix": "", "bytes": 1048576, "fits": true },
+    { "name": "ascii-over-limit", "unit": "a", "repeat": 1048576, "suffix": "b", "bytes": 1048577, "fits": false },
+    { "name": "chinese-exact-limit", "unit": "中", "repeat": 349525, "suffix": "a", "bytes": 1048576, "fits": true },
+    { "name": "chinese-over-limit", "unit": "中", "repeat": 349525, "suffix": "ab", "bytes": 1048577, "fits": false },
+    { "name": "emoji-exact-limit", "unit": "😀", "repeat": 262144, "suffix": "", "bytes": 1048576, "fits": true },
+    { "name": "emoji-over-limit", "unit": "😀", "repeat": 262144, "suffix": "a", "bytes": 1048577, "fits": false },
+    { "name": "isolated-surrogate-uses-replacement", "unit": "\ud83d", "repeat": 1, "suffix": "", "bytes": 3, "fits": true }
+  ],
+  "backoff": [
+    { "retry": -1, "delay": 1000 },
+    { "retry": 0, "delay": 1000 },
+    { "retry": 3, "delay": 8000 },
+    { "retry": 9, "delay": 512000 },
+    { "retry": 10, "delay": 600000 },
+    { "retry": 2147483647, "delay": 600000 }
+  ],
+  "status": [
+    { "status": 0, "retriable": false },
+    { "status": 401, "retriable": false },
+    { "status": 408, "retriable": true },
+    { "status": 409, "retriable": false },
+    { "status": 413, "retriable": false },
+    { "status": 429, "retriable": true },
+    { "status": 500, "retriable": true },
+    { "status": 503, "retriable": true }
+  ]
+}

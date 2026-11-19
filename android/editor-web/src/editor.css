@@ -1,0 +1,27 @@
+:root { color-scheme: light; font: 16px/1.6 system-ui, sans-serif; --surface: #fff; --ink: #202534; --muted: #4b566d; --line: #767c8b; --accent: #3659ce; background: var(--surface); color: var(--ink); }
+:root[data-dark="true"] { color-scheme: dark; --surface: #1e1f24; --ink: #edf0f7; --muted: #bec5d5; --line: #8791a3; --accent: #b6c5ff; }
+* { box-sizing: border-box; }
+html { height: 100%; }
+body { margin: 0; height: 100%; display: flex; flex-direction: column; }
+nav { display: flex; flex: none; overflow-x: auto; gap: .25rem; padding: .25rem .5rem; border-block-end: 1px solid var(--line); }
+button { flex: none; min-height: 48px; min-width: 48px; padding: .5rem .75rem; background: transparent; color: inherit; border: 0; border-radius: .5rem; font: inherit; }
+button[aria-pressed="true"] { background: #e8eeff; color: #253fa0; font-weight: 600; }
+:root[data-dark="true"] button[aria-pressed="true"] { background: #343e63; color: #e8eeff; }
+button:disabled { opacity: .55; }
+button:focus-visible, textarea:focus-visible, article:focus-visible { outline: 3px solid var(--accent); outline-offset: -3px; }
+#notice { flex: none; margin: 0; padding: .25rem .75rem; color: var(--muted); font-size: .875rem; }
+#notice:empty { display: none; }
+main { flex: 1; min-height: 0; display: flex; }
+section, article { flex: 1; min-width: 0; min-height: 0; }
+#source-pane { display: flex; flex-direction: column; }
+label { padding: .5rem .75rem .25rem; color: var(--muted); font-size: .875rem; }
+textarea { flex: 1; min-height: 0; width: 100%; border: 1px solid var(--line); border-radius: 0; padding: .75rem; margin: 0; resize: none; font: inherit; font-size: max(1rem, 1em); background: var(--surface); color: var(--ink); scroll-padding-block: 1rem; }
+#rich-pane { overflow: auto; }
+#rich { min-height: 100%; background: var(--surface); color: var(--ink); }
+#rich .vditor-ir { min-height: 240px; }
+#rich .vditor-reset { font-size: 1rem; padding: .75rem !important; color: var(--ink); }
+#preview { overflow: auto; padding: .75rem; background: var(--surface); color: var(--ink); font-size: 1rem; }
+#preview img { max-width: 100%; height: auto; }
+#preview pre, #preview table { overflow-x: auto; max-width: 100%; }
+#preview a { color: var(--accent); }
+[hidden] { display: none !important; }

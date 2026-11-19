@@ -3,6 +3,8 @@ dist/
 dist-server/
 public/vendor/vditor/
 data/
+!android/app/src/main/java/io/github/xilele777/snotes/core/data/
+!android/app/src/main/java/io/github/xilele777/snotes/core/data/**
 backups/
 .wrangler/
 .dev.vars
