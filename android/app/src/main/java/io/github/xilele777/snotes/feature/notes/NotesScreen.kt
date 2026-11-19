@@ -5,6 +5,9 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -27,10 +30,11 @@ import io.github.xilele777.snotes.core.database.NoteEntity
 import kotlinx.coroutines.*
 
 @Composable
-fun NotesScreen(onOpen: (String) -> Unit, onPrototype: () -> Unit, model: NotesViewModel = viewModel()) {
+fun NotesScreen(onOpen: (String) -> Unit, onPrototype: () -> Unit, section: String = "home", recovery: String = "", model: NotesViewModel = viewModel()) {
     val filter by model.filter.collectAsStateWithLifecycle()
     val initialized by model.initialized.collectAsStateWithLifecycle()
     val groups by model.groups.collectAsStateWithLifecycle()
+    val structureIds by model.structureIds.collectAsStateWithLifecycle()
     val pending by model.pending.collectAsStateWithLifecycle()
     val sync by model.syncStatus.collectAsStateWithLifecycle()
     val syncFailures by model.syncFailures.collectAsStateWithLifecycle()
@@ -38,6 +42,8 @@ fun NotesScreen(onOpen: (String) -> Unit, onPrototype: () -> Unit, model: NotesV
     val issues by model.issues.collectAsStateWithLifecycle()
     val message by model.message.collectAsStateWithLifecycle()
     val notes = model.pages.collectAsLazyPagingItems()
+    val listState = rememberLazyListState()
+    LaunchedEffect(section) { model.setSection(section) }
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
     val snackbar = remember { SnackbarHostState() }
@@ -46,12 +52,13 @@ fun NotesScreen(onOpen: (String) -> Unit, onPrototype: () -> Unit, model: NotesV
     var groupName by remember { mutableStateOf<String?>(null) }
     var assigning by remember { mutableStateOf<NoteEntity?>(null) }
     var deleting by remember { mutableStateOf<NoteEntity?>(null) }
-    var recovering by remember { mutableStateOf(false) }
-    var connecting by remember { mutableStateOf(false) }
+    var recovering by remember { mutableStateOf(recovery == "drafts") }
+    var connecting by remember { mutableStateOf(recovery == "connect") }
     var serverOrigin by remember { mutableStateOf("") }
     var serverToken by remember { mutableStateOf("") }
     var checkingConnection by remember { mutableStateOf(false) }
-    var showingSyncFailures by remember { mutableStateOf(false) }
+    var showingSyncFailures by remember { mutableStateOf(recovery == "failures") }
+    LaunchedEffect(recovery) { if (recovery == "connect") connecting = true; if (recovery == "drafts") recovering = true; if (recovery == "failures") showingSyncFailures = true }
     val exporter = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("text/markdown")) { uri ->
         val text = model.exportSnapshot; model.exportSnapshot = null
         if (uri != null && text == null) scope.launch { snackbar.showSnackbar("导出已中断，请重新选择导出") }
@@ -74,17 +81,17 @@ fun NotesScreen(onOpen: (String) -> Unit, onPrototype: () -> Unit, model: NotesV
                 Text(stringResource(R.string.version_label, BuildConfig.VERSION_NAME), style = MaterialTheme.typography.labelSmall, modifier = Modifier.padding(top = 12.dp))
             }
             Text("本机笔记 · $pending 项待同步 · ${sync.message}", style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(horizontal = 16.dp))
-            Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp)) {
+            Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 8.dp)) {
                 TextButton(onClick = { connecting = true }, enabled = initialized && !sync.running) { Text("服务端连接") }
                 TextButton(onClick = model::synchronize, enabled = initialized && !sync.running) { Text("立即同步") }
                 if (sync.connected) TextButton(onClick = model::retrySync, enabled = !sync.running) { Text("重试失败") }
                 if (sync.running) TextButton(onClick = model::stopSync) { Text("停止同步") }
             }
-            OutlinedTextField(value = filter.query, onValueChange = { model.filter.value = filter.copy(query = it.take(256)) },
+            if (section == "search") OutlinedTextField(value = filter.query, onValueChange = { model.filter.value = filter.copy(query = it.take(256)) },
                 label = { Text("搜索本机笔记") }, singleLine = true, modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp))
             Text("搜索标题、摘要与本机正文；$missing 篇正文尚未下载", style = MaterialTheme.typography.bodySmall,
                 modifier = Modifier.padding(horizontal = 16.dp), color = MaterialTheme.colorScheme.onSurfaceVariant)
-            Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp)) {
+            Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 8.dp)) {
                 TextButton(onClick = { model.filter.value = filter.copy(trash = false, starred = false) }) { Text(if (!filter.trash && !filter.starred) "● 全部" else "全部") }
                 TextButton(onClick = { model.filter.value = filter.copy(trash = false, starred = true) }) { Text(if (filter.starred) "● 星标" else "星标") }
                 TextButton(onClick = { model.filter.value = filter.copy(trash = true, starred = false) }) { Text(if (filter.trash) "● 回收站" else "回收站") }
@@ -103,14 +110,14 @@ fun NotesScreen(onOpen: (String) -> Unit, onPrototype: () -> Unit, model: NotesV
             if (syncFailures.isNotEmpty()) TextButton(onClick = { showingSyncFailures = true }) { Text("${syncFailures.size} 项同步失败，查看与恢复", color = MaterialTheme.colorScheme.error) }
             if (!initialized) TextButton(onClick = model::retryRecovery) { Text("重试读取本机数据") }
             if (notes.loadState.refresh is LoadState.Error) TextButton(onClick = { model.retryRecovery(); notes.retry() }) { Text("本机读取失败，重试") }
-            LazyColumn(Modifier.weight(1f), contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = 96.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            LazyColumn(Modifier.weight(1f), state = listState, contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = 96.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 if (notes.itemCount == 0 && notes.loadState.refresh !is LoadState.Loading) item {
                     Text(if (!initialized) "正在读取本机笔记…" else if (filter.query.isNotBlank()) "没有本机匹配结果" else if (filter.trash) "回收站为空" else "还没有笔记，点击新建开始写作", modifier = Modifier.padding(vertical = 32.dp))
                 }
                 items(notes.itemCount, key = notes.itemKey { it.id }) { index ->
                     notes[index]?.let { note ->
-                        NoteCard(note, groups.firstOrNull { it.id == note.groupId }?.name, onOpen = { if (!filter.trash) onOpen(note.id) },
-                            onStar = { scope.launch { model.star(note) } }, onGroup = { assigning = note },
+                        NoteCard(note, groups.firstOrNull { it.id == note.groupId }?.name, note.id in structureIds, onOpen = { onOpen(note.id) },
+                            onStar = { scope.launch { model.star(note) } }, onPin = { scope.launch { model.pin(note) } }, onGroup = { assigning = note },
                             onTrash = { if (filter.trash) scope.launch { model.trash(note.id, false) } else deleting = note },
                             onExport = { scope.launch { model.export(note.id)?.let { text ->
                                 model.exportSnapshot = text; exporter.launch("${note.title.ifBlank { "无标题" }.replace(Regex("[\\\\/:*?\"<>|]"), "_")}.md")
@@ -139,7 +146,7 @@ fun NotesScreen(onOpen: (String) -> Unit, onPrototype: () -> Unit, model: NotesV
         dismissButton = { TextButton(onClick = { showingSyncFailures = false }) { Text("关闭") } })
     if (connecting) AlertDialog(onDismissRequest = { if (!checkingConnection) { connecting = false; serverToken = "" } },
         title = { Text("连接服务端") }, text = { Column {
-            Text("首次接入后，立即同步会上传本机笔记。更换实例将在后续版本提供独立数据入口。")
+            Text("首次接入会同步本机笔记。更换服务端会创建独立数据空间；旧实例数据保留，可在设置中切回。")
             OutlinedTextField(serverOrigin, { serverOrigin = it.take(2048) }, label = { Text("服务端 origin（https://…）") }, singleLine = true, enabled = !checkingConnection)
             OutlinedTextField(serverToken, { serverToken = it.take(8192) }, label = { Text("Owner 令牌") }, singleLine = true,
                 visualTransformation = PasswordVisualTransformation(), enabled = !checkingConnection)
@@ -185,7 +192,7 @@ fun NotesScreen(onOpen: (String) -> Unit, onPrototype: () -> Unit, model: NotesV
 }
 
 @Composable
-private fun NoteCard(note: NoteEntity, group: String?, onOpen: () -> Unit, onStar: () -> Unit, onGroup: () -> Unit, onTrash: () -> Unit, onExport: () -> Unit) {
+private fun NoteCard(note: NoteEntity, group: String?, structureAllowed: Boolean, onOpen: () -> Unit, onStar: () -> Unit, onPin: () -> Unit, onGroup: () -> Unit, onTrash: () -> Unit, onExport: () -> Unit) {
     var menu by remember { mutableStateOf(false) }
     Card(Modifier.fillMaxWidth()) {
         Row(Modifier.fillMaxWidth()) {
@@ -199,10 +206,11 @@ private fun NoteCard(note: NoteEntity, group: String?, onOpen: () -> Unit, onSta
                 DropdownMenu(menu, onDismissRequest = { menu = false }) {
                     if (note.invalid == 0) {
                         DropdownMenuItem(text = { Text(if (note.star == 1) "取消星标" else "添加星标") }, onClick = { menu = false; onStar() })
-                        DropdownMenuItem(text = { Text("移动到分组") }, onClick = { menu = false; onGroup() })
+                        DropdownMenuItem(text = { Text(if (note.top == 1) "取消置顶" else "置顶") }, onClick = { menu = false; onPin() })
+                        if (structureAllowed) DropdownMenuItem(text = { Text("移动到分组") }, onClick = { menu = false; onGroup() })
                     }
                     DropdownMenuItem(text = { Text("导出 Markdown") }, onClick = { menu = false; onExport() })
-                    DropdownMenuItem(text = { Text(if (note.invalid == 1) "恢复笔记" else "移到回收站") }, onClick = { menu = false; onTrash() })
+                    if (structureAllowed) DropdownMenuItem(text = { Text(if (note.invalid == 1) "恢复笔记" else "移到回收站") }, onClick = { menu = false; onTrash() })
                 }
             }
         }

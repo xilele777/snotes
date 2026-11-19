@@ -147,7 +147,7 @@ function format(action: string) {
     if (rich) { rich.setValue(escapeRawHtml(migrateLegacyBr(value)), true); session.observeBaseline(rich.getValue()); richTouched = false }
     return
   }
-  const [before, after] = action === 'bold' ? ['**', '**'] : action === 'mark' ? ['==', '=='] : ['# ', '']
+  const [before, after] = ({ bold: ['**', '**'], mark: ['==', '=='], italic: ['*', '*'], code: ['`', '`'], quote: ['> ', ''], task: ['- [ ] ', ''], list: ['- ', ''], heading: ['# ', ''] } as Record<string, string[]>)[action] ?? ['', '']
   if (rich) {
     rich.insertMD(`${before}${rich.getSelection() || '文字'}${after}`)
     richTouched = true
@@ -216,13 +216,26 @@ window.addEventListener('message', event => {
     source.readOnly = message.readOnly
     document.documentElement.dataset.dark = String(message.dark)
     document.documentElement.style.fontSize = `${message.fontSize}px`
-    void changeMode('source')
+    void changeMode(message.readOnly ? 'preview' : 'source')
     session.message('loaded', { revision: 0 })
     return
   }
   const active = session.document
   if (!active || message.sessionId !== active.sessionId || message.noteId !== active.noteId || message.profileId !== active.profileId) return
-  if (message.type === 'flush' && typeof message.requestId === 'string' && message.requestId.length <= 128) {
+  if (message.type === 'replaceMarkdown' && typeof message.markdown === 'string' && message.markdown.length <= 2_000_000 && !active.readOnly && !locked && !composing && !modeTransition) {
+    const markdown = message.markdown
+    void changeMode('source').then(() => { if (session.document?.sessionId !== active.sessionId || locked || composing) return; source.value = markdown; capture(true); source.focus() })
+  } else if (message.type === 'appearance' && typeof message.dark === 'boolean' && typeof message.fontSize === 'number') {
+    document.documentElement.dataset.dark = String(message.dark)
+    document.documentElement.style.fontSize = `${Math.max(12, Math.min(48, message.fontSize))}px`
+  } else if (message.type === 'mode' && ['source', 'preview'].includes(String(message.mode))) void changeMode(message.mode as Mode)
+  else if (message.type === 'insertImage' && typeof message.url === 'string' && /^\/api\/images\/[A-Za-z0-9_-]{1,128}\/[A-Za-z0-9_-]{1,128}\.(jpg|jpeg|png|gif|webp)$/.test(message.url)) {
+    if (locked || composing || modeTransition || mode === 'preview' || active.readOnly) { status('图片已上传；当前编辑状态无法插入，请重新选择图片。'); return }
+    const markdown = `\n![图片](${message.url})\n`
+    if (rich) { rich.insertMD(markdown); richTouched = true }
+    else { source.setRangeText(markdown, source.selectionStart, source.selectionEnd, 'end'); source.focus() }
+    capture(true)
+  } else if (message.type === 'flush' && typeof message.requestId === 'string' && message.requestId.length <= 128) {
     const requestId = message.requestId
     const documentId = active.sessionId
     if (modeTransition) { session.message('flushError', { requestId }); return }
@@ -236,7 +249,7 @@ window.addEventListener('message', event => {
     }, 0)
   } else if (message.type === 'resume') lock(false)
   else if (message.type === 'saved' && typeof message.revision === 'number') {
-    if (session.saved(active.sessionId, message.revision)) status('已保存到本机 · 原型样例，尚未同步')
+    if (session.saved(active.sessionId, message.revision)) status('已保存到本机')
   } else if (message.type === 'saveError') status('保存失败，内容仍保留在编辑器中。请重试或分享正文。')
 })
 updateButtons()

@@ -13,22 +13,34 @@ import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.serialization.json.JsonPrimitive
+import io.github.xilele777.snotes.core.network.Images
+import android.net.Uri
+import android.webkit.WebResourceResponse
+import java.io.ByteArrayInputStream
 
 data class LocalEditorState(
     val initialized: Boolean = false, val loaded: Boolean = false, val busy: Boolean = false,
     val noteId: String = "", val markdown: String = "", val revision: Long = 0,
     val committedRevision: Long = 0, val label: String = "正在读取本地笔记…", val mode: String = "source",
     val failed: Boolean = false,
+    val readOnly: Boolean = false,
     val hostGeneration: Int = 0,
 )
 
 @HiltViewModel
-class LocalEditorViewModel @Inject constructor(private val store: NotesRepository) : ViewModel() {
+class LocalEditorViewModel @Inject constructor(private val store: NotesRepository, private val images: Images) : ViewModel() {
     fun pinEditor(id: String) = store.pinEditor(id)
     fun unpinEditor(id: String) = store.unpinEditor(id)
     private val saves = SaveSession(store, viewModelScope)
     private val mutableState = MutableStateFlow(LocalEditorState())
     val state = mutableState.asStateFlow()
+    val openCount = MutableStateFlow(0L)
+    val history = MutableStateFlow(emptyList<io.github.xilele777.snotes.core.database.HistoryEntity>())
+    suspend fun loadHistory() { history.value = withContext(Dispatchers.IO) { store.database.notes().history(state.value.noteId) } }
+    suspend fun restoreHistory(markdown: String) {
+        if (state.value.readOnly || !flushAndSave()) return
+        key?.let { webView?.send(EditorProtocol.nativeMessage("replaceMarkdown", it, mapOf("markdown" to JsonPrimitive(markdown)))) }
+    }
     private var webReference = WeakReference<EditorWebView>(null)
     val webView: EditorWebView? get() = webReference.get()
     private var key: SessionKey? = null
@@ -64,6 +76,12 @@ class LocalEditorViewModel @Inject constructor(private val store: NotesRepositor
 
     fun attach(view: EditorWebView, isDark: Boolean, textSize: Int) {
         webReference = WeakReference(view)
+        val profileId = store.profileId
+        view.imageResource = { imageKey -> runBlocking {
+            val value = images.read(imageKey, profileId)
+            if (value != null) WebResourceResponse(value.mime, null, ByteArrayInputStream(value.bytes))
+            else WebResourceResponse("image/svg+xml", "UTF-8", ByteArrayInputStream("<svg xmlns='http://www.w3.org/2000/svg' width='300' height='70'><rect width='300' height='70' fill='#eee'/><text x='12' y='40' fill='#555' font-size='16'>图片未缓存，请联网后重新预览</text></svg>".toByteArray()))
+        } }
         dark = isDark
         fontSize = textSize.coerceIn(12, 48)
         val pending = if (key != null && state.value.revision > state.value.committedRevision) snapshot() else null
@@ -83,12 +101,32 @@ class LocalEditorViewModel @Inject constructor(private val store: NotesRepositor
         }
     }
     fun detach(view: EditorWebView) {
+        view.imageResource = null
         if (webView === view) { webReference.clear(); flush?.second?.cancel(); flush = null }
+    }
+    fun appearance(isDark: Boolean, size: Int) {
+        dark = isDark; fontSize = size.coerceIn(12, 48)
+        key?.let { webView?.send(EditorProtocol.nativeMessage("appearance", it, mapOf("dark" to JsonPrimitive(dark), "fontSize" to JsonPrimitive(fontSize)))) }
+    }
+    fun toggleReading() {
+        key?.let { webView?.send(EditorProtocol.nativeMessage("mode", it, mapOf("mode" to JsonPrimitive(if (state.value.mode == "preview") "source" else "preview")))) }
+    }
+    suspend fun upload(uri: Uri): Boolean {
+        val expected = key ?: return false
+        if (!state.value.loaded || state.value.busy || composing || state.value.mode == "preview") return false
+        mutableState.value = state.value.copy(busy = true, label = "正在上传图片…")
+        return try {
+            val url = images.upload(uri, expected.noteId, expected.profileId)
+            if (key != expected) return false
+            webView?.send(EditorProtocol.nativeMessage("insertImage", expected, mapOf("url" to JsonPrimitive(url))))
+            true
+        } catch (failure: Exception) { error(failure.message ?: "图片上传失败，正文已保留"); false }
+        finally { if (key == expected) mutableState.value = state.value.copy(busy = false) }
     }
     private fun sendLoad() {
         val session = key ?: return
         webView?.send(EditorProtocol.nativeMessage("load", session, mapOf(
-            "markdown" to JsonPrimitive(state.value.markdown), "readOnly" to JsonPrimitive(false),
+            "markdown" to JsonPrimitive(state.value.markdown), "readOnly" to JsonPrimitive(state.value.readOnly),
             "dark" to JsonPrimitive(dark), "fontSize" to JsonPrimitive(fontSize),
         )))
     }
@@ -161,10 +199,12 @@ class LocalEditorViewModel @Inject constructor(private val store: NotesRepositor
                 val markdown = withContext(Dispatchers.IO) {
                     store.recover()
                     val note = checkNotNull(store.note(noteId)) { "笔记不存在" }
-                    check(note.invalid == 0) { "请先从回收站恢复笔记" }
+                    check(note.invalid in 0..1) { "笔记已永久删除" }
+                    mutableState.value = state.value.copy(readOnly = note.invalid == 1)
                     checkNotNull(store.body(noteId)) { "正文尚未下载，连接服务端后才能编辑" }
                 }
                 baseline = markdown
+                withContext(Dispatchers.IO) { io.github.xilele777.snotes.core.data.Opens(store).record(noteId); openCount.value = io.github.xilele777.snotes.core.data.Opens(store).count(noteId) }
                 mutableState.value = state.value.copy(initialized = true, markdown = markdown, label = "已保存到本机 · 尚未同步")
             } catch (failure: Exception) { error(failure.message ?: "无法读取本地笔记，数据已保留") }
         }

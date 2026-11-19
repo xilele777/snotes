@@ -17,6 +17,17 @@ import io.github.xilele777.snotes.core.sync.SyncCoordinator
 @HiltViewModel
 class NotesViewModel @Inject constructor(private val repository: NotesRepository, private val sync: SyncCoordinator) : ViewModel() {
     val syncStatus = sync.status
+    val structureIds = readyStructure()
+    private fun readyStructure() = repository.structureIds.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+    val books = repository.database.notes().observeBooks().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+    val tocs = repository.database.notes().observeTocs().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+    suspend fun noteTitle(id: String): Pair<String, Boolean> = withContext(Dispatchers.IO) {
+        val note = repository.note(id)
+        (note?.title?.ifBlank { "无标题" } ?: "笔记未下载") to (note?.invalid == 0 && repository.body(id) != null)
+    }
+    fun profiles() = sync.profiles()
+    suspend fun origin() = sync.origin()
+    suspend fun switchProfile(id: String): Boolean = attempt { sync.switchProfile(id); true } ?: false
     suspend fun connect(origin: String, token: String): Boolean = attempt { sync.connect(origin, token); true } ?: false
     fun synchronize() { viewModelScope.launch { sync.synchronize() } }
     fun retrySync() { viewModelScope.launch { sync.retry() } }
@@ -24,6 +35,13 @@ class NotesViewModel @Inject constructor(private val repository: NotesRepository
     private val ready = MutableStateFlow(false)
     val initialized = ready.asStateFlow()
     val filter = MutableStateFlow(NoteFilter())
+    private val savedFilters = mutableMapOf<String, NoteFilter>()
+    private var activeSection = "home"
+    fun setSection(section: String) {
+        savedFilters[activeSection] = filter.value
+        activeSection = section
+        filter.value = savedFilters[section] ?: NoteFilter(trash = section == "trash")
+    }
     private val mutableMessage = MutableStateFlow<String?>(null)
     val message = mutableMessage.asStateFlow()
     // Keep the export snapshot through Activity recreation without putting a
@@ -57,6 +75,7 @@ class NotesViewModel @Inject constructor(private val repository: NotesRepository
     suspend fun create(): String? = attempt { repository.create(groupId = filter.value.groupId).id }
     suspend fun createGroup(name: String): String? = attempt { repository.createGroup(name).id }
     suspend fun star(note: NoteEntity) = attempt { repository.updateProps(note.id, buildJsonObject { put("star", 1 - note.star) }) }
+    suspend fun pin(note: NoteEntity) = attempt { repository.updateProps(note.id, buildJsonObject { put("top", 1 - note.top) }) }
     suspend fun assignGroup(noteId: String, groupId: String?) = attempt { repository.updateProps(noteId, buildJsonObject { put("group_id", groupId) }) }
     suspend fun trash(noteId: String, trash: Boolean): Boolean = attempt { repository.setTrash(noteId, trash); true } ?: false
     suspend fun export(noteId: String): String? = attempt { repository.export(noteId) }
