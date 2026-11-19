@@ -16,3 +16,4 @@ dependencyResolutionManagement {
 
 rootProject.name = "snotes-android"
 include(":app")
+include(":benchmark")
