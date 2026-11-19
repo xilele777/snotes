@@ -26,6 +26,9 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
       # bash also works for a checkout created on Windows without an executable bit.
       - run: bash android/gradlew -p android :app:testDebugUnitTest :app:lintDebug :app:assembleDebug --console plain
+      # Run shrinking after lint, so separate variants do not contend in lint's Kotlin analysis.
+      # No production key is available in this verification job; the release APK stays unsigned.
+      - run: bash android/gradlew -p android :app:assembleRelease --console plain --max-workers=2
       - uses: actions/upload-artifact@v4
         if: always()
         with:
