@@ -2,6 +2,7 @@ package io.github.xilele777.snotes.feature.notes
 
 import android.content.Intent
 import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.compose.ReportDrawnWhen
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -42,6 +43,7 @@ fun NotesScreen(onOpen: (String) -> Unit, onPrototype: () -> Unit, section: Stri
     val issues by model.issues.collectAsStateWithLifecycle()
     val message by model.message.collectAsStateWithLifecycle()
     val notes = model.pages.collectAsLazyPagingItems()
+    ReportDrawnWhen { initialized && notes.loadState.refresh is LoadState.NotLoading && notes.loadState.source.refresh is LoadState.NotLoading }
     val listState = rememberLazyListState()
     LaunchedEffect(section) { model.setSection(section) }
     val scope = rememberCoroutineScope()

@@ -4,6 +4,9 @@ import android.content.Intent
 import android.widget.Toast
 import androidx.core.net.toUri
 import androidx.activity.compose.BackHandler
+import androidx.activity.compose.ReportDrawnWhen
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.contentDescription
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
@@ -27,6 +30,7 @@ import kotlinx.coroutines.launch
 @Composable
 fun LocalEditorScreen(noteId: String, onBack: () -> Unit, font: Int = 16, isDark: Boolean = isSystemInDarkTheme(), onExitReady: ((suspend () -> Boolean)?) -> Unit = {}, model: LocalEditorViewModel = viewModel()) {
     val state by model.state.collectAsStateWithLifecycle()
+    ReportDrawnWhen { state.loaded || state.failed }
     val openCount by model.openCount.collectAsStateWithLifecycle()
     val history by model.history.collectAsStateWithLifecycle()
     var showingHistory by remember { mutableStateOf(false) }
@@ -74,7 +78,8 @@ fun LocalEditorScreen(noteId: String, onBack: () -> Unit, font: Int = 16, isDark
                 color = if (state.failed) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
                 style = MaterialTheme.typography.bodySmall)
             Row {
-                TextButton(onClick = model::toggleReading, enabled = state.loaded && !state.busy) { Text(if (state.mode == "preview") "编辑" else "阅读") }
+                TextButton(onClick = model::toggleReading, enabled = state.loaded && !state.busy,
+                    modifier = Modifier.semantics { contentDescription = if (state.loaded) "编辑器已就绪" else "编辑器正在加载" }) { Text(if (state.mode == "preview") if (state.readOnly) "源码" else "编辑" else "阅读") }
                 if (!state.readOnly) TextButton(onClick = { picker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) }, enabled = state.loaded && !state.busy && state.mode != "preview") { Text("插入图片") }
                 TextButton(onClick = { scope.launch { model.loadHistory(); showingHistory = true } }, enabled = state.loaded) { Text("历史") }
             }

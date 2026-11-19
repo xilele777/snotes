@@ -93,7 +93,7 @@ class MainActivity : ComponentActivity() {
             val dark = look.theme == "dark" || look.theme == "system" && isSystemInDarkTheme()
             SnotesTheme(dark) {
                 var prototype by rememberSaveable { mutableStateOf(false) }
-                var noteId by rememberSaveable(profile.paths.id) { mutableStateOf<String?>(null) }
+                var noteId by rememberSaveable(profile.paths.id) { mutableStateOf(incomingNote.value) }
                 var tab by rememberSaveable { mutableStateOf("home") }
                 var recovery by rememberSaveable { mutableStateOf("") }
                 val incoming by incomingNote.collectAsStateWithLifecycle()
