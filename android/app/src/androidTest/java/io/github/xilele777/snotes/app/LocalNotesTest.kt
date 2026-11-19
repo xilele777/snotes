@@ -26,7 +26,7 @@ class LocalNotesTest {
     private lateinit var model: LocalEditorViewModel
     private val repository get() = EntryPointAccessors.fromApplication(compose.activity.application, TestRepositoryAccess::class.java).repository()
     @Before fun resetFilter() {
-        compose.runOnIdle { ViewModelProvider(compose.activity)[NotesViewModel::class.java].filter.value = NoteFilter() }
+        compose.runOnIdle { ViewModelProvider(compose.activity).get("notes-${repository.profileId}", NotesViewModel::class.java).filter.value = NoteFilter() }
     }
     private fun create() {
         compose.onNodeWithText("新建", useUnmergedTree = true).performClick()
@@ -56,15 +56,16 @@ class LocalNotesTest {
         assertEquals(markdown, repository.export(id)); assertNotNull(repository.note(id)!!.groupId)
         compose.onNodeWithContentDescription("笔记操作：$title").performClick()
         compose.onNodeWithText("添加星标").performClick(); titleReady("★ $title")
+        compose.onNodeWithText("搜索", substring = false).performClick()
         compose.onNodeWithText("搜索本机笔记").performTextInput("中文搜索验收")
         titleReady("★ $title")
         compose.onNodeWithContentDescription("笔记操作：$title").performClick()
         compose.onNodeWithText("移到回收站").performClick()
         compose.onNodeWithText("移到回收站", substring = false).performClick()
-        compose.onNodeWithText("回收站", substring = false).performClick(); titleReady("★ $title")
+        compose.onAllNodesWithText("回收站", substring = false).onLast().performClick(); titleReady("★ $title")
         compose.onNodeWithContentDescription("笔记操作：$title").performClick()
         compose.onNodeWithText("恢复笔记").performClick()
-        compose.onNodeWithText("全部", substring = true).performClick(); titleReady("★ $title")
+        compose.onNodeWithText("首页", substring = false).performClick(); titleReady("★ $title")
         assertEquals(0, repository.note(id)!!.invalid); assertEquals(1, repository.note(id)!!.star)
         assertEquals(markdown, repository.body(id))
         assertNotNull(repository.database.notes().task("note", id, "recover")); assertNull(repository.database.notes().task("note", id, "trash"))

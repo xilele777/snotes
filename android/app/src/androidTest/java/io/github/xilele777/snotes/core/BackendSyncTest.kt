@@ -24,6 +24,40 @@ import org.junit.runner.RunWith
 /** Opt-in only. Fixed loopback ports and a test token cannot target a production account. */
 @RunWith(AndroidJUnit4::class)
 class BackendSyncTest {
+    @Test fun notebookMutationAndReplayContract() = runBlocking {
+        val target = InstrumentationRegistry.getArguments().getString("m3Backend")
+        Assume.assumeTrue(target == "node" || target == "worker")
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val database = Room.inMemoryDatabaseBuilder(context, NotesDatabase::class.java).build()
+        val repository = NotesRepository(database, "book-backend", File(context.cacheDir, "book-backend-${UUID.randomUUID()}"))
+        val store = SyncStore(repository); val books = io.github.xilele777.snotes.core.data.BookRepository(repository)
+        val client = ApiClient(instanceOrigin("http://10.0.2.2:${if (target == "node") 18787 else 18788}", true), "android-m3-test-token")
+        suspend fun sync() = SyncEngine(store, client).run()
+        try {
+            sync()
+            val note = repository.create("Android notebook owned body")
+            val book = books.create("First notebook", nodes = listOf(TocNodeDto(UUID.randomUUID().toString(), null, "note", 0, note.id, null)))
+            sync(); assertEquals(note.id, client.call { toc(book) }.toc.nodes.single().noteId)
+            assertTrue(store.dao.tasks().isEmpty())
+            val base = books.remote(book)!!
+            client.call { patchBook(book, store.meta("accepted_epoch")!!, buildJsonObject {
+                put("operation_id", UUID.randomUUID().toString()); put("base_meta_version", base.book.metaVersion); put("name", "Web changed")
+                put("description", ""); put("icon", ""); put("ord", 0); put("invalid", 0)
+            }) }
+            books.editMeta(book, "Android changed", "local draft"); sync()
+            assertEquals(1, store.dao.task("book", book, "meta")!!.failed); assertEquals("Android changed", books.desired(book)!!.book.name)
+            books.resolve(book, true); sync(); assertEquals("Android changed", client.call { toc(book) }.book.name)
+            repository.setBookNoteTrash(note.id, book, true); sync(); assertEquals(1, repository.note(note.id)!!.invalid)
+            repository.setBookNoteTrash(note.id, book, false); sync(); assertEquals(0, repository.note(note.id)!!.invalid)
+            val replayBook = books.create("Before lost ACK")
+            val sent = books.prepare(store.dao.task("book", replayBook, "create")!!)!!
+            client.call { createBook(store.meta("accepted_epoch")!!, sent.payload) } // Accepted; deliberately omit local ACK.
+            books.editMeta(replayBook, "After lost ACK", "successor")
+            sync(); sync(); assertEquals("After lost ACK", client.call { toc(replayBook) }.book.name)
+            books.deletePermanently(book, "Android changed"); sync()
+            assertEquals(1, client.call { toc(book) }.book.deleted); assertNull(repository.note(note.id))
+        } finally { client.close(); database.close() }
+    }
     @Test fun realBackendContract() = runBlocking {
         val target = InstrumentationRegistry.getArguments().getString("m3Backend")
         Assume.assumeTrue(target == "node" || target == "worker")
