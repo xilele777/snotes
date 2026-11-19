@@ -100,10 +100,10 @@ class ApiClient(origin: HttpUrl, token: String, private val clock: () -> Long = 
     fun close() { http.dispatcher.cancelAll(); http.connectionPool.evictAll() }
 }
 
-private val integerFields = setOf("version", "prop_version", "meta_version", "toc_version", "change_seq", "update_time", "create_time", "server_time", "until", "next_after", "ord", "star", "top", "invalid", "deleted", "hide_from_home", "home_hidden", "trash_retention_days")
+private val integerFields = setOf("version", "prop_version", "meta_version", "toc_version", "change_seq", "update_time", "create_time", "server_time", "until", "next_after", "ord", "star", "top", "invalid", "deleted", "hide_from_home", "home_hidden", "trash_retention_days", "exported_at", "format", "time", "count", "last_open_time", "others_count", "others_last_open_time")
 private val booleanFields = setOf("valid", "conflicted", "replayed")
 private val nullableIntegerFields = setOf("next_after", "home_hidden", "trash_retention_days")
-private fun validateWire(value: JsonElement) {
+internal fun validateWire(value: JsonElement) {
     when (value) {
         is JsonArray -> value.forEach(::validateWire)
         is JsonObject -> value.forEach { (key, child) ->

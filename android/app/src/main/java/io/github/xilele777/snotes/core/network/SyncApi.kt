@@ -7,6 +7,8 @@ import kotlinx.serialization.EncodeDefault
 import kotlinx.serialization.ExperimentalSerializationApi
 import kotlinx.serialization.json.JsonObject
 import okhttp3.ResponseBody
+import okhttp3.MultipartBody
+import okhttp3.RequestBody
 import retrofit2.Response
 import retrofit2.http.*
 
@@ -63,9 +65,20 @@ fun safeId(value: String) { require(value.matches(Regex("[A-Za-z0-9_-]{1,128}"))
 @Serializable data class BookRemoteDto(val book: BookDto, val toc: TocDto,
     @SerialName("note_states") val noteStates: Map<String, String>,
     @SerialName("deleted_note_ids") val deletedNoteIds: List<String> = emptyList())
+@Serializable data class ImageUploadDto(@SerialName("file_key") val fileKey: String, val url: String, val size: Long, val mime: String)
+@Serializable data class BookAckDto(@SerialName("meta_version") val metaVersion: Long, @SerialName("toc_version") val tocVersion: Long, @SerialName("update_time") val updateTime: Long) {
+    init { listOf(metaVersion, tocVersion, updateTime).forEach(::safeNumber) }
+}
 
 /** Mutations always require an epoch argument; reads never silently substitute /health for authentication. */
 interface SyncApi {
+    @POST("api/notes/opens") suspend fun opens(@Header("X-Snotes-Epoch") epoch: String, @Body request: io.github.xilele777.snotes.core.data.OpenRequest): Response<io.github.xilele777.snotes.core.data.OpenResponse>
+    @POST("api/knowledge-bases") suspend fun createBook(@Header("X-Snotes-Epoch") epoch: String, @Body payload: JsonObject): Response<BookAckDto>
+    @PATCH("api/knowledge-bases/{id}") suspend fun patchBook(@Path("id") id: String, @Header("X-Snotes-Epoch") epoch: String, @Body payload: JsonObject): Response<BookAckDto>
+    @PUT("api/knowledge-bases/{id}/toc") suspend fun putToc(@Path("id") id: String, @Header("X-Snotes-Epoch") epoch: String, @Body payload: JsonObject): Response<BookAckDto>
+    @POST("api/knowledge-bases/{id}/delete") suspend fun deleteBook(@Path("id") id: String, @Header("X-Snotes-Epoch") epoch: String, @Body payload: JsonObject): Response<BookRemoteDto>
+    @Multipart @POST("api/images/upload") suspend fun uploadImage(@Header("X-Snotes-Epoch") epoch: String,
+        @Part file: MultipartBody.Part, @Part("note_id") noteId: RequestBody): Response<ImageUploadDto>
     @GET("api/sync/instance") suspend fun instance(): Response<InstanceDto>
     @POST("api/sync/checkpoint") suspend fun checkpoint(@Body request: CheckpointRequest): Response<CheckpointDto>
     @POST("api/knowledge-bases/sync/checkpoint") suspend fun booksCheckpoint(@Body request: CheckpointRequest): Response<CheckpointDto>

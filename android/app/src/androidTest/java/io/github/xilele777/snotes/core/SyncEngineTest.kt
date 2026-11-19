@@ -155,7 +155,7 @@ class SyncEngineTest {
         remote.hook = { request -> if (request.path == "/api/notes") { entered.countDown(); check(release.await(3, TimeUnit.SECONDS)); null } else null }
         val connectionStore = ConnectionStore("test", directory)
         connectionStore.write(Connection(server.url("/").toString(), "test-token")); store.put("instance_origin", server.url("/").toString())
-        val coordinator = SyncCoordinator(repository, connectionStore)
+        val coordinator = SyncCoordinator(repository, connectionStore, io.github.xilele777.snotes.core.database.LocalProfile(context), context)
         val first = launch { coordinator.synchronize() }
         assertTrue(withContext(Dispatchers.IO) { entered.await(3, TimeUnit.SECONDS) })
         val second = async { coordinator.synchronize() }

@@ -20,20 +20,34 @@ data class RecoveryReport(val recovered: Int, val issues: List<RecoveryIssue>)
 data class SyncFailure(val task: TaskEntity, val title: String)
 
 @Singleton
-class NotesRepository(val database: NotesDatabase, val profileId: String, private val draftDirectory: File,
+class NotesRepository(private val fixedDatabase: NotesDatabase, private val fixedProfileId: String, private val fixedDraftDirectory: File,
     private val clock: () -> Long = System::currentTimeMillis) : DraftStore {
-    @Inject constructor(profile: LocalProfile) : this(profile.database, profile.paths.id, profile.paths.drafts)
-    private val dao = database.notes()
-    private val journal = DraftJournal(draftDirectory)
+    @Inject constructor(profile: LocalProfile) : this(profile.database, profile.paths.id, profile.paths.drafts) { liveProfile = profile }
+    private var liveProfile: LocalProfile? = null
+    val database get() = liveProfile?.database ?: fixedDatabase
+    val profileId get() = liveProfile?.paths?.id ?: fixedProfileId
+    private val draftDirectory get() = liveProfile?.paths?.drafts ?: fixedDraftDirectory
+    private val dao get() = database.notes()
+    private val journal get() = DraftJournal(draftDirectory)
+    @Synchronized fun switchProfile(id: String) {
+        check(activeEditors.isEmpty()) { "请先返回列表并保存正文，再更换实例" }
+        check(recover().issues.isEmpty()) { "还有未恢复草稿，请先另存或导出" }
+        checkNotNull(liveProfile).switchTo(id)
+    }
+    fun canChangeStructure(id: String): Boolean = (dao.meta("instance_origin") == null ||
+        dao.task("note", id, "create") != null || dao.meta("books_initialized") == "1" && dao.meta("reconcile_books") == null) &&
+        dao.books().none { book -> dao.toc(book.id).any { it.noteId == id } }
+    val structureIds get() = dao.structureIds()
+    fun requestSync() { liveProfile?.requestSync() }
     private val activeEditors = mutableSetOf<String>()
     @Synchronized fun pinEditor(id: String) { activeEditors.add(id) }
-    @Synchronized fun unpinEditor(id: String) { activeEditors.remove(id) }
+    @Synchronized fun unpinEditor(id: String) { activeEditors.remove(id); requestSync() }
     @Synchronized fun editorActive(id: String) = id in activeEditors
     val groups get() = dao.groups()
     val pendingCount get() = dao.pendingCount()
     val missingBodyCount get() = dao.missingBodyCount()
     val syncFailures get() = dao.failedTasks().map { tasks -> withContext(Dispatchers.IO) {
-        tasks.map { SyncFailure(it, (if (it.entityType == "note") dao.note(it.entityId)?.title else dao.group(it.entityId)?.name).orEmpty().ifBlank { "无标题" }) }
+        tasks.map { SyncFailure(it, (when (it.entityType) { "note" -> dao.note(it.entityId)?.title; "book" -> dao.books().firstOrNull { book -> book.id == it.entityId }?.name; else -> dao.group(it.entityId)?.name }).orEmpty().ifBlank { "无标题" }) }
     } }
     @Synchronized fun saveFailedAsCopy(taskId: Long): NoteEntity = database.runInTransaction<NoteEntity> {
         val task = checkNotNull(dao.taskById(taskId)) { "同步任务已处理" }
@@ -79,12 +93,13 @@ class NotesRepository(val database: NotesDatabase, val profileId: String, privat
             createIn(markdown, groupId)
         }
     }
-    private fun createIn(markdown: String, groupId: String?): NoteEntity {
+    private fun createIn(markdown: String, groupId: String?, id: String = UUID.randomUUID().toString(), createTime: Long? = null): NoteEntity {
         val fields = derive(markdown)
-        val now = clock()
-        val note = NoteEntity(UUID.randomUUID().toString(), groupId, fields.title, fields.summary, fields.thumbnail,
+        val now = createTime ?: clock()
+        val note = NoteEntity(id, groupId, fields.title, fields.summary, fields.thumbnail,
             createTime = now, updateTime = now)
         dao.putNote(note); dao.putBody(BodyEntity(note.id, markdown))
+        dao.putMeta(SyncMetaEntity("open_unknown:${note.id}", "1"))
         enqueue(note.id, "create", buildJsonObject {
             put("id", note.id); put("create_time", now); put("content", markdown)
             put("title", fields.title); put("summary", fields.summary); put("thumbnail", fields.thumbnail)
@@ -92,12 +107,28 @@ class NotesRepository(val database: NotesDatabase, val profileId: String, privat
         })
         return note
     }
+    fun importNote(id: String, markdown: String, groupId: String?, createTime: Long, props: JsonObject, trash: Boolean) {
+        check(database.inTransaction()); io.github.xilele777.snotes.core.network.safeId(id)
+        require(noteFits(markdown)); require(dao.note(id) == null)
+        createIn(markdown, groupId, id, createTime)
+        updateProps(id, props)
+        if (trash) setTrash(id, true)
+    }
     @Synchronized fun createGroup(name: String): GroupEntity = database.runInTransaction<GroupEntity> {
-        require(name.trim().isNotEmpty() && name.trim().length <= 64) { "分组名称应为 1–64 个字符" }
+        require(name.trim().isNotEmpty() && name.trim().length <= 100) { "分组名称应为 1–100 个字符" }
         val group = GroupEntity(UUID.randomUUID().toString(), name.trim())
         dao.putGroup(group)
         enqueue(group.id, "create", buildJsonObject { put("id", group.id); put("name", group.name); put("sort", 0); put("color", JsonNull); put("home_hidden", 0) }, "group")
         group
+    }
+    fun importGroup(name: String, ord: Int, color: String?, hidden: Int): String {
+        check(database.inTransaction())
+        val existing = dao.allGroups().firstOrNull { it.invalid == 0 && it.name == name }
+        if (existing != null) return existing.id
+        val created = createGroup(name)
+        dao.putGroup(created.copy(sort = ord, color = color, homeHidden = hidden))
+        enqueue(created.id, "create", buildJsonObject { put("id", created.id); put("name", name); put("sort", ord); put("color", color); put("home_hidden", hidden) }, "group")
+        return created.id
     }
     /** Only supplied fields enter the prop task. Null is a deliberate reset. */
     @Synchronized fun updateProps(id: String, props: JsonObject) {
@@ -105,6 +136,7 @@ class NotesRepository(val database: NotesDatabase, val profileId: String, privat
         if (props.isEmpty()) return
         database.runInTransaction {
             val note = checkNotNull(dao.note(id)) { "笔记不存在" }
+            if ("group_id" in props) check(canChangeStructure(id)) { "笔记目录归属未知或被笔记本引用，不能移动" }
             fun bit(name: String, fallback: Int): Int = if (name in props) {
                 val value = (props[name] as? JsonPrimitive)?.takeUnless { it.isString }?.intOrNull
                 require(value == 0 || value == 1); checkNotNull(value)
@@ -125,6 +157,16 @@ class NotesRepository(val database: NotesDatabase, val profileId: String, privat
     }
     @Synchronized fun setTrash(id: String, trash: Boolean) = database.runInTransaction {
         val note = checkNotNull(dao.note(id)) { "笔记不存在" }
+        check(canChangeStructure(id)) { "笔记目录归属未知或被笔记本引用，请在笔记本管理中处理" }
+        trashIn(note, trash)
+    }
+    @Synchronized fun setBookNoteTrash(id: String, bookId: String, trash: Boolean) = database.runInTransaction {
+        check(dao.books().any { it.id == bookId } && dao.toc(bookId).any { it.noteId == id }) { "目录引用已变化，请刷新" }
+        val note = checkNotNull(dao.note(id)) { "引用笔记已永久删除或尚未下载" }
+        trashIn(note, trash)
+    }
+    private fun trashIn(note: NoteEntity, trash: Boolean) {
+        val id = note.id
         dao.putNote(note.copy(invalid = if (trash) 1 else 0, updateTime = clock(), dirty = bump(note.dirty, "prop")))
         dao.deleteTask("note", id, if (trash) "recover" else "trash")
         enqueue(id, if (trash) "trash" else "recover", buildJsonObject {})
@@ -133,6 +175,7 @@ class NotesRepository(val database: NotesDatabase, val profileId: String, privat
         val previous = dao.task(type, id, kind)
         dao.putTask(TaskEntity(id = previous?.id ?: 0, entityType = type, entityId = id, kind = kind,
             payload = payload.toString(), seq = (previous?.seq ?: 0) + 1))
+        liveProfile?.requestSync()
     }
     private fun bump(current: String, add: String) = if (current == "both" || current !in setOf("clean", "none", add)) "both" else add
 

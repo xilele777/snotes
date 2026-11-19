@@ -2,4 +2,5 @@
 <resources>
     <string name="app_name">snotes</string>
     <string name="version_label">版本 %1$s</string>
+    <string name="widget_description">快速新建和打开本机最近笔记</string>
 </resources>

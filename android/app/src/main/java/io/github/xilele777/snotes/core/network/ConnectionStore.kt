@@ -20,10 +20,13 @@ class Connection(val origin: String, val token: String) { override fun toString(
 @Serializable private data class StoredConnection(val origin: String, val token: String)
 
 @Singleton
-class ConnectionStore(private val profileId: String, private val directory: File) {
-    @Inject constructor(profile: LocalProfile) : this(profile.paths.id, profile.paths.directory)
-    private val file = AtomicFile(File(directory, "connection.enc"))
-    private val alias = "snotes-token-$profileId"
+class ConnectionStore(private val fixedProfileId: String, private val fixedDirectory: File) {
+    @Inject constructor(profile: LocalProfile) : this(profile.paths.id, profile.paths.directory) { liveProfile = profile }
+    private var liveProfile: LocalProfile? = null
+    private val profileId get() = liveProfile?.paths?.id ?: fixedProfileId
+    private val directory get() = liveProfile?.paths?.directory ?: fixedDirectory
+    private val file get() = AtomicFile(File(directory, "connection.enc"))
+    private val alias get() = "snotes-token-$profileId"
     private fun key(create: Boolean): SecretKey {
         val store = KeyStore.getInstance("AndroidKeyStore").apply { load(null) }
         (store.getKey(alias, null) as? SecretKey)?.let { return it }

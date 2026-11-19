@@ -6,6 +6,16 @@ import kotlinx.coroutines.flow.Flow
 
 @Dao
 interface NotesDao {
+    @Query("SELECT * FROM notes WHERE invalid = 0 AND (:query = '' OR instr(lower(title), lower(:query)) > 0) ORDER BY update_time DESC LIMIT 50") fun selectNotes(query: String): List<NoteEntity>
+    @Query("SELECT * FROM sync_meta WHERE `key` LIKE :prefix || '%'") fun observeMetas(prefix: String): Flow<List<SyncMetaEntity>>
+    @Query("SELECT * FROM notes WHERE invalid = 0 ORDER BY top DESC, update_time DESC LIMIT 5") fun recent(): List<NoteEntity>
+    @Query("SELECT id FROM notes WHERE (NOT EXISTS (SELECT 1 FROM sync_meta WHERE `key` = 'instance_origin') OR EXISTS (SELECT 1 FROM outbox WHERE entity_id = notes.id AND entity_type = 'note' AND kind = 'create') OR (EXISTS (SELECT 1 FROM sync_meta WHERE `key` = 'books_initialized' AND value = '1') AND NOT EXISTS (SELECT 1 FROM sync_meta WHERE `key` = 'reconcile_books'))) AND NOT EXISTS (SELECT 1 FROM tocs WHERE note_id = notes.id)")
+    fun structureIds(): Flow<List<String>>
+    @Query("SELECT * FROM knowledge_bases ORDER BY name, id") fun observeBooks(): Flow<List<KnowledgeBaseEntity>>
+    @Query("SELECT * FROM tocs") fun observeTocs(): Flow<List<TocEntity>>
+    @Query("SELECT * FROM note_states WHERE note_id = :id") fun noteState(id: String): NoteStateEntity?
+    @Query("SELECT * FROM images WHERE file_key = :key") fun image(key: String): ImageEntity?
+    @Upsert fun putImage(image: ImageEntity)
     @Query("SELECT * FROM notes WHERE id = :id") fun note(id: String): NoteEntity?
     @Query("SELECT * FROM bodies WHERE note_id = :id") fun body(id: String): BodyEntity?
     @Query("SELECT * FROM notes WHERE invalid = :invalid AND (:starOnly = 0 OR star = 1) AND (:groupId IS NULL OR group_id = :groupId) AND (:query = '' OR instr(lower(title), lower(:query)) > 0 OR instr(lower(summary), lower(:query)) > 0 OR EXISTS (SELECT 1 FROM bodies WHERE note_id = notes.id AND instr(lower(markdown), lower(:query)) > 0)) ORDER BY top DESC, update_time DESC, id ASC")

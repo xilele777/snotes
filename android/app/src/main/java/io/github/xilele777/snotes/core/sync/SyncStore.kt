@@ -14,7 +14,7 @@ import kotlinx.serialization.json.*
 
 /** Network code never owns a Room transaction. Every application/ACK shares the editor's stage lock. */
 class SyncStore(val repository: NotesRepository, private val clock: () -> Long = System::currentTimeMillis) {
-    val dao = repository.database.notes()
+    val dao get() = repository.database.notes()
     fun <T> transaction(block: () -> T): T = repository.syncTransaction(block)
     fun meta(key: String) = dao.meta(key)
     fun number(key: String) = meta(key)?.toLongOrNull() ?: 0L
@@ -40,6 +40,7 @@ class SyncStore(val repository: NotesRepository, private val clock: () -> Long =
         page.notes.forEach { remote ->
             if (remote.invalid == 2) { tombstoneIn(remote.id, false); return@forEach }
             val local = dao.note(remote.id)
+            if (local == null) put("open_unknown:${remote.id}", "1")
             val pendingBody = protectedBody(remote.id)
             val pendingProp = propPending(remote.id)
             val base = local ?: remote.entity()

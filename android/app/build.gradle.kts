@@ -59,6 +59,12 @@ android {
             isShrinkResources = true
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
         }
+        create("benchmark") {
+            initWith(getByName("release"))
+            applicationIdSuffix = ".benchmark"
+            signingConfig = signingConfigs.getByName("debug")
+            matchingFallbacks += "release"
+        }
     }
     buildFeatures {
         compose = true
@@ -72,6 +78,18 @@ android {
         getByName("test").resources.directories.add("../../shared/fixtures/android-sync")
     }
     packaging.resources.excludes += "/META-INF/{AL2.0,LGPL2.1}"
+}
+
+// Signing material comes only from the operator's environment, never source control.
+val signingPath = providers.environmentVariable("SNOTES_KEYSTORE").orNull
+if (signingPath != null) {
+    android.signingConfigs.create("production") {
+        storeFile = file(signingPath)
+        storePassword = providers.environmentVariable("SNOTES_STORE_PASSWORD").get()
+        keyAlias = providers.environmentVariable("SNOTES_KEY_ALIAS").get()
+        keyPassword = providers.environmentVariable("SNOTES_KEY_PASSWORD").get()
+    }
+    android.buildTypes.getByName("release").signingConfig = android.signingConfigs.getByName("production")
 }
 
 kotlin {
@@ -105,6 +123,8 @@ androidComponents.onVariants { variant ->
 tasks.named("preBuild") { dependsOn(buildEditorAssets) }
 
 dependencies {
+    implementation(libs.work.runtime)
+    implementation(libs.glance.appwidget)
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.activity.compose)
     implementation(platform(libs.compose.bom))
