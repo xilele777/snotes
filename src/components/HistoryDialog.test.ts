@@ -27,7 +27,7 @@ describe('HistoryDialog', () => {
     const wrapper = mount(HistoryDialog, { props: { open: true, note }, attachTo: document.body })
     await flushPromises()
 
-    const dialog = document.querySelector<HTMLElement>('[role="dialog"][aria-label="历史版本"]')!
+    const dialog = document.querySelector<HTMLElement>('dialog[aria-label="历史版本"]')!
     expect(dialog.textContent).toContain('1 条')
     const items = document.querySelectorAll('.history-item')
     expect(items).toHaveLength(1)
@@ -65,7 +65,7 @@ describe('HistoryDialog', () => {
     const wrapper = mount(HistoryDialog, { props: { open: true, note }, attachTo: document.body })
     await flushPromises()
     document.querySelector<HTMLButtonElement>('.history-dialog .dialog-btn.ok')!.click()
-    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }))
+    document.querySelector<HTMLDialogElement>('dialog')!.close()
     expect(wrapper.emitted('close')).toHaveLength(2)
     await wrapper.setProps({ open: false })
     expect(document.querySelector('.history-dialog')).toBeNull()

@@ -15,6 +15,7 @@ import AppIcon from './AppIcon.vue'
 import ActionMenu from './ActionMenu.vue'
 import EditorLoading from './EditorLoading.vue'
 import NoteSaveStatus from './NoteSaveStatus.vue'
+import type { LightboxImage } from '../editor/lightbox-image'
 import ImageLightbox from './ImageLightbox.vue'
 import { SKIN_COLORS } from './palette'
 import { copyMarkdown, downloadMarkdown, shareMarkdown } from '../export/share'
@@ -358,10 +359,10 @@ async function onRestoreHistory(body: string) {
 
 /** 图片灯箱状态 */
 const lightboxOpen = ref(false)
-const lightboxImages = ref<string[]>([])
+const lightboxImages = ref<LightboxImage[]>([])
 const lightboxIndex = ref(0)
 
-function openLightbox(images: string[], index: number) {
+function openLightbox(images: LightboxImage[], index: number) {
   lightboxImages.value = images
   lightboxIndex.value = index
   lightboxOpen.value = true
@@ -407,7 +408,7 @@ async function runShare() {
 </script>
 
 <template>
-  <main ref="editorPane" class="editor-pane">
+  <div ref="editorPane" class="editor-pane">
     <div v-if="notes.current" class="editor-top-bar">
       <button type="button" class="icon-button list-visibility-toggle" :title="preferences.listCollapsed ? '展开笔记列表' : '收起笔记列表'" :aria-label="preferences.listCollapsed ? '展开笔记列表' : '收起笔记列表'" :aria-expanded="!preferences.listCollapsed" aria-controls="workspace-list" @click="updateWorkspacePreferences({ listCollapsed: !preferences.listCollapsed })"><AppIcon name="listPanel" :size="18" /></button>
       <!-- 移动端返回按钮，仅 <720px 显示 -->
@@ -642,7 +643,7 @@ async function runShare() {
       :initial-index="lightboxIndex"
       @close="closeLightbox"
     />
-  </main>
+  </div>
 </template>
 
 <style scoped>

@@ -1,14 +1,11 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
-import { useDialogFocus } from './useDialogFocus'
+import { computed } from 'vue'
+import NativeDialog from './NativeDialog.vue'
 import { fmtFull, fmtRelative } from '../format'
 import type { LocalNote } from '../../shared/types'
 
 const props = defineProps<{ open: boolean; note: LocalNote | undefined }>()
 const emit = defineEmits<{ close: [] }>()
-
-const panel = ref<HTMLElement | null>(null)
-useDialogFocus(() => props.open, panel, () => emit('close'))
 
 const rows = computed(() => {
   const n = props.note
@@ -34,22 +31,20 @@ const rows = computed(() => {
 
 <template>
   <Teleport to="body">
-    <Transition name="dialog">
-      <div v-if="open" class="dialog-mask" @click.self="emit('close')">
-        <div ref="panel" class="dialog info-dialog" role="dialog" aria-modal="true" aria-label="文档信息">
-          <h3 class="dialog-title">文档信息</h3>
-          <ul class="info-list">
-            <li v-for="r in rows" :key="r.label">
-              <span class="info-label">{{ r.label }}</span>
-              <span class="info-value">{{ r.value }}</span>
-              <span v-if="r.sub" class="info-sub">{{ r.sub }}</span>
-            </li>
-          </ul>
-          <div class="dialog-footer">
-            <button class="dialog-btn ok" @click="emit('close')">关闭</button>
-          </div>
+    <NativeDialog :open="open" aria-label="文档信息" @close="emit('close')">
+      <div class="dialog info-dialog">
+        <h3 class="dialog-title">文档信息</h3>
+        <ul class="info-list">
+          <li v-for="r in rows" :key="r.label">
+            <span class="info-label">{{ r.label }}</span>
+            <span class="info-value">{{ r.value }}</span>
+            <span v-if="r.sub" class="info-sub">{{ r.sub }}</span>
+          </li>
+        </ul>
+        <div class="dialog-footer">
+          <button class="dialog-btn ok" @click="emit('close')">关闭</button>
         </div>
       </div>
-    </Transition>
+    </NativeDialog>
   </Teleport>
 </template>

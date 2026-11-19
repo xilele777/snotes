@@ -1,14 +1,14 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
 import { TABLE_MAX, TABLE_MIN } from '../editor/table'
-import { useDialogFocus } from './useDialogFocus'
+import NativeDialog from './NativeDialog.vue'
 
 const props = defineProps<{ open: boolean }>()
 const emit = defineEmits<{ submit: [{ rows: number; cols: number }]; close: [] }>()
+const dialog = ref<InstanceType<typeof NativeDialog> | null>(null)
 
 const rows = ref<string | number>('3')
 const cols = ref<string | number>('3')
-const panel = ref<HTMLElement | null>(null)
 
 watch(
   () => props.open,
@@ -19,8 +19,6 @@ watch(
   },
   { immediate: true },
 )
-
-useDialogFocus(() => props.open, panel, () => emit('close'))
 
 /** 只接受范围内的整数；空串、小数、越界都视为不合法 */
 function parse(raw: string | number): number | null {
@@ -39,55 +37,55 @@ const hint = computed(() => (canSubmit.value ? '' : `行数与列数请填 ${TAB
 function submit(event?: Event) {
   if (event instanceof KeyboardEvent && (event.isComposing || event.keyCode === 229)) return
   if (rowCount.value === null || colCount.value === null) return
+  dialog.value?.close()
   emit('submit', { rows: rowCount.value, cols: colCount.value })
 }
 </script>
 
 <template>
   <Teleport to="body">
-    <Transition name="dialog">
-      <div v-if="open" class="dialog-mask" @click.self="emit('close')">
-        <div ref="panel" class="dialog table-dialog" role="dialog" aria-modal="true" aria-label="插入表格">
-          <p class="dialog-title">插入表格</p>
+    <NativeDialog ref="dialog" :open="open" aria-label="插入表格" @close="emit('close')">
+      <div class="dialog table-dialog">
+        <p class="dialog-title">插入表格</p>
 
-          <div class="table-fields">
-            <label class="link-field">
-              <span>行数</span>
-              <input
-                v-model="rows"
-                class="dialog-input"
-                type="number"
-                inputmode="numeric"
-                :min="TABLE_MIN"
-                :max="TABLE_MAX"
-                data-field="rows"
-                aria-label="行数"
-                @keydown.enter="submit"
-              />
-            </label>
-            <label class="link-field">
-              <span>列数</span>
-              <input
-                v-model="cols"
-                class="dialog-input"
-                type="number"
-                inputmode="numeric"
-                :min="TABLE_MIN"
-                :max="TABLE_MAX"
-                data-field="cols"
-                aria-label="列数"
-                @keydown.enter="submit"
-              />
-            </label>
-          </div>
-          <p v-if="hint" class="link-hint error" role="alert">{{ hint }}</p>
+        <div class="table-fields">
+          <label class="link-field">
+            <span>行数</span>
+            <input
+              v-model="rows"
+              autofocus
+              class="dialog-input"
+              type="number"
+              inputmode="numeric"
+              :min="TABLE_MIN"
+              :max="TABLE_MAX"
+              data-field="rows"
+              aria-label="行数"
+              @keydown.enter="submit"
+            />
+          </label>
+          <label class="link-field">
+            <span>列数</span>
+            <input
+              v-model="cols"
+              class="dialog-input"
+              type="number"
+              inputmode="numeric"
+              :min="TABLE_MIN"
+              :max="TABLE_MAX"
+              data-field="cols"
+              aria-label="列数"
+              @keydown.enter="submit"
+            />
+          </label>
+        </div>
+        <p v-if="hint" class="link-hint error" role="alert">{{ hint }}</p>
 
-          <div class="dialog-footer">
-            <button class="dialog-btn cancel" data-op="cancel" @click="emit('close')">取消</button>
-            <button class="dialog-btn ok" data-op="confirm" :disabled="!canSubmit" @click="submit">插入</button>
-          </div>
+        <div class="dialog-footer">
+          <button class="dialog-btn cancel" data-op="cancel" @click="emit('close')">取消</button>
+          <button class="dialog-btn ok" data-op="confirm" :disabled="!canSubmit" @click="submit">插入</button>
         </div>
       </div>
-    </Transition>
+    </NativeDialog>
   </Teleport>
 </template>

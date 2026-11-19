@@ -3,29 +3,18 @@ import { describe, expect, it } from 'vitest'
 import ConfirmDialog from './ConfirmDialog.vue'
 
 describe('ConfirmDialog', () => {
-  it('聚焦取消按钮、限制 Tab 焦点，Esc 关闭后恢复原焦点', async () => {
-    const trigger = document.createElement('button')
-    document.body.append(trigger)
-    trigger.focus()
-    const wrapper = mount(ConfirmDialog, {
-      props: { open: false, title: '删除？' },
-      attachTo: document.body,
-    })
-    await wrapper.setProps({ open: true })
+  it('通过原生关闭事件同步取消，取消按钮声明安全初始焦点', async () => {
+    const wrapper = mount(ConfirmDialog, { props: { open: true, title: '删除？' }, attachTo: document.body })
     await flushPromises()
-    expect(document.activeElement).toBe(wrapper.get('[data-op="cancel"]').element)
-
-    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Tab', shiftKey: true, cancelable: true }))
-    expect(document.activeElement).toBe(wrapper.get('[data-op="confirm"]').element)
-
-    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', cancelable: true }))
+    const dialog = wrapper.get('dialog').element as HTMLDialogElement
+    expect(dialog.open).toBe(true)
+    expect(wrapper.get('[data-op="cancel"]').attributes()).toHaveProperty('autofocus')
+    expect(dialog.hasAttribute('aria-modal')).toBe(false)
+    expect(dialog.hasAttribute('role')).toBe(false)
+    dialog.close()
     expect(wrapper.emitted('cancel')).toHaveLength(1)
     expect(wrapper.emitted('confirm')).toBeUndefined()
-    await wrapper.setProps({ open: false })
-    await flushPromises()
-    expect(document.activeElement).toBe(trigger)
     wrapper.unmount()
-    trigger.remove()
   })
 
   it('open=false 时不渲染任何东西', () => {

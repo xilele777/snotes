@@ -1,19 +1,17 @@
 <script setup lang="ts">
 import { ref, watch } from 'vue'
-import { useDialogFocus } from './useDialogFocus'
+import NativeDialog from './NativeDialog.vue'
 
 const props = defineProps<{ open: boolean; title: string; initial?: string }>()
 const emit = defineEmits<{ submit: [string]; close: [] }>()
 
 const value = ref('')
-const panel = ref<HTMLElement | null>(null)
 
 watch(
   () => props.open,
   (open) => { if (open) value.value = props.initial ?? '' },
   { immediate: true },
 )
-useDialogFocus(() => props.open, panel, () => emit('close'))
 
 function submit(event?: Event) {
   if (event instanceof KeyboardEvent && (event.isComposing || event.keyCode === 229)) return
@@ -24,33 +22,27 @@ function submit(event?: Event) {
 </script>
 
 <template>
-  <!--
-    必须 Teleport 到 body：侧栏是 overflow-y:auto，且移动端抽屉靠 transform 位移——
-    transform 会给后代的 position:fixed 造出新的包含块，留在侧栏里的遮罩会被裁掉、
-    并且相对侧栏而不是视口定位。
-  -->
   <Teleport to="body">
-    <Transition name="dialog">
-      <div v-if="open" class="dialog-mask" @click.self="$emit('close')">
-        <div ref="panel" class="dialog" role="dialog" aria-modal="true" :aria-label="title">
-          <p class="dialog-title">{{ title }}</p>
-          <p class="empty-hint">分组用于按主题归类笔记；需要章节目录时，可以使用笔记本。</p>
+    <NativeDialog :open="open" :aria-label="title" @close="emit('close')">
+      <div class="dialog">
+        <p class="dialog-title">{{ title }}</p>
+        <p class="empty-hint">分组用于按主题归类笔记；需要章节目录时，可以使用笔记本。</p>
 
-          <input
-            v-model="value"
-            class="dialog-input"
-            type="text"
-            aria-label="分组名称"
-            placeholder="分组名称"
-            @keydown.enter="submit"
-          />
+        <input
+          v-model="value"
+          autofocus
+          class="dialog-input"
+          type="text"
+          aria-label="分组名称"
+          placeholder="分组名称"
+          @keydown.enter="submit"
+        />
 
-          <div class="dialog-footer">
-            <button class="dialog-btn cancel" @click="$emit('close')">取消</button>
-            <button class="dialog-btn ok" :disabled="!value.trim()" @click="submit">确定</button>
-          </div>
+        <div class="dialog-footer">
+          <button class="dialog-btn cancel" @click="$emit('close')">取消</button>
+          <button class="dialog-btn ok" :disabled="!value.trim()" @click="submit">确定</button>
         </div>
       </div>
-    </Transition>
+    </NativeDialog>
   </Teleport>
 </template>

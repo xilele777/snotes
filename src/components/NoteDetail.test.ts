@@ -692,7 +692,7 @@ describe('顶栏的历史版本', () => {
     await chooseMore(wrapper, 'history')
     await flushPromises()
 
-    expect(document.querySelector('[role="dialog"][aria-label="历史版本"]')).not.toBeNull()
+    expect(document.querySelector('dialog[aria-label="历史版本"]')).not.toBeNull()
     const items = document.querySelectorAll('.history-item')
     expect(items).toHaveLength(1)
     expect(items[0].querySelector('.history-words')!.textContent).toContain('字')
@@ -783,7 +783,7 @@ describe('顶栏的加入笔记本', () => {
 
     await flushPromises()
     expect(document.querySelector('.notebook-pop-addable')).toBeNull()
-    expect(document.querySelector('[role="alertdialog"]')).toBeNull()
+    expect(document.querySelector('dialog')).toBeNull()
     expect((await db.notes.get(note.id))!.invalid).toBe(0)
     expect((await db.knowledgeBaseTocs.get(book.id))!.nodes).toHaveLength(1)
     expect(await db.outbox.where('kind').equals('trash').count()).toBe(0)
@@ -827,7 +827,7 @@ describe('顶栏的加入笔记本', () => {
     ;(document.querySelector('[data-book-id="__new"]') as HTMLButtonElement).click()
     await flushPromises()
 
-    const form = document.querySelector<HTMLFormElement>('[role="dialog"][aria-label="新建笔记本"]')!
+    const form = document.querySelector<HTMLFormElement>('dialog[aria-label="新建笔记本"] form')!
     expect(form).not.toBeNull()
     const name = form.querySelector<HTMLInputElement>('[aria-label="笔记本名称"]')!
     name.value = '读书笔记'

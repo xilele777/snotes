@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import Vditor from 'vditor'
+import type { LightboxImage } from './lightbox-image'
 import 'vditor/dist/index.css'
 import './vditor.css'
 import { escapeRawHtml, migrateLegacyBr } from '../../shared/sanitize'
@@ -18,7 +19,7 @@ const emit = defineEmits<{
   'update:modelValue': [string, string]
   flush: [string, string, string]
   notice: [string]
-  'open-lightbox': [string[], number]
+  'open-lightbox': [LightboxImage[], number]
   ready: []
   pending: [id: string, pending: boolean]
 }>()
@@ -385,7 +386,7 @@ function openImage(image: Element) {
   if (!(image instanceof HTMLImageElement) || !root.value) return
   const container = image.closest('.vditor-reset') ?? root.value
   const images = Array.from(container.querySelectorAll<HTMLImageElement>('img')).filter(img => !img.closest('.vditor-toolbar'))
-  emit('open-lightbox', images.map(img => img.getAttribute('src') ?? img.src), images.indexOf(image))
+  emit('open-lightbox', images.map(img => ({ src: img.getAttribute('src') ?? img.src, alt: img.alt })), images.indexOf(image))
 }
 
 let lastImageClick: { image: HTMLImageElement; time: number; x: number; y: number } | undefined

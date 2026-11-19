@@ -20,6 +20,24 @@ button, .views li, .groups li, .kb-tree-row {
 .dialog-enter-from > .dialog, .dialog-leave-to > .dialog { transform: translateY(8px) scale(.99); }
 .dialog-leave-active, .menu-leave-active, .veil-leave-active { pointer-events: none; }
 .dialog-leave-active, .dialog-leave-active > .dialog, .veil-leave-active { transition-duration: var(--motion-fast); }
+/* NativeDialog delays close until these fades finish on every browser. */
+@media (prefers-reduced-motion: no-preference) {
+  .native-dialog {
+    opacity: 0;
+    transition: opacity var(--motion-fast) ease, display var(--motion-fast), overlay var(--motion-fast);
+    transition-behavior: allow-discrete;
+  }
+  .native-dialog[open]:not([data-closing]) { opacity: 1; }
+  .native-dialog::backdrop {
+    opacity: 0;
+    transition: opacity var(--motion-fast) ease, display var(--motion-fast), overlay var(--motion-fast);
+    transition-behavior: allow-discrete;
+  }
+  .native-dialog[open]:not([data-closing])::backdrop { opacity: 1; }
+  @starting-style {
+    .native-dialog[open]:not([data-closing]), .native-dialog[open]:not([data-closing])::backdrop { opacity: 0; }
+  }
+}
 .menu-enter-active, .menu-leave-active { transition: opacity var(--motion-fast) ease, transform var(--motion-fast) var(--motion-ease); }
 .menu-enter-from, .menu-leave-to { opacity: 0; transform: translateY(-3px); }
 .toast-enter-active, .toast-leave-active { transition: opacity var(--motion-normal) ease, transform var(--motion-normal) var(--motion-ease); }
@@ -43,6 +61,6 @@ button, .views li, .groups li, .kb-tree-row {
 .settings-content-enter { animation: content-appear var(--motion-fast) var(--motion-ease); }
 .kb-tree-row { animation: content-appear var(--motion-fast) var(--motion-ease); }
 @media (max-width: 720px) {
-  .layout[data-mobile-pane='editor'] > .editor-pane { animation: pane-forward var(--motion-normal) var(--motion-ease); }
-  .layout[data-mobile-pane='list'] > .list-pane { animation: pane-back var(--motion-normal) var(--motion-ease); }
+  .layout[data-mobile-pane='editor'] > .workspace-main > .editor-pane { animation: pane-forward var(--motion-normal) var(--motion-ease); }
+  .layout[data-mobile-pane='list'] > .workspace-main > .list-pane { animation: pane-back var(--motion-normal) var(--motion-ease); }
 }

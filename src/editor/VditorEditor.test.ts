@@ -27,6 +27,24 @@ beforeEach(() => {
 afterEach(() => { mounted.splice(0).forEach(wrapper => wrapper.unmount()); vi.useRealTimers(); vi.clearAllMocks(); vi.restoreAllMocks() })
 
 describe('Vditor 保存与同步边界', () => {
+  it('opening a Markdown image preserves image order and author alt text', async () => {
+    const { wrapper } = await create()
+    const container = document.createElement('div')
+    container.className = 'vditor-reset'
+    const images = ['/first.png', '/second.png'].map((src, index) => {
+      const image = document.createElement('img')
+      image.setAttribute('src', src)
+      image.alt = index === 0 ? '作者写的图片说明' : ''
+      container.append(image)
+      return image
+    })
+    wrapper.get('.snotes-vditor').element.append(container)
+    images[1]!.dispatchEvent(new MouseEvent('dblclick', { bubbles: true }))
+    expect(wrapper.emitted('open-lightbox')).toEqual([[[
+      { src: '/first.png', alt: '作者写的图片说明' },
+      { src: '/second.png', alt: '' },
+    ], 1]])
+  })
   it('空正文回写保留浮层焦点，切换到另一篇空笔记仍自动聚焦', async () => {
     const { wrapper, editor } = await create('')
     const choice = document.createElement('button')

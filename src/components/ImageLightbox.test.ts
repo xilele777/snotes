@@ -1,10 +1,11 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { mount } from '@vue/test-utils'
+import type { LightboxImage } from '../editor/lightbox-image'
 import ImageLightbox from './ImageLightbox.vue'
 
-const IMAGES = ['/api/images/a.jpg', '/api/images/b.jpg', '/api/images/c.jpg']
+const IMAGES: LightboxImage[] = [{ src: '/api/images/a.jpg', alt: '作者的图片说明' }, { src: '/api/images/b.jpg', alt: '' }, { src: '/api/images/c.jpg', alt: '第三张图' }]
 
-function mountBox(props: Partial<{ open: boolean; images: string[]; initialIndex: number }> = {}) {
+function mountBox(props: Partial<{ open: boolean; images: LightboxImage[]; initialIndex: number }> = {}) {
   return mount(ImageLightbox, {
     props: { open: true, images: IMAGES, initialIndex: 0, ...props },
     attachTo: document.body,
@@ -29,6 +30,21 @@ describe('ImageLightbox', () => {
     expect(document.querySelector('.lightbox-mask')).toBeTruthy()
     expect(shownSrc()).toBe('/api/images/b.jpg')
     wrapper.unmount()
+  })
+
+  it('保留作者替代文本，并在缺失时提供当前序号', async () => {
+    const wrapper = mountBox()
+    expect(document.querySelector('img')?.alt).toBe('作者的图片说明')
+    click('next')
+    await wrapper.vm.$nextTick()
+    expect(document.querySelector('img')?.alt).toBe('图片 2 / 3')
+    click('next')
+    await wrapper.vm.$nextTick()
+    expect(document.querySelector('img')?.alt).toBe('第三张图')
+    wrapper.unmount()
+    const single = mountBox({ images: [{ src: '/only.png', alt: '  ' }] })
+    expect(document.querySelector('img')?.alt).toBe('图片 1 / 1')
+    single.unmount()
   })
 
   it('左右切换在图片列表里前后走', async () => {
@@ -65,7 +81,7 @@ describe('ImageLightbox', () => {
     expect(document.querySelector('.lightbox-counter')?.textContent?.trim()).toBe('2 / 3')
     wrapper.unmount()
 
-    const single = mountBox({ images: ['/api/images/only.jpg'] })
+    const single = mountBox({ images: [{ src: '/api/images/only.jpg', alt: '' }] })
     expect(document.querySelector('.lightbox-counter')).toBeNull()
     single.unmount()
   })
@@ -110,8 +126,9 @@ describe('ImageLightbox', () => {
 
   it('键盘：左右切换、加减缩放、0 归位、Esc 关闭', async () => {
     const wrapper = mountBox({ initialIndex: 1 })
+    await wrapper.vm.$nextTick()
     const press = async (key: string) => {
-      window.dispatchEvent(new KeyboardEvent('keydown', { key, cancelable: true }))
+      document.querySelector('.lightbox')!.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true }))
       await wrapper.vm.$nextTick()
     }
 
@@ -127,7 +144,8 @@ describe('ImageLightbox', () => {
     await press('0')
     expect(document.querySelector<HTMLImageElement>('.lightbox-stage img')!.style.transform).toContain('scale(1)')
 
-    await press('Escape')
+    document.querySelector<HTMLDialogElement>('dialog')!.close()
+    await wrapper.vm.$nextTick()
     expect(wrapper.emitted('close')).toBeTruthy()
     wrapper.unmount()
   })
@@ -139,7 +157,7 @@ describe('ImageLightbox', () => {
     await wrapper.vm.$nextTick()
     expect(wrapper.emitted('close')).toBeFalsy()
 
-    document.querySelector<HTMLElement>('.lightbox-mask')!.click()
+    document.querySelector<HTMLDialogElement>('dialog')!.close()
     await wrapper.vm.$nextTick()
     expect(wrapper.emitted('close')).toBeTruthy()
     wrapper.unmount()

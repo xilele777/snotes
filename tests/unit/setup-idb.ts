@@ -1,5 +1,26 @@
 import 'fake-indexeddb/auto'
 
+// jsdom has no dialog implementation. Only model its open/close events here;
+// focus containment, Escape and light dismiss are verified in real-browser E2E.
+if (typeof HTMLDialogElement.prototype.showModal !== 'function') {
+  HTMLDialogElement.prototype.showModal = function () { this.open = true }
+  HTMLDialogElement.prototype.close = function (value = '') {
+    if (!this.open) return
+    this.open = false
+    this.returnValue = value
+    this.dispatchEvent(new Event('close'))
+  }
+}
+
+// Layout and resize delivery are covered by browser tests.
+if (typeof ResizeObserver === 'undefined') {
+  globalThis.ResizeObserver = class {
+    observe() {}
+    unobserve() {}
+    disconnect() {}
+  }
+}
+
 // jsdom 不保证提供 crypto.randomUUID（各版本行为不一致），而 repo/stores 到处都在用它。
 // 缺失时补一个仅供测试的实现，避免测试因环境差异随机爆炸。
 if (typeof globalThis.crypto?.randomUUID !== 'function') {
