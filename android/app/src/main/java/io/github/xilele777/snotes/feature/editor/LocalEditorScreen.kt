@@ -48,7 +48,7 @@ fun LocalEditorScreen(noteId: String, onBack: () -> Unit, font: Int = 16, isDark
         leaving = true
         scope.launch { try { if (model.leaveAfterFailure()) onBack() } finally { leaving = false } }
     }
-    DisposableEffect(model) { onExitReady { model.leaveAfterFailure() }; onDispose { onExitReady(null) } }
+    DisposableEffect(model) { onExitReady { model.beforeIncoming() }; onDispose { onExitReady(null) } }
     BackHandler { exit() }
     DisposableEffect(owner, model) {
         val observer = LifecycleEventObserver { _, event -> if (event == Lifecycle.Event.ON_PAUSE) model.background() }

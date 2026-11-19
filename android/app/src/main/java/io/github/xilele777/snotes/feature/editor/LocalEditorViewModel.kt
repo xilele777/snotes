@@ -224,6 +224,7 @@ class LocalEditorViewModel @Inject constructor(private val store: NotesRepositor
         if (!state.value.initialized || key == null) return true
         return saves.flush(snapshot()).saved
     }
+    suspend fun beforeIncoming(): Boolean = if (state.value.loaded) flushAndSave(lock = true, resumeAfter = true) else leaveAfterFailure()
     fun webFailed() {
         mutableState.value = state.value.copy(loaded = false)
         error("本地编辑器不可用；已捕获的内容保留。请重试或更新 System WebView。")

@@ -18,6 +18,7 @@ import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.RequestBody.Companion.toRequestBody
 
 const val MAX_IMAGE_BYTES = 10 * 1024 * 1024
+const val MAX_IMAGE_CACHE_BYTES = 128L * 1024 * 1024
 fun validImageKey(key: String) = Regex("[A-Za-z0-9_-]{1,128}/[A-Za-z0-9_-]{1,128}\\.(?:jpg|jpeg|png|gif|webp)").matches(key)
 fun imageMime(key: String) = when (key.substringAfterLast('.')) { "jpg", "jpeg" -> "image/jpeg"; "png" -> "image/png"; "gif" -> "image/gif"; "webp" -> "image/webp"; else -> null }
 data class ImageBytes(val bytes: ByteArray, val mime: String)
@@ -43,8 +44,8 @@ data class ImageBytes(val bytes: ByteArray, val mime: String)
             }
             repository.syncTransaction {
                 if (repository.profileId != expected) return@syncTransaction
-                writeCache(state.first, value.bytes)
-                repository.database.notes().putImage(ImageEntity(key, value.mime, value.bytes.size.toLong(), "cached"))
+                val cached = runCatching { writeCache(state.first, value.bytes) }.isSuccess
+                repository.database.notes().putImage(ImageEntity(key, value.mime, value.bytes.size.toLong(), if (cached) "cached" else "remote"))
             }
             value
         } catch (_: Exception) { null } finally { client.close() }
@@ -64,13 +65,15 @@ data class ImageBytes(val bytes: ByteArray, val mime: String)
             require(validImageKey(value.fileKey) && value.url == "/api/images/${value.fileKey}" && value.mime == mime && value.size == bytes.size.toLong())
             repository.syncTransaction {
                 check(repository.profileId == expected)
-                writeCache(File(profile.paths.images, value.fileKey), bytes)
-                repository.database.notes().putImage(ImageEntity(value.fileKey, mime, value.size, "cached"))
+                val cached = runCatching { writeCache(File(profile.paths.images, value.fileKey), bytes) }.isSuccess
+                repository.database.notes().putImage(ImageEntity(value.fileKey, mime, value.size, if (cached) "cached" else "remote"))
             }
             value.url
         }
     }
     private fun writeCache(file: File, bytes: ByteArray) {
+        val existing = profile.paths.images.walkTopDown().filter { it.isFile }.sumOf { it.length() }
+        check(existing - (if (file.exists()) file.length() else 0) + bytes.size <= MAX_IMAGE_CACHE_BYTES) { "图片缓存已满，正文仍可保存" }
         check(file.parentFile!!.isDirectory || file.parentFile!!.mkdirs())
         val atomic = AtomicFile(file); val output = atomic.startWrite()
         try { output.write(bytes); atomic.finishWrite(output) } catch (error: Exception) { atomic.failWrite(output); throw error }

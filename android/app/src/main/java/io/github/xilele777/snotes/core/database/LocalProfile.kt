@@ -47,7 +47,8 @@ class LocalProfile @Inject constructor(@ApplicationContext private val context: 
         try { next.openHelper.writableDatabase; check(preferences.edit().putString("active", id).commit()) }
         catch (error: Exception) { next.close(); throw error }
         val previous = database
-        paths = nextPaths; database = next; mutableId.value = id
+        paths = nextPaths; database = next
         retired.add(previous) // Existing Flow/Paging subscriptions finish when the Activity models are cleared.
+        mutableId.value = id
     }
 }
