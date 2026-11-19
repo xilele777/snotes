@@ -2,6 +2,8 @@
 
 [返回文档首页](README.md) · [English](cloudflare-deployment.en.md)
 
+安全响应头的覆盖路径、短期 HSTS 和发布后检查见[安全响应头与上线复核](security-headers.md)。
+
 ## 版本选择
 
 以下安装命令固定到发布标签 `v1.0.0`。也可在 [Releases](https://github.com/xilele777/snotes/releases) 选择其他标签；`main` 可能包含尚未发布的改动。固定标签部署处于 detached HEAD，后续升级应先备份，执行 `git fetch origin --tags`，再 `git switch --detach <新版本标签>`，不要使用 `git pull` 或强制切换覆盖个人配置。

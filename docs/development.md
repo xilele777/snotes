@@ -58,6 +58,8 @@ GitHub Actions 会运行全部单元/集成测试、生产构建、资源预算�
 
 ## 架构
 
+Android 原生工程位于 `android/`，已实现 Kotlin / Compose / Hilt、离线编辑器与 M2 Room / Paging 本地笔记，支持离线写作、搜索、星标 / 分组、回收站、草稿恢复和 Markdown 导出；服务端同步在 M3 接入。构建与模拟器命令见 [Android 工程说明](../android/README.md)，协议要求和阶段验收见 [Android 开发文档](android/README.md)。本页现有命令仍针对 Web 与后端。
+
 ```mermaid
 flowchart LR
   UI[Vue / Markdown 编辑器] <--> Local[IndexedDB]

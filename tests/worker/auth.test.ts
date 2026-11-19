@@ -2,10 +2,19 @@ import { env } from 'cloudflare:test'
 import { describe, expect, it } from 'vitest'
 import { createApp } from '../../worker/app'
 import { IMAGE_COOKIE, timingSafeEqual } from '../../worker/auth'
+import { SECURITY_HEADERS } from '../../worker/security-headers'
 
 const app = createApp()
 const PROBE = '/api/__probe__'
 const OK = { Authorization: 'Bearer test-token' }
+
+it('protects health, unauthorized and missing API responses with the same security headers', async () => {
+  for (const [path, headers] of [['/api/health', {}], [PROBE, {}], [PROBE, OK]] as const) {
+    const res = await app.request(`https://notes.example${path}`, { headers }, env)
+    for (const [name, value] of Object.entries(SECURITY_HEADERS)) expect(res.headers.get(name)).toBe(value)
+    expect(res.headers.get('Strict-Transport-Security')).toBe('max-age=300')
+  }
+})
 
 describe('timingSafeEqual', () => {
   it('相同字符串返回 true', () => {

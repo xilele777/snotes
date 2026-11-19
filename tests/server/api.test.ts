@@ -8,6 +8,7 @@ import { SqliteDatabase } from '../../server/sqlite'
 import { ORPHAN_IMAGE_GRACE_MS, runMaintenance } from '../../worker/maintenance'
 import { LOGIN_FAIL_THRESHOLD } from '../../server/rate-limit'
 import type { Database, Statement } from '../../worker/storage'
+import { SECURITY_HEADERS } from '../../worker/security-headers'
 
 let directory: string
 let db: SqliteDatabase
@@ -31,6 +32,16 @@ const api = (path: string, body?: unknown, method = 'POST') => app.request(path,
   method, headers: { Authorization: 'Bearer dev-token', 'Content-Type': 'application/json' },
   ...(body === undefined ? {} : { body: JSON.stringify(body) }),
 }, env)
+
+it('applies security headers to HTML, scripts, health, authentication errors and missing assets', async () => {
+  for (const path of ['/', '/assets/app.js', '/api/health', '/api/notes', '/assets/missing.js']) {
+    const res = await app.request(`https://notes.example${path}`, {}, env)
+    for (const [name, value] of Object.entries(SECURITY_HEADERS)) expect(res.headers.get(name)).toBe(value)
+    expect(res.headers.get('Strict-Transport-Security')).toBe('max-age=300')
+  }
+  const local = await app.request('http://localhost/api/health', {}, env)
+  expect(local.headers.has('Strict-Transport-Security')).toBe(false)
+})
 
 async function createNote() {
   const id = crypto.randomUUID()

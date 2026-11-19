@@ -1,4 +1,12 @@
 notes.example.com {
     encode zstd gzip
+    header {
+        X-Content-Type-Options nosniff
+        Referrer-Policy strict-origin-when-cross-origin
+        Permissions-Policy "camera=(), geolocation=(), microphone=()"
+        X-Frame-Options DENY
+        Content-Security-Policy "object-src 'none'; base-uri 'none'; frame-ancestors 'none'"
+        Strict-Transport-Security "max-age=300"
+    }
     reverse_proxy 127.0.0.1:3000
 }

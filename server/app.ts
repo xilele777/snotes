@@ -5,11 +5,13 @@ import { compress } from 'hono/compress'
 import { extname, join, resolve } from 'node:path'
 import { createApp } from '../worker/app'
 import { ownerAuthorized } from '../worker/auth'
+import { securityHeaders } from '../worker/security-headers'
 import type { AgentBindings } from '../worker/agent/auth'
 import { LoginLimiter, clientAddress } from './rate-limit'
 
 export function createServerApp(assetDirectory: string, limiter = new LoginLimiter()) {
   const app = new Hono<AgentBindings>()
+  app.use('*', securityHeaders)
   const root = resolve(assetDirectory)
   // 登录限流：同一来源连续 401 达到阈值后返回 429，封锁期逐次翻倍。health 不计入。
   // 来源地址由 server/index.ts 从 socket 取出放进 REMOTE_ADDRESS；X-Forwarded-For 只信任本机或内网代理。

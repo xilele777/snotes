@@ -13,9 +13,11 @@ import { agentRoutes } from './routes/agent'
 import { agentTokenRoutes } from './routes/agent-tokens'
 import type { Env } from './types'
 import { instanceEpoch } from './sync-checkpoint'
+import { securityHeaders } from './security-headers'
 
 export function createApp() {
   const app = new Hono<{ Bindings: Env }>()
+  app.use('*', securityHeaders)
 
   // 注册在 auth 之前，因此保持免鉴权：它不返回任何数据，只供部署后冒烟
   app.get('/api/health', (c) => c.json({ ok: true }))

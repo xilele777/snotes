@@ -6,6 +6,8 @@
 
 [返回文档首页](README.md) · [Cloudflare 部署](cloudflare-deployment.md)
 
+Node.js 和 HTTPS 反向代理的安全响应头策略及发布后检查见[安全响应头与上线复核](security-headers.md)。
+
 服务器支持自 `v0.7.0` 起提供。下面的克隆命令固定到发布标签 `v1.0.0`；其他版本请从 [Releases](https://github.com/xilele777/snotes/releases) 选择。应用内只提醒稳定版更新，不会自动升级服务端。Node.js 与 Docker 镜像构建、容器运行、重启持久化及完整实例恢复已实测，详见[发布验收](release-acceptance.md)。
 
 ## Docker Compose

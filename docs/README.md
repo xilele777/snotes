@@ -19,6 +19,7 @@
 | --- | --- |
 | [Cloudflare 部署](cloudflare-deployment.md) · [English](cloudflare-deployment.en.md) | Worker、D1、R2、令牌、域名、升级和额度说明 |
 | [服务器部署](server-deployment.md) | Node.js、Docker Compose、systemd、HTTPS、配置、备份与恢复 |
+| [安全响应头与上线复核](security-headers.md) | 静态资源与 API 覆盖、短期 HSTS、CSP 边界和发布后核验 |
 | [运维手册](operations.md) | 同步排错、令牌轮换、D1/R2 备份、迁移和可选用量监控 |
 
 部署到不同后端会使用独立的数据存储，数据不会自动迁移。升级前先同步和备份，不要通过清空浏览器数据来解决尚未确认的同步问题。
@@ -26,11 +27,13 @@
 ## 开发与贡献
 
 - [开发指南](development.md)：本地启动、测试命令、架构、目录分工与贡献要求。
+- [Android 客户端设计与实施](android/README.md)：Kotlin / Compose 架构、同步契约与阶段计划；M0、M1 和 M2 Room 本地笔记已实现，含离线写作、搜索与恢复验收。
 - [发布验收与恢复演练](release-acceptance.md)：环境要求、可执行验收、实机记录及门禁状态。
 - [v1.0.0 正式发布](releases/v1.0.0.md)：生产 Deployment/Version ID、迁移、备份和上线核验。
 - [最终验收补充](audits/2026-10-20-v1-acceptance.md)：两域恢复协议、格式 3 备份、Cloudflare/Docker/CDN 实测与保留边界。
 - [启动性能](performance.md)：缓存膨胀与启动瓶颈、手机条件复测、旧版缓存升级回收和离线范围。
 - [1.0.0 发布前审查](audits/2026-10-19-v1-readiness.md) / [修复与验收记录](audits/2026-10-19-v1-repairs.md)：已确认缺陷、修复证据、性能复测与未关闭项。
+- [Modern Web Guidance 二次审查](audits/2026-11-16-modern-web-guidance-review.md)：现代 Web 规则核对、已确认差异、规范改进、部署边界和修复验收清单。
 - [维护者发布规范](../CLAUDE.md)：版本号、标签、生产部署及 GitHub Release 流程；当前版本以根目录包配置为准。
 - [功能与发布记录](roadmap.md)：需求评估、实施决策和逐版验证结果。
 
