@@ -114,8 +114,8 @@ class MainActivity : ComponentActivity() {
                         Box(Modifier.fillMaxSize().padding(bottom = padding.calculateBottomPadding())) {
                             holder.SaveableStateProvider(tab) {
                                 when (tab) {
-                                    "settings" -> SettingsScreen(notesModel, appearance, onRecovery = { recovery = it; tab = "home" }, onConnect = { recovery = "connect"; tab = "home" })
-                                    "books" -> BooksScreen(notesModel, onOpen = { noteId = it })
+                                    "settings" -> SettingsScreen(notesModel, appearance, onRecovery = { recovery = it; tab = "home" }, onConnect = { recovery = "connect"; tab = "home" }) { DataTools() }
+                                    "books" -> BooksManagerScreen(onOpen = { noteId = it })
                                     else -> NotesScreen(onOpen = { noteId = it }, onPrototype = { prototype = true }, section = tab, recovery = recovery, model = notesModel)
                                 }
                             }
