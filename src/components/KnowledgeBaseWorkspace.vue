@@ -13,7 +13,7 @@ import { useNotesStore } from '../stores/notes'
 import { useUiStore } from '../stores/ui'
 import { retrySyncNow, syncNow } from '../sync/engine'
 import { matchesAll, splitTerms } from './SearchBar'
-import { useDialogFocus } from './useDialogFocus'
+import NativeDialog from './NativeDialog.vue'
 import AppIcon from './AppIcon.vue'
 import ConfirmDialog from './ConfirmDialog.vue'
 import DeleteNotebookDialog from './DeleteNotebookDialog.vue'
@@ -41,7 +41,6 @@ const formOpen = ref(false)
 const editing = ref<KnowledgeBase | undefined>()
 const chapterTitle = ref('')
 const dialog = ref<'chapter' | 'add' | 'move' | 'conflict' | null>(null)
-const panel = ref<HTMLElement | null>(null)
 const moving = ref<TocNode | null>(null)
 const moveParent = ref('')
 const chapterEditing = ref<TocNode | null>(null)
@@ -119,7 +118,6 @@ function onTreeKeydown(event: KeyboardEvent) {
   event.preventDefault()
   links[next]?.focus()
 }
-useDialogFocus(() => dialog.value !== null, panel, () => { dialog.value = null })
 
 async function run(action: () => Promise<unknown>) {
   if (busy.value) return
@@ -415,28 +413,26 @@ watch(() => ui.restorePosition, async position => { if (position?.view === 'know
     <DeleteNotebookDialog :open="!!deleting" :name="deleting?.name ?? ''" :count="deleting?.nodes.filter(n => n.kind === 'note').length ?? 0" :busy="deletionBusy" :error="deletionError" @confirm="confirmDelete" @cancel="deleting = null" />
     <Teleport to="body">
       <ConfirmDialog :open="!!confirm" :title="confirm?.title ?? ''" :message="confirm?.message" :confirm-text="confirm?.confirmText ?? '删除'" @confirm="confirmAction" @cancel="confirm = null" />
-      <Transition name="dialog">
-        <div v-if="dialog" class="dialog-mask" @click.self="dialog = null">
-          <div ref="panel" class="dialog kb-workspace-dialog" role="dialog" aria-modal="true" :aria-label="dialog === 'chapter' ? '章节名称' : dialog === 'add' ? '加入已有笔记' : dialog === 'move' ? '移动目录' : '解决笔记本冲突'">
-            <template v-if="dialog === 'chapter'">
-              <h3 class="dialog-title">{{ chapterEditing ? '重命名章节' : '新建章节' }}</h3>
-              <label class="dialog-field">章节名称<input v-model="chapterTitle" class="dialog-input" aria-label="章节名称" maxlength="100" @keydown.enter="!$event.isComposing && saveChapter()" /></label>
-              <label v-if="!chapterEditing" class="dialog-field">创建位置<select v-model="createParent" class="dialog-input" aria-label="创建位置"><option value="">根目录</option><option v-for="{ node, path } in creationFolders" :key="node.id" :value="node.id">{{ [...path, node.title].join(' / ') }}</option></select></label>
-              <div class="dialog-footer"><button class="dialog-btn cancel" @click="dialog = null">取消</button><button class="dialog-btn ok" :disabled="!chapterTitle.trim() || busy" @click="saveChapter">保存</button></div>
-            </template>
-            <template v-else-if="dialog === 'add'">
-              <h3 class="dialog-title">加入已有笔记</h3>
-              <input v-model="pickerQuery" class="dialog-input" placeholder="搜索已有笔记" aria-label="搜索已有笔记" />
-              <label class="dialog-field">加入位置<select v-model="createParent" class="dialog-input" aria-label="加入位置"><option value="">根目录</option><option v-for="{ node, path } in creationFolders" :key="node.id" :value="node.id">{{ [...path, node.title].join(' / ') }}</option></select></label>
-              <div class="kb-picker"><label v-for="note in picker" :key="note.id"><input v-model="chosen" type="checkbox" :value="note.id" :disabled="included.has(note.id)" /><span>{{ note.title || '无标题' }}</span><small v-if="included.has(note.id)">已加入</small></label><p v-if="!picker.length">没有可加入的笔记</p></div>
-              <div class="dialog-footer"><button class="dialog-btn cancel" @click="dialog = null">取消</button><button class="dialog-btn ok" :disabled="!chosen.length || busy" @click="saveNotes">加入 {{ chosen.length }} 篇</button></div>
-            </template>
-            <template v-else-if="dialog === 'move'"><h3 class="dialog-title">移动「{{ moving ? label(moving) : '' }}」</h3><label>目标章节<select v-model="moveParent" class="dialog-input" aria-label="目标章节"><option value="">根目录</option><option v-for="{ node, path } in folders" :key="node.id" :value="node.id">{{ [...path, node.title].join(' / ') }}</option></select></label><p>移动后放在目标章节的末尾。</p><div class="dialog-footer"><button class="dialog-btn cancel" @click="dialog = null">取消</button><button class="dialog-btn ok" @click="saveMove">移动</button></div></template>
-            <template v-else><h3 class="dialog-title">解决笔记本冲突</h3><p>请选择要保留的版本。两份内容均已保存为本机快照。</p><article v-for="conflict in conflicts" :key="conflict.id" class="kb-conflict"><h4>{{ libraries.books.find(b => b.id === conflict.book_id)?.name }} · {{ conflict.kind === 'toc' ? '目录' : '笔记本信息与移除状态' }}</h4><div class="kb-conflict-versions"><div><b>本机修改</b><p v-if="conflict.kind === 'meta'">{{ libraries.books.find(b => b.id === conflict.book_id)?.name }}<br />{{ libraries.books.find(b => b.id === conflict.book_id)?.description }}<br />{{ libraries.books.find(b => b.id === conflict.book_id)?.invalid ? '已移除' : '正常使用' }}</p><ol v-else><li v-for="{ node, depth } in flattenToc(libraries.tocs.find(t => t.knowledge_base_id === conflict.book_id)?.nodes ?? [])" :key="node.id" :style="{ marginLeft: `${depth * 12}px` }">{{ label(node) }}</li></ol><button class="dialog-btn ok" @click="resolve(conflict.book_id, conflict.kind, 'local')">保留本机修改</button></div><div><b>另一台设备</b><p v-if="conflict.kind === 'meta'">{{ conflict.conflict?.book.name }}<br />{{ conflict.conflict?.book.description }}<br />{{ conflict.conflict?.book.invalid ? '已移除' : '正常使用' }}</p><ol v-else><li v-for="{ node, depth } in flattenToc(conflict.conflict?.toc.nodes ?? [])" :key="node.id" :style="{ marginLeft: `${depth * 12}px` }">{{ label(node) }}</li></ol><p v-if="conflict.conflict?.book.invalid">笔记本已移除；保留本机目录会恢复笔记本。</p><button class="dialog-btn cancel" @click="resolve(conflict.book_id, conflict.kind, 'remote')">接受另一台设备</button></div></div></article><div class="dialog-footer"><button class="dialog-btn cancel" @click="dialog = null">稍后处理</button></div></template>
-            <p v-if="error" class="kb-error" role="alert">{{ error }}</p>
-          </div>
+      <NativeDialog :open="dialog !== null" :aria-label="dialog === 'chapter' ? '章节名称' : dialog === 'add' ? '加入已有笔记' : dialog === 'move' ? '移动目录' : '解决笔记本冲突'" @close="dialog = null">
+        <div class="dialog kb-workspace-dialog">
+          <template v-if="dialog === 'chapter'">
+            <h3 class="dialog-title">{{ chapterEditing ? '重命名章节' : '新建章节' }}</h3>
+            <label class="dialog-field">章节名称<input v-model="chapterTitle" autofocus class="dialog-input" aria-label="章节名称" maxlength="100" @keydown.enter="!$event.isComposing && saveChapter()" /></label>
+            <label v-if="!chapterEditing" class="dialog-field">创建位置<select v-model="createParent" class="dialog-input" aria-label="创建位置"><option value="">根目录</option><option v-for="{ node, path } in creationFolders" :key="node.id" :value="node.id">{{ [...path, node.title].join(' / ') }}</option></select></label>
+            <div class="dialog-footer"><button class="dialog-btn cancel" @click="dialog = null">取消</button><button class="dialog-btn ok" :disabled="!chapterTitle.trim() || busy" @click="saveChapter">保存</button></div>
+          </template>
+          <template v-else-if="dialog === 'add'">
+            <h3 class="dialog-title">加入已有笔记</h3>
+            <input v-model="pickerQuery" autofocus class="dialog-input" placeholder="搜索已有笔记" aria-label="搜索已有笔记" />
+            <label class="dialog-field">加入位置<select v-model="createParent" class="dialog-input" aria-label="加入位置"><option value="">根目录</option><option v-for="{ node, path } in creationFolders" :key="node.id" :value="node.id">{{ [...path, node.title].join(' / ') }}</option></select></label>
+            <div class="kb-picker"><label v-for="note in picker" :key="note.id"><input v-model="chosen" type="checkbox" :value="note.id" :disabled="included.has(note.id)" /><span>{{ note.title || '无标题' }}</span><small v-if="included.has(note.id)">已加入</small></label><p v-if="!picker.length">没有可加入的笔记</p></div>
+            <div class="dialog-footer"><button class="dialog-btn cancel" @click="dialog = null">取消</button><button class="dialog-btn ok" :disabled="!chosen.length || busy" @click="saveNotes">加入 {{ chosen.length }} 篇</button></div>
+          </template>
+          <template v-else-if="dialog === 'move'"><h3 class="dialog-title">移动「{{ moving ? label(moving) : '' }}」</h3><label>目标章节<select v-model="moveParent" autofocus class="dialog-input" aria-label="目标章节"><option value="">根目录</option><option v-for="{ node, path } in folders" :key="node.id" :value="node.id">{{ [...path, node.title].join(' / ') }}</option></select></label><p>移动后放在目标章节的末尾。</p><div class="dialog-footer"><button class="dialog-btn cancel" @click="dialog = null">取消</button><button class="dialog-btn ok" @click="saveMove">移动</button></div></template>
+          <template v-else><h3 class="dialog-title">解决笔记本冲突</h3><p>请选择要保留的版本。两份内容均已保存为本机快照。</p><article v-for="conflict in conflicts" :key="conflict.id" class="kb-conflict"><h4>{{ libraries.books.find(b => b.id === conflict.book_id)?.name }} · {{ conflict.kind === 'toc' ? '目录' : '笔记本信息与移除状态' }}</h4><div class="kb-conflict-versions"><div><b>本机修改</b><p v-if="conflict.kind === 'meta'">{{ libraries.books.find(b => b.id === conflict.book_id)?.name }}<br />{{ libraries.books.find(b => b.id === conflict.book_id)?.description }}<br />{{ libraries.books.find(b => b.id === conflict.book_id)?.invalid ? '已移除' : '正常使用' }}</p><ol v-else><li v-for="{ node, depth } in flattenToc(libraries.tocs.find(t => t.knowledge_base_id === conflict.book_id)?.nodes ?? [])" :key="node.id" :style="{ marginLeft: `${depth * 12}px` }">{{ label(node) }}</li></ol><button class="dialog-btn ok" @click="resolve(conflict.book_id, conflict.kind, 'local')">保留本机修改</button></div><div><b>另一台设备</b><p v-if="conflict.kind === 'meta'">{{ conflict.conflict?.book.name }}<br />{{ conflict.conflict?.book.description }}<br />{{ conflict.conflict?.book.invalid ? '已移除' : '正常使用' }}</p><ol v-else><li v-for="{ node, depth } in flattenToc(conflict.conflict?.toc.nodes ?? [])" :key="node.id" :style="{ marginLeft: `${depth * 12}px` }">{{ label(node) }}</li></ol><p v-if="conflict.conflict?.book.invalid">笔记本已移除；保留本机目录会恢复笔记本。</p><button class="dialog-btn cancel" @click="resolve(conflict.book_id, conflict.kind, 'remote')">接受另一台设备</button></div></div></article><div class="dialog-footer"><button class="dialog-btn cancel" @click="dialog = null">稍后处理</button></div></template>
+          <p v-if="error" class="kb-error" role="alert">{{ error }}</p>
         </div>
-      </Transition>
+      </NativeDialog>
     </Teleport>
   </div>
 </template>

@@ -14,15 +14,15 @@ function submit() {
 </script>
 
 <template>
-  <div class="token-gate">
+  <main class="token-gate">
     <form class="token-card" @submit.prevent="submit">
       <img class="brand-mark" :src="brandIconUrl" alt="" width="40" height="40" />
       <h1 class="token-title"><BrandWordmark /></h1>
       <p class="token-intro">随手记下，此刻的想法。</p>
       <p v-if="authNotice" class="token-error" role="alert">{{ authNotice }}</p>
       <label for="access-token" class="token-hint">访问令牌</label>
-      <input id="access-token" v-model="input" type="password" autocomplete="current-password" placeholder="请输入访问令牌" required autofocus />
-      <button class="token-submit" type="submit" :disabled="!input.trim()">进入我的便签</button>
+      <input id="access-token" v-model="input" type="password" autocomplete="current-password" placeholder="请输入访问令牌" required pattern=".*\S.*" title="请输入访问令牌，不能只包含空格" autofocus />
+      <button class="token-submit" type="submit">进入我的便签</button>
       <p class="token-footnote"><AppIcon name="lock" :size="12" />使用部署时设置的访问令牌</p>
       <details class="token-help">
         <summary>访问令牌在哪里？</summary>
@@ -30,5 +30,5 @@ function submit() {
         <p>此浏览器会记住令牌；清除网站数据或更换浏览器后，需要重新输入。</p>
       </details>
     </form>
-  </div>
+  </main>
 </template>

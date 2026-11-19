@@ -128,7 +128,7 @@ for (const width of [1440, 320]) test(`Agent credential, MCP document, deep link
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(width)
   await page.keyboard.press('Escape')
   await pane.getByRole('button', { name: '撤销 验收助手' }).click()
-  await page.getByRole('alertdialog').getByRole('button', { name: '撤销凭证', exact: true }).click()
+  await page.getByRole('dialog').getByRole('button', { name: '撤销凭证', exact: true }).click()
   await expect(pane.locator('.agent-token-list')).toContainText('已撤销')
   const denied = await page.request.get('/api/agent/v1/notebooks', { headers: { Authorization: `Bearer ${secret}` } })
   expect(denied.status()).toBe(401)

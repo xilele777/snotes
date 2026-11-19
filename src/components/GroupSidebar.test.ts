@@ -389,7 +389,7 @@ describe('GroupSidebar 新建分组弹窗', () => {
     await wrapper.vm.$nextTick()
     await wrapper.find('.group-add').trigger('click')
 
-    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))
+    document.querySelector<HTMLDialogElement>('dialog')!.close()
     await nextTick()
 
     expect(dialog()).toBeNull()
@@ -401,7 +401,7 @@ describe('GroupSidebar 新建分组弹窗', () => {
     await wrapper.vm.$nextTick()
     await wrapper.find('.group-add').trigger('click')
 
-    document.querySelector<HTMLElement>('.dialog-mask')!.click()
+    document.querySelector<HTMLDialogElement>('dialog')!.close()
     await nextTick()
 
     expect(dialog()).toBeNull()

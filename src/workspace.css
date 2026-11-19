@@ -37,7 +37,7 @@
 .list-header { padding: 0 var(--space-4); gap: var(--space-2); margin-bottom: var(--space-3); }
 .header-title { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; letter-spacing: -.3px; font-size: var(--font-title); font-weight: 650; }
 .note-search input { font-size: var(--font-compact); }
-.list-search-tools .note-search { border-color: var(--border-default); background: var(--bg-surface); }
+.list-search-tools .note-search { border-color: var(--border-input); background: var(--bg-surface); }
 .layout.is-library-list .list-pane { background: var(--bg-list); }
 .list-search-tools { display: flex; align-items: flex-start; gap: 8px; padding: 0 16px 12px; flex: none; }
 .note-search-block { min-width: 0; margin: 0 18px 12px; }

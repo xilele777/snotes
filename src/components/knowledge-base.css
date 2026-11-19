@@ -29,10 +29,10 @@
 .kb-directory-footer button, .kb-search-hint button { border: 0; padding: 0; background: none; color: var(--accent); }
 .kb-new-card { min-height: 172px; border: 1px dashed var(--border-default); border-radius: var(--radius-card); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; color: var(--text-tertiary); }
 .kb-search-create { display: flex; margin: 8px 12px 10px; flex: none; }
-.kb-search-create .kb-search { flex: 1; min-width: 0; margin: 0; min-height: var(--control-size); padding: 0 10px; border-color: transparent; border-radius: var(--radius-control); background: var(--bg-app); color: var(--text-tertiary); }
+.kb-search-create .kb-search { flex: 1; min-width: 0; margin: 0; min-height: var(--control-size); padding: 0 10px; border-color: var(--border-input); border-radius: var(--radius-control); background: var(--bg-app); color: var(--text-tertiary); }
 .kb-search-create .kb-search input { padding: 5px 8px; font-size: var(--font-compact); }
 .kb-search-create .kb-search:focus-within { border-color: var(--accent); background: var(--bg-surface); }
-.kb-search { margin: 12px 16px; display: flex; align-items: center; min-height: var(--control-size); border: 1px solid var(--border-default); border-radius: var(--radius-control); padding: 2px 8px; background: var(--bg-surface); color: var(--text-secondary); flex: none; }
+.kb-search { margin: 12px 16px; display: flex; align-items: center; min-height: var(--control-size); border: 1px solid var(--border-input); border-radius: var(--radius-control); padding: 2px 8px; background: var(--bg-surface); color: var(--text-secondary); flex: none; }
 .kb-search input { width: 100%; min-width: 0; border: 0; outline: 0; padding: 4px 7px; background: transparent; color: var(--text-primary); font-size: var(--font-compact); }
 .kb-search:focus-within { border-color: var(--accent); background: var(--bg-surface); box-shadow: 0 0 0 2px var(--accent-soft); }
 .kb-search-hint { font-size: 11px; color: var(--text-tertiary); padding: 0 16px; margin: 0 0 8px; }

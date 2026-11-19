@@ -21,12 +21,12 @@ function selectFirst(event: KeyboardEvent) {
 </script>
 
 <template>
-  <div class="note-search-block" role="search">
+  <search class="note-search-block">
   <div class="note-search">
     <AppIcon name="search" :size="16" />
     <input ref="input" v-model="ui.query" type="search" placeholder="搜索笔记" aria-label="搜索笔记" :title="`搜索笔记 · ${shortcut}`" autocomplete="off" @keydown.down="selectFirst" @keydown.enter="selectFirst" />
     <button v-if="ui.query" class="search-clear" title="清除搜索" aria-label="清除搜索" @click="clear"><AppIcon name="close" :size="14" /></button>
     <kbd v-else aria-hidden="true">{{ shortcut }}</kbd>
   </div>
-  </div>
+  </search>
 </template>

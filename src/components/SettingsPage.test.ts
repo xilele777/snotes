@@ -248,7 +248,7 @@ describe('SettingsPage 关于页', () => {
     expect(clearToken).not.toHaveBeenCalled()
 
     // 设置中的确认框打开时 Esc 只关最上面的确认框
-    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }))
+    document.querySelector<HTMLDialogElement>('dialog')!.close()
     await nextTick()
     expect(document.querySelector('.confirm-dialog')).toBeNull()
     expect(ui.workspacePage).toBe('settings')

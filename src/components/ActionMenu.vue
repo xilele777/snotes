@@ -2,8 +2,8 @@
 import { nextTick, onUnmounted, ref, watch } from 'vue'
 
 /**
- * 通用菜单 / 选择器浮层：Teleport 到 body 并用 fixed 定位，贴近视口边缘时向内收、底部放不下就翻到上方；
- * 方向键循环、Esc / Tab 关闭、点外部关闭、关闭后焦点回到触发按钮。
+ * 通用菜单 / 选择器浮层：原生 popover 放入顶层，缺失时退回 Teleport + fixed 定位，贴近视口边缘时向内收、底部放不下就翻到上方；
+ * 方向键循环；Esc 归还触发器焦点，Tab 关闭并继续页面焦点顺序。
  * 默认条目带 menuitem 语义；role="group" 时保留普通按钮语义。
  * 分组菜单与笔记「更多」菜单共用：列表区的 overflow 和抽屉的 transform 都裁不到它。
  */
@@ -27,6 +27,7 @@ const position = ref({ top: 0, left: 0 })
 // Callers may clear their selection and anchor together when closing a menu.
 let trigger: HTMLElement | null = null
 let returnFocus = true
+const nativePopover = Object.hasOwn(HTMLElement.prototype, 'popover')
 let observer: ResizeObserver | undefined
 
 /** 默认在按钮下方右对齐；贴近视口边缘时向内收，底部放不下就翻到上方。 */
@@ -58,7 +59,16 @@ function items(): HTMLElement[] {
 }
 
 function onKeydown(event: KeyboardEvent) {
-  if (event.key === 'Escape' || event.key === 'Tab') {
+  if (event.key === 'Tab') {
+    // Set the sequential navigation start point before the menu is removed.
+    // The browser still performs Tab/Shift+Tab's normal move from the invoker.
+    returnFocus = false
+    if (nativePopover && panel.value?.matches(':popover-open')) panel.value.hidePopover()
+    trigger?.focus({ preventScroll: true })
+    emit('close')
+    return
+  }
+  if (event.key === 'Escape') {
     event.preventDefault()
     event.stopPropagation()
     emit('close')
@@ -87,7 +97,7 @@ function onDocumentClick(event: Event) {
 function listen(on: boolean) {
   const method = on ? 'addEventListener' : 'removeEventListener'
   window[method]('keydown', onKeydown as EventListener, true)
-  document[method]('click', onDocumentClick, true)
+  if (!nativePopover) document[method]('click', onDocumentClick, true)
   window[method]('resize', place)
   window[method]('scroll', place, true)
   window.visualViewport?.[method]('resize', place)
@@ -99,6 +109,7 @@ watch(() => props.open, async (open, previous) => {
   else if (!open && previous) {
     listen(false)
     observer?.disconnect()
+    if (nativePopover && panel.value?.matches(':popover-open')) panel.value.hidePopover()
     panel.value?.setAttribute('inert', '')
     panel.value?.removeAttribute('role')
     // 同步归还焦点：随后打开的弹窗会把它记为「打开前的焦点」，关闭后仍回到这颗按钮
@@ -109,6 +120,7 @@ watch(() => props.open, async (open, previous) => {
   if (!props.open) return
   panel.value?.removeAttribute('inert')
   panel.value?.setAttribute('role', props.role ?? 'menu')
+  if (nativePopover) panel.value?.showPopover()
   place()
   if (typeof ResizeObserver !== 'undefined' && panel.value) {
     observer ??= new ResizeObserver(place)
@@ -119,6 +131,14 @@ watch(() => props.open, async (open, previous) => {
   first?.focus()
 }, { immediate: true })
 
+function onToggle(event: Event) {
+  if ((event as ToggleEvent).newState === 'closed' && props.open) {
+    // Light dismiss must preserve focus on the control the user clicked.
+    returnFocus = false
+    emit('close')
+  }
+}
+
 onUnmounted(() => { listen(false); observer?.disconnect() })
 </script>
 
@@ -128,6 +148,8 @@ onUnmounted(() => { listen(false); observer?.disconnect() })
       <div
         v-if="open"
         ref="panel"
+        :popover="nativePopover ? 'auto' : undefined"
+        @toggle="onToggle"
         class="action-menu"
         :class="menuClass"
         :role="role ?? 'menu'"

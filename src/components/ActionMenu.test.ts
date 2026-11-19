@@ -94,7 +94,7 @@ describe('ActionMenu', () => {
     wrapper.unmount()
   })
 
-  it('Esc 与 Tab 关闭并把焦点还给触发按钮，事件不再外传', async () => {
+  it('Esc 恢复触发器焦点，Tab 保留浏览器的默认焦点移动', async () => {
     const wrapper = mount(Host, { attachTo: document.body })
     const trigger = await openMenu(wrapper)
 
@@ -109,7 +109,7 @@ describe('ActionMenu', () => {
     const tab = new KeyboardEvent('keydown', { key: 'Tab', bubbles: true, cancelable: true })
     window.dispatchEvent(tab)
     await nextTick()
-    expect(tab.defaultPrevented).toBe(true)
+    expect(tab.defaultPrevented).toBe(false)
     expect(menu()).toBeNull()
     wrapper.unmount()
   })

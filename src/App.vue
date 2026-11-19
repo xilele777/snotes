@@ -33,6 +33,7 @@ const listMax = computed(() => Math.min(WORKSPACE_WIDTHS.list.max, Math.max(WORK
 const listWidth = computed(() => Math.min(preferences.value.listWidth, listMax.value))
 const hasEditor = computed(() => !!notes.current && !ui.workspacePage && ui.view !== 'metrics' && !(ui.view === 'knowledge-bases' && !ui.activeKnowledgeBaseId))
 const listCollapsed = computed(() => preferences.value.listCollapsed && hasEditor.value)
+const sidebar = ref<HTMLElement | null>(null)
 let drawerTrigger: HTMLElement | null = null
 
 // Browser Back/Forward can also change the destination without using a sidebar action.
@@ -40,19 +41,28 @@ watch(() => [ui.view, ui.activeGroupId, ui.activeKnowledgeBaseId], () => {
   if (preferences.value.listCollapsed) updateWorkspacePreferences({ listCollapsed: false })
 })
 
-watch(() => ui.drawerOpen, async (open) => {
-  if (!compact.value) return
-  if (open) {
-    drawerTrigger = document.activeElement as HTMLElement
+watch(() => [compact.value, ui.drawerOpen] as const, async ([isCompact, open], previous) => {
+  const wasOpen = !!previous?.[0] && !!previous?.[1]
+  if (isCompact && open && !wasOpen) drawerTrigger = document.activeElement as HTMLElement
+  await nextTick()
+  const drawer = sidebar.value
+  if (!isCompact) {
+    // Removing the popover attribute already removes it from the top layer.
+    if (previous?.[0] && ui.drawerOpen) ui.drawerOpen = false
+    return
+  }
+  if (open && !wasOpen) {
+    drawer?.showPopover()
     await nextTick()
     document.querySelector<HTMLButtonElement>('.sidebar-close')?.focus()
-  } else {
+  } else if (!open && wasOpen) {
+    if (drawer?.matches(':popover-open')) drawer.hidePopover()
     await nextTick()
     const targets = [drawerTrigger, document.querySelector<HTMLElement>('.workspace-page h1'), ...document.querySelectorAll<HTMLElement>('.drawer-btn, .back-btn')]
     const target = targets.find(element => element?.isConnected && element.getClientRects().length && !element.closest('[inert]'))
     target?.focus({ preventScroll: true })
   }
-})
+}, { immediate: true })
 
 async function focusSearch() {
   if (ui.workspacePage) await showNotes()
@@ -87,7 +97,7 @@ watch(
 // 全局快捷键（UI 规格 §6.2）
 function onKeydown(e: KeyboardEvent) {
   // 弹窗和菜单打开时把键盘交给它们：Esc 该关的是浮层，不是抽屉或搜索词
-  if (!hasToken.value || e.defaultPrevented || e.isComposing || document.querySelector('[aria-modal="true"], [role="menu"]')) return
+  if (!hasToken.value || e.defaultPrevented || e.isComposing || document.querySelector('dialog[open], [aria-modal="true"]:not(.sidebar-pane), [role="menu"], .action-menu[role="group"]')) return
   if (e.key === 'Escape' && ui.drawerOpen) {
     e.preventDefault()
     e.stopPropagation()
@@ -161,36 +171,38 @@ onUnmounted(() => {
 
   <div v-else class="layout" :class="{ 'is-sidebar-collapsed': preferences.sidebarCollapsed, 'is-list-collapsed': listCollapsed, 'is-library-list': ui.view === 'knowledge-bases' && !ui.activeKnowledgeBaseId, 'is-utility-page': !!ui.workspacePage }" :style="{ '--preferred-sidebar-width': `${preferences.sidebarWidth}px`, '--preferred-list-width': `${listWidth}px` }" :data-mobile-pane="ui.mobilePane" :data-view="ui.workspacePage ?? ui.view">
     <!-- 窄屏将分组导航收进抽屉，搜索仍留在笔记列表上方。 -->
-    <aside id="workspace-sidebar" class="sidebar-pane" :class="{ 'is-open': ui.drawerOpen }" :inert="compact && !ui.drawerOpen">
+    <aside ref="sidebar" id="workspace-sidebar" :popover="compact ? 'manual' : undefined" :role="compact && ui.drawerOpen ? 'dialog' : undefined" :aria-modal="compact && ui.drawerOpen ? true : undefined" :aria-label="compact && ui.drawerOpen ? '导航' : undefined" class="sidebar-pane" :class="{ 'is-open': ui.drawerOpen }" :inert="compact && !ui.drawerOpen">
       <GroupSidebar />
     </aside>
     <Transition name="veil"><div v-if="ui.drawerOpen" class="drawer-mask" @click="ui.drawerOpen = false"></div></Transition>
 
-    <section id="workspace-list" v-show="!ui.workspacePage" class="list-pane" :aria-label="ui.view === 'knowledge-bases' ? '笔记本工作区' : '便签目录'" :inert="!!ui.workspacePage || (compact && ui.drawerOpen)">
-      <MetricsView v-if="ui.view === 'metrics'" />
-      <TrashView v-else-if="ui.view === 'trash'" />
-      <KnowledgeBaseWorkspace v-else-if="ui.view === 'knowledge-bases'" />
-      <NoteList v-else />
-    </section>
-    <WorkspaceDivider v-if="!compact && !preferences.sidebarCollapsed" pane="sidebar" label="调整侧栏宽度" controls="workspace-sidebar" :size="sidebarWidth" :min="WORKSPACE_WIDTHS.sidebar.min" :max="WORKSPACE_WIDTHS.sidebar.max" :default-size="WORKSPACE_WIDTHS.sidebar.default" @resize="updateWorkspacePreferences({ sidebarWidth: $event })" />
-    <WorkspaceDivider v-if="!compact && !listCollapsed && !ui.workspacePage && ui.view !== 'metrics' && !(ui.view === 'knowledge-bases' && !ui.activeKnowledgeBaseId)" pane="list" label="调整笔记列表宽度" controls="workspace-list" :size="listWidth" :min="WORKSPACE_WIDTHS.list.min" :max="listMax" :default-size="WORKSPACE_WIDTHS.list.default" @resize="updateWorkspacePreferences({ listWidth: $event })" />
+    <main id="workspace-main" class="workspace-main" aria-label="工作区" :inert="compact && ui.drawerOpen">
+      <section id="workspace-list" v-show="!ui.workspacePage" class="list-pane" :aria-label="ui.view === 'knowledge-bases' ? '笔记本工作区' : '便签目录'" :inert="!!ui.workspacePage">
+        <MetricsView v-if="ui.view === 'metrics'" />
+        <TrashView v-else-if="ui.view === 'trash'" />
+        <KnowledgeBaseWorkspace v-else-if="ui.view === 'knowledge-bases'" />
+        <NoteList v-else />
+      </section>
+      <WorkspaceDivider v-if="!compact && !preferences.sidebarCollapsed" pane="sidebar" label="调整侧栏宽度" controls="workspace-sidebar" :size="sidebarWidth" :min="WORKSPACE_WIDTHS.sidebar.min" :max="WORKSPACE_WIDTHS.sidebar.max" :default-size="WORKSPACE_WIDTHS.sidebar.default" @resize="updateWorkspacePreferences({ sidebarWidth: $event })" />
+      <WorkspaceDivider v-if="!compact && !listCollapsed && !ui.workspacePage && ui.view !== 'metrics' && !(ui.view === 'knowledge-bases' && !ui.activeKnowledgeBaseId)" pane="list" label="调整笔记列表宽度" controls="workspace-list" :size="listWidth" :min="WORKSPACE_WIDTHS.list.min" :max="listMax" :default-size="WORKSPACE_WIDTHS.list.default" @resize="updateWorkspacePreferences({ listWidth: $event })" />
 
-    <!--
-      回收站详情与编辑详情用同一个组件，只是 readonly 不同。
-      key 隔离回收站与编辑视图的临时界面状态，Vditor 通过 editable 响应权限变化。
-      监控页没有笔记详情；统计与设置页面都保留当前编辑器实例。
-    -->
-    <KnowledgeBaseHome v-if="ui.view === 'knowledge-bases' && ui.activeKnowledgeBaseId && !notes.currentId" v-show="!ui.workspacePage" :inert="!!ui.workspacePage || (compact && ui.drawerOpen)" />
-    <NoteDetail
-      v-else-if="ui.view !== 'metrics' && !(ui.view === 'knowledge-bases' && !ui.activeKnowledgeBaseId)"
-      v-show="!ui.workspacePage"
-      :key="ui.view === 'trash' ? 'trash' : 'main'"
-      :readonly="ui.view === 'trash'"
-      :inert="!!ui.workspacePage || (compact && ui.drawerOpen)"
-      @back="backToList"
-    />
-    <StatsPage v-if="ui.workspacePage === 'stats'" :open="true" :inert="compact && ui.drawerOpen" />
-    <SettingsPage v-if="ui.workspacePage === 'settings'" :open="true" :inert="compact && ui.drawerOpen" />
+      <!--
+        回收站详情与编辑详情用同一个组件，只是 readonly 不同。
+        key 隔离回收站与编辑视图的临时界面状态，Vditor 通过 editable 响应权限变化。
+        监控页没有笔记详情；统计与设置页面都保留当前编辑器实例。
+      -->
+      <KnowledgeBaseHome v-if="ui.view === 'knowledge-bases' && ui.activeKnowledgeBaseId && !notes.currentId" v-show="!ui.workspacePage" :inert="!!ui.workspacePage" />
+      <NoteDetail
+        v-else-if="ui.view !== 'metrics' && !(ui.view === 'knowledge-bases' && !ui.activeKnowledgeBaseId)"
+        v-show="!ui.workspacePage"
+        :key="ui.view === 'trash' ? 'trash' : 'main'"
+        :readonly="ui.view === 'trash'"
+        :inert="!!ui.workspacePage"
+        @back="backToList"
+      />
+      <StatsPage v-if="ui.workspacePage === 'stats'" :open="true" />
+      <SettingsPage v-if="ui.workspacePage === 'settings'" :open="true" />
+    </main>
   </div>
   <Toast />
 </template>

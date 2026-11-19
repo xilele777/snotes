@@ -141,7 +141,7 @@ function heatTip(cell: { date: string; count: number }): string {
         统计读取失败。<button class="metrics-retry" type="button" @click="load">重试</button>
       </div>
       <div v-else-if="stats" class="stats-layout">
-        <main class="stats-main">
+        <div class="stats-main">
           <div class="stats-grid">
             <section class="stats-panel panel-overview" aria-label="总体数据">
               <div class="writing-overview">
@@ -316,7 +316,7 @@ function heatTip(cell: { date: string; count: number }): string {
               </footer>
             </section>
           </div>
-        </main>
+        </div>
       </div>
     </div>
   </div>

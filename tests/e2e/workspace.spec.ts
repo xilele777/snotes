@@ -164,7 +164,7 @@ test('排序与搜索同行，菜单支持键盘选择、焦点返回和刷新�
   await expect(page.locator('.kb-overview-caption')).toHaveCount(0)
 })
 
-test('表单拖选到遮罩不会关闭，简介参与焦点循环，正常点击遮罩仍关闭', async ({ page }) => {
+test('表单拖选到遮罩不会关闭，简介参与键盘顺序，正常点击遮罩仍关闭', async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 900 })
   await page.goto('/')
   await page.evaluate(() => localStorage.setItem('snotes_token', 'dev-token'))
@@ -180,8 +180,11 @@ test('表单拖选到遮罩不会关闭，简介参与焦点循环，正常点�
   await page.keyboard.press('Tab')
   await expect(form.getByRole('button', { name: '取消', exact: true })).toBeFocused()
   await page.keyboard.press('Tab')
-  await page.keyboard.press('Tab')
-  await expect(name).toBeFocused()
+  await expect(form.getByRole('button', { name: '保存', exact: true })).toBeFocused()
+  // Browser chrome may be a native modal's next Tab stop; the page stays inert.
+  await trigger.evaluate(el => (el as HTMLElement).focus())
+  await expect(trigger).not.toBeFocused()
+  await name.focus()
   await page.keyboard.press('Tab')
   await page.keyboard.press('Tab')
   await expect(description).toBeFocused()

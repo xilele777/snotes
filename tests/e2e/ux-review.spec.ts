@@ -38,7 +38,7 @@ for (const width of [1440, 390, 320]) {
     await page.locator('.note-more').click()
     await page.getByRole('menuitem', { name: '移入回收站', exact: true }).click()
     await expect(page.locator('.note-item')).toHaveCount(0)
-    await expect(page.getByRole('alertdialog')).toHaveCount(0)
+    await expect(page.getByRole('dialog')).toHaveCount(0)
     await page.locator('.toast').getByRole('button', { name: '撤销', exact: true }).click()
     await expect(page.locator('.note-item')).toHaveCount(1)
     await page.locator('.note-select').click()

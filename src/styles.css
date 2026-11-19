@@ -13,7 +13,7 @@
   --bg-divider: #e8e9ec;
   --border-default: #dfe1e6;
   --border-light: #e9eaee;
-  --border-input: #bdc3cf;
+  --border-input: #858b98;
   --accent: #4668e8;
   --on-accent: #ffffff;
   --accent-press: #3d5ed7;
@@ -54,7 +54,7 @@
   --bg-divider: #30323a;
   --border-default: #42444e;
   --border-light: #363842;
-  --border-input: #606370;
+  --border-input: #858996;
   --accent: #7f97f0;
   --on-accent: #14213d;
   --accent-press: #96abf4;
@@ -93,11 +93,12 @@ kbd { font-family: inherit; font-size: 10px; line-height: 20px; white-space: now
 
 /* One stable shell for notes and knowledge bases. */
 .layout { --sidebar-width: var(--preferred-sidebar-width, 200px); --list-width: var(--preferred-list-width, 336px); display: grid; grid-template-columns: var(--sidebar-width) var(--list-width) minmax(0, 1fr); height: 100vh; height: 100dvh; position: relative; overflow: hidden; }
-.layout.is-library-list .list-pane { grid-column: 2 / -1; }
+.workspace-main { grid-column: 2 / -1; grid-row: 1; display: grid; grid-template-columns: subgrid; min-width: 0; min-height: 0; }
+.layout.is-library-list .list-pane { grid-column: 1 / -1; }
 .sidebar-pane { background: var(--bg-rail); border-right: 1px solid var(--border-default); overflow: hidden; min-width: 0; }
 .list-pane { min-width: 0; min-height: 0; background: var(--bg-list); border-right: 1px solid var(--border-default); overflow: hidden; }
 .editor-pane { min-width: 0; min-height: 0; background: var(--bg-surface); display: flex; flex-direction: column; overflow: hidden; }
-.layout[data-view='metrics'] .list-pane { grid-column: 2 / -1; }
+.layout[data-view='metrics'] .list-pane { grid-column: 1 / -1; }
 
 /* Navigation */
 .group-sidebar { height: 100%; background: var(--bg-rail); }
@@ -128,7 +129,8 @@ kbd { font-family: inherit; font-size: 10px; line-height: 20px; white-space: now
 .groups li:hover .group-menu-btn, .groups li:focus-within .group-menu-btn, .groups li.menu-open .group-menu-btn { opacity: 1; }
 .groups .group-menu-btn:hover, .groups li.menu-open .group-menu-btn { background: var(--border-default); }
 /* Menus open in a fixed-position layer so scrolling lists, the drawer transform and the top bar cannot clip them. */
-.action-menu { position: fixed; z-index: 60; max-width: calc(100vw - 16px); max-height: calc(100dvh - 16px); overflow-y: auto; overscroll-behavior: contain; padding: 6px; display: flex; flex-direction: column; gap: 2px; background: var(--bg-surface); border: 1px solid var(--border-light); border-radius: var(--radius-popover); box-shadow: 0 6px 24px rgb(0 0 0 / 10%); }
+.action-menu { margin: 0; inset: auto; position: fixed; z-index: 60; max-width: calc(100vw - 16px); max-height: calc(100dvh - 16px); overflow-y: auto; overscroll-behavior: contain; padding: 6px; display: flex; flex-direction: column; gap: 2px; background: var(--bg-surface); border: 1px solid var(--border-light); border-radius: var(--radius-popover); box-shadow: 0 6px 24px rgb(0 0 0 / 10%); }
+.action-menu[popover]:not(:popover-open) { display: none; }
 .action-menu > * { flex-shrink: 0; }
 .group-menu { min-width: 184px; }
 .note-menu { min-width: 200px; }
@@ -164,7 +166,7 @@ kbd { font-family: inherit; font-size: 10px; line-height: 20px; white-space: now
 .header-refresh + .header-create { margin-left: 0; }
 .drawer-btn, .back-btn { display: none; width: var(--control-size); height: var(--control-size); padding: 0; border: 0; border-radius: var(--radius-control); background: transparent; color: var(--text-secondary); align-items: center; justify-content: center; flex: none; }
 .drawer-btn:hover, .back-btn:hover { background: var(--bg-press); }
-.note-search { display: flex; align-items: center; gap: 8px; min-height: var(--control-size); margin: 0 18px 12px; padding: 0 10px; border: 1px solid transparent; border-radius: 6px; background: var(--bg-app); color: var(--text-tertiary); flex: none; }
+.note-search { display: flex; align-items: center; gap: 8px; min-height: var(--control-size); margin: 0 18px 12px; padding: 0 10px; border: 1px solid var(--border-input); border-radius: 6px; background: var(--bg-app); color: var(--text-tertiary); flex: none; }
 .note-search:focus-within { border-color: var(--accent); background: var(--bg-surface); box-shadow: 0 0 0 2px var(--accent-soft); }
 .note-search input { height: calc(var(--control-size) - 2px); width: 100%; min-width: 0; padding: 0; border: 0; outline: 0; background: transparent; color: var(--text-primary); font-size: 12px; }
 .note-search input::-webkit-search-cancel-button { -webkit-appearance: none; }
@@ -417,7 +419,8 @@ textarea.dialog-input { height: auto; min-height: 112px; padding: 10px 12px; lin
   .layout.is-library-list .list-pane { grid-column: 1 / -1; }
   .layout { --sidebar-width: 280px; --list-width: clamp(260px, var(--preferred-list-width, 336px), calc(100vw - 360px)); grid-template-columns: var(--list-width) minmax(0, 1fr); }
   /* Opening must expose the controls immediately so focus can enter before the slide finishes. */
-  .sidebar-pane { position: fixed; top: 0; bottom: 0; left: 0; width: var(--sidebar-width); z-index: 40; transform: translateX(-100%); visibility: hidden; transition: transform 180ms ease, visibility 0s linear 180ms; box-shadow: 4px 0 24px rgb(0 0 0 / 8%); }
+  .workspace-main { grid-column: 1 / -1; }
+  .sidebar-pane { margin: 0; padding: 0; color: inherit; border: 0; height: 100dvh; max-height: none; position: fixed; top: 0; bottom: 0; left: 0; width: var(--sidebar-width); z-index: 40; transform: translateX(-100%); visibility: hidden; transition: transform 180ms ease, visibility 0s linear 180ms; box-shadow: 4px 0 24px rgb(0 0 0 / 8%); }
   .sidebar-pane.is-open { transform: translateX(0); visibility: visible; transition-delay: 0s; }
   .drawer-mask { position: fixed; inset: 0; z-index: 35; display: block; background: var(--mask); }
   .drawer-btn, .sidebar-close { display: flex; }
@@ -509,7 +512,7 @@ textarea.dialog-input { height: auto; min-height: 112px; padding: 10px 12px; lin
   :root, [data-theme="dark"] { color-scheme: light; --text-primary: #000; --text-secondary: #333; --text-tertiary: #555; --text-disabled: #888; --bg-app: #fff; --bg-surface: #fff; --bg-hover: #fff; --border-default: #bbb; --border-light: #ccc; --accent: #1a4fd6; --editor-max-width: none; }
   html, body, #app { height: auto; }
   body { background: #fff; }
-  .layout { display: block; height: auto; overflow: visible; padding: 0; }
+  .layout, .workspace-main { display: block; height: auto; overflow: visible; padding: 0; }
   .sidebar-pane, .list-pane, .workspace-divider, .drawer-mask, .editor-top-bar, .lightbox-mask, .dialog-mask, .editor-welcome, .toast-host, .action-menu { display: none !important; }
   .editor-pane { display: block; height: auto; overflow: visible; background: #fff; }
   .editor-body { overflow: visible; }
