@@ -13,6 +13,7 @@ import java.io.ByteArrayInputStream
 
 @Suppress("SetJavaScriptEnabled")
 class EditorWebView @JvmOverloads constructor(context: Context, private val receive: (EditorMessage) -> Unit = {}, private val failed: () -> Unit = {}) : WebView(context) {
+    var imageResource: ((String) -> WebResourceResponse?)? = null
     val supported: Boolean = WebViewFeature.isFeatureSupported(WebViewFeature.WEB_MESSAGE_LISTENER) &&
         WebViewFeature.isFeatureSupported(WebViewFeature.POST_WEB_MESSAGE)
     private val loader = WebViewAssetLoader.Builder().addPathHandler("/assets/", WebViewAssetLoader.AssetsPathHandler(context)).build()
@@ -32,6 +33,9 @@ class EditorWebView @JvmOverloads constructor(context: Context, private val rece
         webViewClient = object : WebViewClient() {
             override fun shouldInterceptRequest(view: WebView, request: WebResourceRequest): WebResourceResponse {
                 if (request.method == "GET" && trustedOrigin(request.url)) {
+                    if (request.url.encodedPath?.startsWith("/api/images/") == true && request.url.query == null && request.url.fragment == null) {
+                        imageResource?.invoke(request.url.path!!.removePrefix("/api/images/"))?.let { return it }
+                    }
                     loader.shouldInterceptRequest(request.url)?.let { return it }
                 }
                 return blocked()
