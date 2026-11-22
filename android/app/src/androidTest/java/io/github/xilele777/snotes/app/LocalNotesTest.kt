@@ -26,7 +26,7 @@ class LocalNotesTest {
     private lateinit var model: LocalEditorViewModel
     private val repository get() = EntryPointAccessors.fromApplication(compose.activity.application, TestRepositoryAccess::class.java).repository()
     @Before fun resetFilter() {
-        compose.runOnIdle { ViewModelProvider(compose.activity).get("notes-${repository.profileId}", NotesViewModel::class.java).filter.value = NoteFilter() }
+        compose.runOnIdle { ViewModelProvider(compose.activity).get("notes-${repository.profileId}", NotesViewModel::class.java).filter.value = NoteFilter(homeOnly = true) }
     }
     private fun create() {
         compose.onNodeWithText("新建", useUnmergedTree = true).performClick()
@@ -38,14 +38,30 @@ class LocalNotesTest {
         instrumentation.runOnMainSync { model.webView!!.evaluateJavascript(code) { results.offer(it) } }
         return checkNotNull(results.poll(5, TimeUnit.SECONDS))
     }
-    private fun input(value: String) = script("(() => {const input=document.querySelector('#source');input.value=${Json.encodeToString(value)};input.dispatchEvent(new InputEvent('input',{bubbles:true,inputType:'insertText'}));return true;})()")
-    private fun back() { compose.onNodeWithText("返回").performClick(); compose.waitUntil(10_000) { model.webView == null } }
+    private fun input(value: String) {
+        val encoded = Json.encodeToString(value)
+        script(
+            """(() => {
+                const ir = document.querySelector('#rich .vditor-ir [contenteditable="true"]');
+                if (ir && !document.querySelector('#rich-pane').hidden) {
+                    ir.innerText = $encoded;
+                    ir.dispatchEvent(new InputEvent('input', { bubbles: true, inputType: 'insertText' }));
+                    return true;
+                }
+                const input = document.querySelector('#source');
+                input.value = $encoded;
+                input.dispatchEvent(new InputEvent('input', { bubbles: true, inputType: 'insertText' }));
+                return true;
+            })()""",
+        )
+    }
+    private fun back() { compose.onNodeWithContentDescription("返回").performClick(); compose.waitUntil(10_000) { model.webView == null } }
     private fun titleReady(title: String) { compose.waitUntil(10_000) { compose.onAllNodesWithText(title).fetchSemanticsNodes().isNotEmpty() } }
 
     @Test fun offlineCreateEditGroupStarSearchTrashAndRestore() {
         val group = "离线分组-${UUID.randomUUID().toString().take(6)}"
-        compose.onNodeWithText("分组", substring = false).performClick()
-        compose.onNodeWithText("新建分组").performClick()
+        compose.onNodeWithContentDescription("打开侧栏").performClick()
+        compose.onNodeWithContentDescription("新建分组").performClick()
         compose.onNodeWithText("分组名称").performTextInput(group)
         compose.onNodeWithText("创建分组").performClick()
         compose.waitUntil(10_000) { compose.onAllNodesWithText("分组名称").fetchSemanticsNodes().isEmpty() }
@@ -55,17 +71,18 @@ class LocalNotesTest {
         input(markdown); val id = model.state.value.noteId; back(); titleReady(title)
         assertEquals(markdown, repository.export(id)); assertNotNull(repository.note(id)!!.groupId)
         compose.onNodeWithContentDescription("笔记操作：$title").performClick()
-        compose.onNodeWithText("添加星标").performClick(); titleReady("★ $title")
-        compose.onNodeWithText("搜索", substring = false).performClick()
+        compose.onNodeWithText("添加星标").performClick(); titleReady(title)
+        compose.waitUntil(10_000) { repository.note(id)?.star == 1 }
         compose.onNodeWithText("搜索本机笔记").performTextInput("中文搜索验收")
-        titleReady("★ $title")
+        titleReady(title)
         compose.onNodeWithContentDescription("笔记操作：$title").performClick()
         compose.onNodeWithText("移到回收站").performClick()
         compose.onNodeWithText("移到回收站", substring = false).performClick()
-        compose.onAllNodesWithText("回收站", substring = false).onLast().performClick(); titleReady("★ $title")
+        compose.openWorkspace("回收站"); titleReady(title)
         compose.onNodeWithContentDescription("笔记操作：$title").performClick()
         compose.onNodeWithText("恢复笔记").performClick()
-        compose.onNodeWithText("首页", substring = false).performClick(); titleReady("★ $title")
+        compose.openWorkspace("全部笔记")
+        compose.onNodeWithText("搜索本机笔记").performTextInput("中文搜索验收"); titleReady(title)
         assertEquals(0, repository.note(id)!!.invalid); assertEquals(1, repository.note(id)!!.star)
         assertEquals(markdown, repository.body(id))
         assertNotNull(repository.database.notes().task("note", id, "recover")); assertNull(repository.database.notes().task("note", id, "trash"))
@@ -78,10 +95,27 @@ class LocalNotesTest {
         assertEquals(value, Json.decodeFromString<String>(script("document.querySelector('#source').value")))
         back(); assertEquals(value, repository.body(id))
     }
+    @Test fun hiddenNotesKeepTheirBodyAndCanReturnToHome() {
+        create()
+        val title = "隐藏规则-${UUID.randomUUID().toString().take(6)}"
+        val markdown = "# $title\n\n隐藏只改变列表可见性。"
+        input(markdown); val id = model.state.value.noteId; back(); titleReady(title)
+        compose.onNodeWithContentDescription("笔记操作：$title").performClick()
+        compose.onNodeWithText("从随手记隐藏").performClick()
+        compose.waitUntil(10_000) { repository.note(id)?.homeHidden == 1 }
+        compose.openWorkspace("已隐藏")
+        compose.onNodeWithText("搜索本机笔记").performTextInput(title); titleReady(title)
+        assertEquals(markdown, repository.body(id))
+        compose.onNodeWithContentDescription("笔记操作：$title").performClick()
+        compose.onNodeWithText("在随手记中显示").performClick()
+        compose.waitUntil(10_000) { repository.note(id)?.homeHidden == 0 }
+        compose.openWorkspace("随手记"); titleReady(title)
+        assertEquals(markdown, repository.body(id))
+    }
     @Test fun emptyLocalNoteDoesNotSaveMerelyFromOpeningAndPreviewing() {
         create(); val id = model.state.value.noteId
-        assertEquals("", Json.decodeFromString<String>(script("document.querySelector('#source').value")))
-        script("document.querySelector('[data-mode=preview]').click()")
+        assertEquals("", model.state.value.markdown)
+        compose.runOnIdle { model.toggleReading() }
         compose.waitUntil(5_000) { model.state.value.mode == "preview" }
         back(); assertEquals("", repository.body(id))
         assertNull(repository.database.notes().task("note", id, "body")); assertTrue(repository.database.notes().history(id).isEmpty())
@@ -94,7 +128,7 @@ class LocalNotesTest {
         compose.runOnIdle { model = ViewModelProvider(compose.activity)[LocalEditorViewModel::class.java] }
         compose.waitUntil(10_000) { model.state.value.failed }
         compose.onNodeWithText("正文尚未下载，连接服务端后才能编辑").assertIsDisplayed()
-        assertNull(model.webView); compose.onNodeWithText("返回").performClick()
+        assertNull(model.webView); compose.onNodeWithContentDescription("返回").performClick()
         assertNull(repository.body(id))
     }
 }

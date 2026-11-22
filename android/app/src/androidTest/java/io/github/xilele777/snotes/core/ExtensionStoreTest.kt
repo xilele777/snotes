@@ -76,6 +76,22 @@ import org.junit.runner.RunWith
         } }
         assertNull(notes.note(id)); assertTrue(database.notes().tasks().isEmpty())
     }
+    @Test fun creatingBookNotesUsesExplicitParentAndRollsBackIfDirectoryWriteFails() {
+        val id = books.create("创建语境")
+        books.editToc(id, listOf(TocNodeDto("chapter", null, "folder", 0, null, "章节")))
+        val rootNote = books.createNote(id)
+        val chapterNote = books.createNote(id, "chapter")
+        val nodes = books.desired(id)!!.toc.nodes
+        assertNull(nodes.single { it.noteId == rootNote }.parentId)
+        assertEquals("chapter", nodes.single { it.noteId == chapterNote }.parentId)
+        assertFalse(notes.canChangeStructure(chapterNote))
+        val beforeNotes = database.notes().allNotes(); val beforeTasks = database.notes().tasks()
+        database.openHelper.writableDatabase.execSQL("CREATE TRIGGER fail_directory BEFORE INSERT ON tocs BEGIN SELECT RAISE(ABORT, 'injected directory failure'); END")
+        assertThrows(Exception::class.java) { books.createNote(id, "chapter") }
+        assertEquals(beforeNotes, database.notes().allNotes())
+        assertEquals(beforeTasks, database.notes().tasks())
+        assertEquals(nodes, books.desired(id)!!.toc.nodes)
+    }
     @Test fun opensUsesIndependentExactValueAckAndWantQuery() = runBlocking {
         val note = notes.create("untouched"); val before = notes.note(note.id)!!; val opens = Opens(notes); opens.record(note.id)
         MockWebServer().use { server ->

@@ -11,6 +11,7 @@ import io.github.xilele777.snotes.core.editor.*
 import java.io.File
 import java.util.UUID
 import kotlinx.coroutines.*
+import kotlinx.coroutines.flow.first
 import kotlinx.serialization.json.*
 import org.junit.*
 import org.junit.Assert.*
@@ -182,6 +183,50 @@ class NotesRepositoryTest {
         assertEquals(listOf(target.id), search("%_' OR 1=1").map { it.id })
         assertTrue(search("不存在").isEmpty())
     }
+    @Test fun homeHiddenAndScopedSearchMatchWebRules() = runBlocking {
+        val group = repository.createGroup("默认隐藏")
+        database.notes().putGroup(group.copy(homeHidden = 1))
+        val ordinary = repository.create("# 普通\n\n共同搜索词")
+        val inherited = repository.create("# 跟随分组\n\n共同搜索词", group.id)
+        val shown = repository.create("# 单篇显示\n\n共同搜索词", group.id)
+        repository.updateProps(shown.id, buildJsonObject { put("home_hidden", 0) })
+        val hidden = repository.create("# 单篇隐藏\n\n共同搜索词")
+        repository.updateProps(hidden.id, buildJsonObject { put("home_hidden", 1) })
+        val owned = repository.create("# 笔记本内容\n\n共同搜索词")
+        val books = BookRepository(repository); val book = books.create("目录")
+        books.editToc(book, listOf(io.github.xilele777.snotes.core.network.TocNodeDto(UUID.randomUUID().toString(), null, "note", 0, owned.id, null)))
+        repository.updateProps(owned.id, buildJsonObject { put("star", 1) })
+        suspend fun ids(home: Boolean = false, hiddenOnly: Boolean = false, star: Boolean = false, groupId: String? = null): Set<String> {
+            val page = database.notes().page("共同搜索词", 0, star, groupId, home, hiddenOnly).load(PagingSource.LoadParams.Refresh(null, 30, false))
+            return (page as PagingSource.LoadResult.Page).data.map { it.id }.toSet()
+        }
+        assertEquals(setOf(ordinary.id, shown.id), ids(home = true))
+        assertEquals(setOf(inherited.id, hidden.id), ids(hiddenOnly = true))
+        assertEquals(setOf(ordinary.id, inherited.id, shown.id, hidden.id, owned.id), ids())
+        assertEquals(setOf(owned.id), ids(star = true))
+        assertEquals(setOf(inherited.id, shown.id), ids(groupId = group.id))
+        books.editMeta(book, "目录", "", invalid = 1)
+        assertTrue(ids(home = true).contains(owned.id))
+        repository.updateProps(shown.id, buildJsonObject { put("home_hidden", JsonNull) })
+        assertFalse(ids(home = true).contains(shown.id))
+    }
+    @Test fun listSortingKeepsPinsFirstAndMissingBodyCoverageStaysInScope() = runBlocking {
+        val first = repository.create("# B标题"); now += 100
+        val second = repository.create("# A标题"); now += 100
+        repository.updateProps(first.id, buildJsonObject { put("star", 1) })
+        suspend fun ordered(sort: String): List<String> {
+            val result = database.notes().page("", 0, false, null, sort = sort).load(PagingSource.LoadParams.Refresh(null, 30, false))
+            return (result as PagingSource.LoadResult.Page).data.map { it.id }
+        }
+        assertEquals(listOf(first.id, second.id), ordered("updated"))
+        assertEquals(listOf(second.id, first.id), ordered("created"))
+        assertEquals(listOf(second.id, first.id), ordered("title"))
+        repository.updateProps(first.id, buildJsonObject { put("top", 1) })
+        assertEquals(listOf(first.id, second.id), ordered("title"))
+        database.notes().putNote(NoteEntity(UUID.randomUUID().toString(), createTime = now, updateTime = now))
+        assertEquals(1, database.notes().filteredMissingBodies(0, false, null, false, false).first())
+        assertEquals(0, database.notes().filteredMissingBodies(0, true, null, false, false).first())
+    }
     @Test fun profilePathsAndDatabaseContentsAreIsolated() {
         val one = ProfilePaths(context, "test-${UUID.randomUUID()}"); val two = ProfilePaths(context, "test-${UUID.randomUUID()}")
         assertNotEquals(one.database, two.database); assertNotEquals(one.drafts, two.drafts); assertNotEquals(one.images, two.images)
@@ -204,5 +249,36 @@ class NotesRepositoryTest {
         }
         assertEquals(20, database.notes().history(note.id).size)
         assertEquals("版本 23", database.notes().history(note.id).first().markdown)
+    }
+    @Test fun purgeNoteAndPurgeTrashRemoveLocalRowsAndRecordPurgedState() {
+        val one = repository.create("待删 1")
+        val two = repository.create("待删 2")
+        val kept = repository.create("保留")
+        repository.setTrash(one.id, true)
+        repository.setTrash(two.id, true)
+        repository.purgeNote(one.id)
+        assertNull(repository.note(one.id))
+        assertNull(repository.body(one.id))
+        assertEquals("purged", database.notes().noteState(one.id)?.state)
+        assertEquals(1, repository.purgeTrash())
+        assertNull(repository.note(two.id))
+        assertEquals("purged", database.notes().noteState(two.id)?.state)
+        assertNotNull(repository.note(kept.id))
+    }
+    @Test fun groupRenameColorMoveAndDeleteResetNoteGroupToNull() {
+        val first = repository.createGroup("一组")
+        val second = repository.createGroup("二组")
+        val note = repository.create("组内笔记", first.id)
+        repository.renameGroup(first.id, "新一组")
+        repository.setGroupColor(first.id, "#d8b46a")
+        repository.setGroupHomeHidden(first.id, true)
+        assertEquals("新一组", database.notes().group(first.id)!!.name)
+        assertEquals("#d8b46a", database.notes().group(first.id)!!.color)
+        assertEquals(1, database.notes().group(first.id)!!.homeHidden)
+        repository.moveGroup(second.id, -1)
+        assertTrue(database.notes().group(second.id)!!.sort < database.notes().group(first.id)!!.sort)
+        repository.deleteGroup(first.id)
+        assertEquals(1, database.notes().group(first.id)!!.invalid)
+        assertNull(repository.note(note.id)!!.groupId)
     }
 }
