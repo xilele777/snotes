@@ -1,8 +1,10 @@
 # snotes Android
 
-[客户端设计](../docs/android/README.md) · [同步契约](../docs/android/sync-contract.md) · [实施计划](../docs/android/implementation-plan.md)
+[客户端设计](../docs/android/README.md) · [同步契约](../docs/android/sync-contract.md) · [实施计划](../docs/android/implementation-plan.md) · [体验改造](../docs/android/experience-redesign.md)
 
 M0–M6 的内部交付实现已完成：离线编辑与同步、手机导航、独立实例、图片缓存和分享队列、桌面小组件、笔记本管理、格式 3 备份与打开统计。编辑区默认源码 + 预览，短文 IR 保留试用状态。内部安装包与自动验证见 [M4–M6 记录](../docs/android/acceptance/2026-11-20-m4-m6.md)，真机、中文输入法、系统选择器及正式签名门禁见 [人工验收清单](../docs/android/acceptance/manual-checklist.md)。这次是本地内部交付，尚未正式发布。
+
+界面以 Web 手机端为基准：手机抽屉导航、当前列表内搜索 / 排序 / 新建、独立回收站与统计、外观 / 数据 / 关于设置分页，延续 Web 的蓝色主题。宽窗口使用常驻侧栏；系统键盘、分享和文件选择保留原生适配。实现范围与剩余能力差异见 [跨端体验改造](../docs/android/experience-redesign.md)。
 
 ## 工具链
 
@@ -103,4 +105,4 @@ Compose 处理 edge-to-edge 与系统主题。应用直接申请网络权限，W
 
 图片私有缓存上限 128 MiB，达到上限仍可联网显示 / 上传，不删除未同步文件。格式 3 备份包含正文、回收站、历史、图片与分享队列，解压总量上限 128 MiB，校验并准备文件后在一次 Room 事务内导入。导入相同 ID 保留已有正文，备份中的不同正文进入历史。偏好使用 SharedPreferences；令牌独立使用 Keystore 加密文件。
 
-当前验收采用用户指定的模拟器，记录见 [M0](../docs/android/acceptance/2026-11-19-m0.md)、[M1](../docs/android/acceptance/2026-11-19-m1.md) 和 [M2](../docs/android/acceptance/2026-11-20-m2.md)。模拟器自动化与人工输入法、真机性能验收分开记录。
+当前验收采用用户指定的模拟器，记录见 [M0](../docs/android/acceptance/2026-11-19-m0.md)、[M1](../docs/android/acceptance/2026-11-19-m1.md)、[M2](../docs/android/acceptance/2026-11-20-m2.md) 与 [Web 对齐验收](../docs/android/acceptance/2026-11-20-web-alignment.md)。模拟器自动化与人工输入法、真机性能验收分开记录。

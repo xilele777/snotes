@@ -28,6 +28,7 @@
 
 - [开发指南](development.md)：本地启动、测试命令、架构、目录分工与贡献要求。
 - [Android 客户端设计与实施](android/README.md)：Kotlin / Compose 架构、同步契约与阶段计划；M0、M1 和 M2 Room 本地笔记已实现，含离线写作、搜索与恢复验收。
+- [Android 体验改造](android/experience-redesign.md)：界面诊断、视觉与交互规则、已实现改造、验证与后续优先级。
 - [发布验收与恢复演练](release-acceptance.md)：环境要求、可执行验收、实机记录及门禁状态。
 - [v1.0.0 正式发布](releases/v1.0.0.md)：生产 Deployment/Version ID、迁移、备份和上线核验。
 - [最终验收补充](audits/2026-10-20-v1-acceptance.md)：两域恢复协议、格式 3 备份、Cloudflare/Docker/CDN 实测与保留边界。
