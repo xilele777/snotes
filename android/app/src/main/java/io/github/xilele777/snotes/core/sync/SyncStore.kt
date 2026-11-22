@@ -112,10 +112,10 @@ class SyncStore(val repository: NotesRepository, private val clock: () -> Long =
         val raw = syncJson.parseToJsonElement(current.payload).jsonObject
         var payload = raw
         if (current.entityType == "note") {
-            if (note == null) return@transaction null
+            if (note == null && current.kind != "purge") return@transaction null
             payload = JsonObject(raw + when (current.kind) {
-                "body" -> mapOf("base_version" to JsonPrimitive(note.version))
-                "prop" -> mapOf("base_prop_version" to JsonPrimitive(note.propVersion))
+                "body" -> mapOf("base_version" to JsonPrimitive(checkNotNull(note).version))
+                "prop" -> mapOf("base_prop_version" to JsonPrimitive(checkNotNull(note).propVersion))
                 else -> emptyMap()
             })
         } else if (current.kind == "create") {

@@ -53,13 +53,22 @@ class BookRepository @Inject constructor(private val repository: NotesRepository
     }
     fun editMeta(id: String, name: String, description: String, invalid: Int = 0, icon: String? = null, ord: Int? = null) = tx {
         val previous = checkNotNull(desired(id)); check(previous.book.deleted == 0)
-        val value = previous.copy(book = previous.book.copy(name = name.trim(), description = description, invalid = invalid, icon = icon ?: previous.book.icon, ord = ord ?: previous.book.ord))
+        val value = previous.copy(book = previous.book.copy(name = name.trim(), description = description, invalid = invalid, icon = icon ?: previous.book.icon, ord = ord ?: previous.book.ord, updateTime = System.currentTimeMillis()))
         val create = dao.task("book", id, "create") != null
         saveDesired(value); queue(id, if (create) "create" else "meta", metaPayload(value, create))
     }
+    fun createNote(id: String, parentId: String? = null): String = tx {
+        val current = checkNotNull(desired(id)) { "笔记本不存在" }
+        check(current.book.deleted == 0 && current.book.invalid == 0) { "请先恢复笔记本" }
+        check(parentId == null || current.toc.nodes.any { it.id == parentId && it.kind == "folder" }) { "章节已变化，请刷新" }
+        val note = repository.create()
+        editToc(id, current.toc.nodes + TocNodeDto(UUID.randomUUID().toString(), parentId, "note",
+            current.toc.nodes.count { it.parentId == parentId }, note.id, null))
+        note.id
+    }
     fun editToc(id: String, nodes: List<TocNodeDto>, preserveMissing: Boolean = false) = tx {
         val previous = checkNotNull(desired(id)); check(previous.book.deleted == 0)
-        val value = previous.copy(toc = previous.toc.copy(nodes = nodes), noteStates = states(nodes, previous.noteStates))
+        val value = previous.copy(book = previous.book.copy(updateTime = System.currentTimeMillis()), toc = previous.toc.copy(nodes = nodes), noteStates = states(nodes, previous.noteStates))
         validateToc(value)
         val oldRefs = previous.toc.nodes.mapNotNull { it.noteId }.toSet()
         if (!preserveMissing) nodes.mapNotNull { it.noteId }.filter { it !in oldRefs }.forEach { note ->

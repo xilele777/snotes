@@ -14,7 +14,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.flow.map
 
-data class NoteFilter(val query: String = "", val trash: Boolean = false, val starred: Boolean = false, val groupId: String? = null)
+data class NoteFilter(val query: String = "", val trash: Boolean = false, val starred: Boolean = false, val groupId: String? = null,
+    val homeOnly: Boolean = false, val hiddenOnly: Boolean = false, val sort: String = "updated")
 data class RecoveryIssue(val name: String, val snapshot: DraftSnapshot?, val message: String)
 data class RecoveryReport(val recovered: Int, val issues: List<RecoveryIssue>)
 data class SyncFailure(val task: TaskEntity, val title: String)
@@ -46,6 +47,10 @@ class NotesRepository(private val fixedDatabase: NotesDatabase, private val fixe
     val groups get() = dao.groups()
     val pendingCount get() = dao.pendingCount()
     val missingBodyCount get() = dao.missingBodyCount()
+    val activeNotesCount get() = dao.activeNotesCount()
+    val activeBooksCount get() = dao.activeBooksCount()
+    fun count(filter: NoteFilter) = dao.filteredCount(filter.query, if (filter.trash) 1 else 0, filter.starred, filter.groupId, filter.homeOnly, filter.hiddenOnly)
+    fun missingBodies(filter: NoteFilter) = dao.filteredMissingBodies(if (filter.trash) 1 else 0, filter.starred, filter.groupId, filter.homeOnly, filter.hiddenOnly)
     val syncFailures get() = dao.failedTasks().map { tasks -> withContext(Dispatchers.IO) {
         tasks.map { SyncFailure(it, (when (it.entityType) { "note" -> dao.note(it.entityId)?.title; "book" -> dao.books().firstOrNull { book -> book.id == it.entityId }?.name; else -> dao.group(it.entityId)?.name }).orEmpty().ifBlank { "无标题" }) }
     } }
@@ -60,8 +65,8 @@ class NotesRepository(private val fixedDatabase: NotesDatabase, private val fixe
         dao.putMeta(SyncMetaEntity(key, copy.id))
         copy
     }
-    fun pages(filter: NoteFilter) = Pager(PagingConfig(pageSize = 30, enablePlaceholders = false)) {
-        dao.page(filter.query, if (filter.trash) 1 else 0, filter.starred, filter.groupId)
+    fun pages(filter: NoteFilter) = Pager(PagingConfig(pageSize = 24, initialLoadSize = 24, prefetchDistance = 8, enablePlaceholders = false)) {
+        dao.page(filter.query, if (filter.trash) 1 else 0, filter.starred, filter.groupId, filter.homeOnly, filter.hiddenOnly, filter.sort)
     }.flow
     fun note(id: String) = dao.note(id)
     fun body(id: String): String? = dao.body(id)?.markdown
@@ -116,10 +121,76 @@ class NotesRepository(private val fixedDatabase: NotesDatabase, private val fixe
     }
     @Synchronized fun createGroup(name: String): GroupEntity = database.runInTransaction<GroupEntity> {
         require(name.trim().isNotEmpty() && name.trim().length <= 100) { "分组名称应为 1–100 个字符" }
-        val group = GroupEntity(UUID.randomUUID().toString(), name.trim())
+        val maxSort = dao.allGroups().filter { it.invalid == 0 }.maxOfOrNull { it.sort } ?: -1
+        val group = GroupEntity(UUID.randomUUID().toString(), name.trim(), sort = maxSort + 1)
         dao.putGroup(group)
-        enqueue(group.id, "create", buildJsonObject { put("id", group.id); put("name", group.name); put("sort", 0); put("color", JsonNull); put("home_hidden", 0) }, "group")
+        enqueue(group.id, "create", buildJsonObject { put("id", group.id); put("name", group.name); put("sort", group.sort); put("color", JsonNull); put("home_hidden", 0) }, "group")
         group
+    }
+    @Synchronized fun renameGroup(id: String, name: String) = database.runInTransaction {
+        val trimmed = name.trim()
+        require(trimmed.isNotEmpty() && trimmed.length <= 100) { "分组名称应为 1–100 个字符" }
+        val group = checkNotNull(dao.group(id)) { "分组不存在" }
+        check(group.invalid == 0) { "分组已删除" }
+        val updated = group.copy(name = trimmed, dirty = true)
+        dao.putGroup(updated)
+        enqueueGroupPatch(updated, buildJsonObject { put("name", trimmed) })
+    }
+    @Synchronized fun setGroupColor(id: String, color: String?) = database.runInTransaction {
+        val group = checkNotNull(dao.group(id)) { "分组不存在" }
+        check(group.invalid == 0) { "分组已删除" }
+        val updated = group.copy(color = color, dirty = true)
+        dao.putGroup(updated)
+        enqueueGroupPatch(updated, buildJsonObject { put("color", color?.let(::JsonPrimitive) ?: JsonNull) })
+    }
+    @Synchronized fun setGroupHomeHidden(id: String, hidden: Boolean) = database.runInTransaction {
+        val group = checkNotNull(dao.group(id)) { "分组不存在" }
+        check(group.invalid == 0) { "分组已删除" }
+        val flag = if (hidden) 1 else 0
+        val updated = group.copy(homeHidden = flag, dirty = true)
+        dao.putGroup(updated)
+        enqueueGroupPatch(updated, buildJsonObject { put("hide_from_home", flag) })
+    }
+    @Synchronized fun moveGroup(id: String, delta: Int) = database.runInTransaction {
+        val active = dao.allGroups().filter { it.invalid == 0 }.sortedWith(compareBy({ it.sort }, { it.name }, { it.id }))
+        val index = active.indexOfFirst { it.id == id }
+        val targetIndex = index + delta
+        if (index < 0 || targetIndex !in active.indices) return@runInTransaction
+        val reordered = active.toMutableList().apply {
+            val item = removeAt(index)
+            add(targetIndex, item)
+        }
+        reordered.forEachIndexed { ord, item ->
+            if (item.sort != ord) {
+                val updated = item.copy(sort = ord, dirty = true)
+                dao.putGroup(updated)
+                enqueueGroupPatch(updated, buildJsonObject { put("ord", ord) })
+            }
+        }
+    }
+    @Synchronized fun deleteGroup(id: String) = database.runInTransaction {
+        val group = checkNotNull(dao.group(id)) { "分组不存在" }
+        val hadPendingCreate = dao.task("group", id, "create") != null && dao.meta("sent:${dao.task("group", id, "create")!!.id}") == null
+        dao.putGroup(group.copy(invalid = 1, dirty = !hadPendingCreate))
+        dao.allNotes().filter { it.groupId == id }.forEach { note ->
+            dao.putNote(note.copy(groupId = null, updateTime = clock()))
+        }
+        dao.deleteTasks("group", id)
+        if (!hadPendingCreate) {
+            enqueue(id, "delete", buildJsonObject {}, "group")
+        }
+    }
+    private fun enqueueGroupPatch(group: GroupEntity, patch: JsonObject) {
+        val pendingCreate = dao.task("group", group.id, "create")
+        if (pendingCreate != null && dao.meta("sent:${pendingCreate.id}") == null) {
+            enqueue(group.id, "create", buildJsonObject {
+                put("id", group.id); put("name", group.name); put("sort", group.sort)
+                put("color", group.color?.let(::JsonPrimitive) ?: JsonNull); put("home_hidden", group.homeHidden)
+            }, "group")
+        } else {
+            val previous = dao.task("group", group.id, "prop")?.payload?.let { Json.parseToJsonElement(it).jsonObject }.orEmpty()
+            enqueue(group.id, "prop", JsonObject(previous + patch), "group")
+        }
     }
     fun importGroup(name: String, ord: Int, color: String?, hidden: Int): String {
         check(database.inTransaction())
@@ -157,7 +228,9 @@ class NotesRepository(private val fixedDatabase: NotesDatabase, private val fixe
     }
     @Synchronized fun setTrash(id: String, trash: Boolean) = database.runInTransaction {
         val note = checkNotNull(dao.note(id)) { "笔记不存在" }
-        check(canChangeStructure(id)) { "笔记目录归属未知或被笔记本引用，请在笔记本管理中处理" }
+        if (trash) {
+            check(canChangeStructure(id)) { "笔记目录归属未知或被笔记本引用，请在笔记本管理中处理" }
+        }
         trashIn(note, trash)
     }
     @Synchronized fun setBookNoteTrash(id: String, bookId: String, trash: Boolean) = database.runInTransaction {
@@ -168,8 +241,45 @@ class NotesRepository(private val fixedDatabase: NotesDatabase, private val fixe
     private fun trashIn(note: NoteEntity, trash: Boolean) {
         val id = note.id
         dao.putNote(note.copy(invalid = if (trash) 1 else 0, updateTime = clock(), dirty = bump(note.dirty, "prop")))
+        dao.putNoteState(NoteStateEntity(id, if (trash) "trash" else "available"))
         dao.deleteTask("note", id, if (trash) "recover" else "trash")
         enqueue(id, if (trash) "trash" else "recover", buildJsonObject {})
+    }
+    @Synchronized fun purgeNote(id: String) {
+        database.runInTransaction {
+            val note = dao.note(id) ?: return@runInTransaction
+            require(note.invalid == 1) { "只能彻底删除回收站中的笔记" }
+            purgeIn(note)
+        }
+        compactWal()
+    }
+    @Synchronized fun purgeTrash(): Int {
+        val count = database.runInTransaction<Int> {
+            val trashed = dao.allNotes().filter { it.invalid == 1 }
+            trashed.forEach(::purgeIn)
+            trashed.size
+        }
+        if (count > 0) compactWal()
+        return count
+    }
+    private fun compactWal() {
+        runCatching {
+            if (!database.inTransaction()) {
+                database.openHelper.writableDatabase.query("PRAGMA wal_checkpoint(TRUNCATE)").close()
+            }
+        }
+    }
+    private fun purgeIn(note: NoteEntity) {
+        val id = note.id
+        val pendingCreate = dao.task("note", id, "create")
+        val neverSentToServer = pendingCreate != null && dao.meta("sent:${pendingCreate.id}") == null && note.version == 0L
+        dao.deleteNote(id)
+        dao.deleteTasks("note", id)
+        dao.deleteMeta("required_body:$id")
+        dao.putNoteState(NoteStateEntity(id, "purged"))
+        if (!neverSentToServer) {
+            enqueue(id, "purge", buildJsonObject { put("scope", "note") })
+        }
     }
     private fun enqueue(id: String, kind: String, payload: JsonObject, type: String = "note") {
         val previous = dao.task(type, id, kind)
@@ -248,6 +358,7 @@ class NotesRepository(private val fixedDatabase: NotesDatabase, private val fixe
                 clear(snapshot)
             } catch (error: Exception) { issues += RecoveryIssue(snapshot.key.noteId, snapshot, error.message ?: "草稿恢复失败") }
         }
+        compactWal()
         return RecoveryReport(recovered, issues)
     }
     /** The original draft remains unless both its copy AND receipt have committed. */

@@ -163,6 +163,68 @@ class SyncCoordinator @Inject constructor(private val repository: NotesRepositor
         withContext(Dispatchers.IO) { roundLock.withLock { store.retry(includeFailed) } }
         synchronize()
     }
+
+    /**
+     * Flushes and immediately synchronizes a single [noteId] to the connected server.
+     */
+    suspend fun synchronizeNote(noteId: String, expectedProfile: String = repository.profileId): Result<String> = withContext(Dispatchers.IO) {
+        if (switching || expectedProfile != repository.profileId) {
+            return@withContext Result.failure(IllegalStateException("实例已切换，请重试"))
+        }
+        roundLock.withLock {
+            if (switching || expectedProfile != repository.profileId) {
+                return@withLock Result.failure(IllegalStateException("实例已切换，请重试"))
+            }
+            val connection = runCatching { connections.read() }.getOrNull()
+                ?: return@withLock Result.failure(IllegalStateException("尚未连接服务端，内容已保存在本机"))
+            if (store.meta("instance_origin") != connection.origin) {
+                return@withLock Result.failure(IllegalStateException("实例配置不匹配，请重新接入；本机数据已保留"))
+            }
+            store.transaction {
+                val groupId = store.dao.note(noteId)?.groupId
+                store.dao.tasks().filter {
+                    (it.entityType == "note" && it.entityId == noteId) ||
+                        (groupId != null && it.entityType == "group" && it.entityId == groupId)
+                }.forEach { store.dao.putTask(it.copy(failed = 0, nextAt = 0)) }
+            }
+            val prevStatus = mutableStatus.value
+            mutableStatus.value = SyncStatus(true, true, "正在同步当前笔记…")
+            val client = client(connection)
+            try {
+                stopRequested = false
+                SyncEngine(store, client) { stopRequested }.pushSingleNote(noteId)
+                val epoch = store.meta("accepted_epoch")
+                if (!stopRequested && epoch != null) {
+                    sharedImages.drain(client, epoch)
+                }
+                val failedTask = store.transaction {
+                    store.dao.tasks().firstOrNull { it.entityType == "note" && it.entityId == noteId && it.failed != 0 }
+                }
+                val totalFailed = store.transaction { store.dao.tasks().count { it.failed != 0 } }
+                mutableStatus.value = SyncStatus(
+                    false,
+                    true,
+                    if (totalFailed == 0) "本轮同步完成" else "$totalFailed 项同步失败，可重试、另存或导出",
+                )
+                if (failedTask != null) {
+                    Result.failure(IllegalStateException(failedTask.lastError ?: "当前笔记同步失败，本机内容已保留"))
+                } else {
+                    Result.success("当前笔记已同步")
+                }
+            } catch (error: Exception) {
+                if (error is ApiError && error.code == "sync_reset_required") store.markRecovery()
+                if (error is ApiError && error.status == 401) store.transaction { store.put("requires_auth", "1") }
+                val msg = when (error) {
+                    is ApiError -> error.message ?: "同步失败，本机内容已保留"
+                    else -> "同步失败，本机内容已保留"
+                }
+                mutableStatus.value = prevStatus.copy(running = false, connected = true, message = msg)
+                Result.failure(IllegalStateException(msg, error))
+            } finally {
+                client.close()
+            }
+        }
+    }
     private fun client(connection: Connection) = ApiClient(instanceOrigin(connection.origin, BuildConfig.DEBUG), connection.token,
         readPause = { store.number("rate_limit_until") }, persistPause = { until -> store.transaction { store.put("rate_limit_until", maxOf(store.number("rate_limit_until"), until).toString()) } })
 }

@@ -90,6 +90,7 @@ interface SyncApi {
     @PATCH("api/notes/{id}") suspend fun patch(@Path("id") id: String, @Header("X-Snotes-Epoch") epoch: String, @Body payload: JsonObject): Response<WriteAck>
     @POST("api/notes/{id}/trash") suspend fun trash(@Path("id") id: String, @Header("X-Snotes-Epoch") epoch: String, @Body payload: JsonObject): Response<WriteAck>
     @POST("api/notes/{id}/recover") suspend fun recover(@Path("id") id: String, @Header("X-Snotes-Epoch") epoch: String, @Body payload: JsonObject): Response<WriteAck>
+    @POST("api/notes/{id}/purge") suspend fun purge(@Path("id") id: String, @Header("X-Snotes-Epoch") epoch: String, @Body payload: JsonObject): Response<JsonObject>
     @POST("api/groups") suspend fun createGroup(@Header("X-Snotes-Epoch") epoch: String, @Body payload: JsonObject): Response<WriteAck>
     @PATCH("api/groups/{id}") suspend fun patchGroup(@Path("id") id: String, @Header("X-Snotes-Epoch") epoch: String, @Body payload: JsonObject): Response<WriteAck>
     @DELETE("api/groups/{id}") suspend fun deleteGroup(@Path("id") id: String, @Header("X-Snotes-Epoch") epoch: String): Response<WriteAck>

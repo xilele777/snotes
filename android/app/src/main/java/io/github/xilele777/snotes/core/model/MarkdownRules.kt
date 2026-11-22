@@ -111,3 +111,81 @@ fun escapeRawHtml(markdown: String): String = transformOutsideCode(markdown) { l
 private fun escapeText(text: String): String = text.replace(autolinkOrTag) { match ->
     match.groups[1]?.value ?: "&lt;"
 }
+
+/**
+ * Splits a user search query into distinct lowercased terms (matches Web `splitTerms` in `src/components/SearchBar.ts`).
+ */
+fun splitSearchTerms(query: String): List<String> =
+    query.trimJs().lowercase().split(whitespace).filter(String::isNotEmpty).distinct()
+
+/**
+ * Packs a query into 4 SQLite parameter slots `[t1, t2, t3, t4]` so multi-word queries match across
+ * title, summary, and full body text without dropping trailing words.
+ */
+fun sqlSearchTerms(query: String): Array<String> {
+    val trimmed = query.trimJs().lowercase()
+    if (trimmed.isEmpty()) return arrayOf("", "", "", "")
+    val parts = trimmed.split(whitespace, limit = 4).filter(String::isNotEmpty)
+    return Array(4) { idx -> parts.getOrElse(idx) { "" } }
+}
+
+fun matchesAllTerms(text: String, query: String): Boolean {
+    val terms = splitSearchTerms(query)
+    if (terms.isEmpty()) return true
+    val lower = text.lowercase()
+    return terms.all { term -> lower.contains(term) }
+}
+
+/**
+ * Extracts a clean body excerpt centered around the first matched term (matches Web `extractSearchExcerpt`).
+ */
+fun extractSearchExcerpt(markdown: String, query: String, maxChars: Int = 88): String? {
+    val terms = splitSearchTerms(query)
+    if (terms.isEmpty() || markdown.isBlank()) return null
+    val cleanedLines = markdown.split('\n').map(::stripLine).filter(String::isNotEmpty)
+    if (cleanedLines.isEmpty()) return null
+    val bodyText = (if (cleanedLines.size > 1) cleanedLines.drop(1) else cleanedLines).joinToString(" ")
+    if (bodyText.isEmpty()) return null
+    val lower = bodyText.lowercase()
+    val hitTerm = terms.firstOrNull { lower.contains(it) } ?: return null
+    val hitIdx = lower.indexOf(hitTerm)
+    if (hitIdx < 0) return null
+    if (bodyText.length <= maxChars) return bodyText
+    val lead = ((maxChars - hitTerm.length).coerceAtLeast(16)) / 3
+    val start = (hitIdx - lead).coerceAtLeast(0).coerceAtMost((bodyText.length - maxChars).coerceAtLeast(0))
+    val end = (start + maxChars).coerceAtMost(bodyText.length)
+    val prefix = if (start > 0) "…" else ""
+    val suffix = if (end < bodyText.length) "…" else ""
+    return prefix + bodyText.substring(start, end).trim() + suffix
+}
+
+/**
+ * Finds and merges all non-overlapping `[start, endExclusive)` hit ranges of [query] terms in [text].
+ */
+fun searchHitRanges(text: String, query: String): List<Pair<Int, Int>> {
+    val terms = splitSearchTerms(query)
+    if (terms.isEmpty() || text.isEmpty()) return emptyList()
+    val lower = text.lowercase()
+    val raw = mutableListOf<Pair<Int, Int>>()
+    for (term in terms) {
+        var cursor = 0
+        while (cursor < lower.length) {
+            val idx = lower.indexOf(term, cursor)
+            if (idx < 0) break
+            raw += idx to (idx + term.length).coerceAtMost(text.length)
+            cursor = idx + term.length.coerceAtLeast(1)
+        }
+    }
+    if (raw.isEmpty()) return emptyList()
+    raw.sortWith(compareBy<Pair<Int, Int>> { it.first }.thenBy { it.second })
+    val merged = mutableListOf<Pair<Int, Int>>()
+    for (range in raw) {
+        val last = merged.lastOrNull()
+        if (last != null && range.first <= last.second) {
+            merged[merged.lastIndex] = last.first to maxOf(last.second, range.second)
+        } else {
+            merged += range
+        }
+    }
+    return merged
+}

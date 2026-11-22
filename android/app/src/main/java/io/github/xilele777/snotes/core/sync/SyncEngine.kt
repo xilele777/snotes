@@ -16,6 +16,50 @@ class SyncEngine(private val store: SyncStore, private val client: ApiClient, pr
             throw error
         }
     }
+
+    /**
+     * Immediately pushes pending outbox tasks for a single [noteId] (and its group if unsynced),
+     * falling back to a full preflight round if the instance epoch is not yet established.
+     */
+    suspend fun pushSingleNote(noteId: String) {
+        try {
+            checkRunning()
+            if (store.meta("requires_auth") == "1") throw ApiError(401, "http_error")
+            val cachedEpoch = store.transaction {
+                val ep = store.meta("accepted_epoch")
+                val needsReconcile = store.meta("reconcile_notes") == "1" || store.meta("reconcile_books") == "1"
+                if (!needsReconcile && ep != null) ep else null
+            }
+            val epoch = cachedEpoch ?: preflight()
+            checkRunning()
+            val (groupTasks, noteTasks) = store.transaction {
+                val all = store.dao.tasks()
+                val groupId = store.dao.note(noteId)?.groupId
+                val groups = if (groupId != null) all.filter { it.entityType == "group" && it.entityId == groupId } else emptyList()
+                val notes = all.filter { it.entityType == "note" && it.entityId == noteId }
+                groups to notes
+            }
+            try {
+                if (groupTasks.isNotEmpty()) {
+                    pushChains(groupTasks, epoch)
+                    checkRunning()
+                }
+                if (noteTasks.isNotEmpty()) {
+                    pushChains(noteTasks, epoch)
+                }
+            } catch (error: ApiError) {
+                if (error.code == "sync_reset_required" && cachedEpoch != null) {
+                    runRound()
+                    return
+                }
+                throw error
+            }
+        } catch (error: ApiError) {
+            if (error.status == 401) store.transaction { store.put("requires_auth", "1") }
+            if (error.code == "sync_reset_required") store.markRecovery()
+            throw error
+        }
+    }
     private suspend fun runRound() {
         checkRunning()
         if (store.meta("requires_auth") == "1") throw ApiError(401, "http_error")
@@ -197,6 +241,10 @@ class SyncEngine(private val store: SyncStore, private val client: ApiClient, pr
                             sent.kind == "body" || sent.kind == "prop" -> patch(sent.entityId, epoch, sent.payload)
                             sent.kind == "trash" -> trash(sent.entityId, epoch, sent.payload)
                             sent.kind == "recover" -> recover(sent.entityId, epoch, sent.payload)
+                            sent.kind == "purge" -> {
+                                purge(sent.entityId, epoch, sent.payload)
+                                retrofit2.Response.success(WriteAck(updateTime = System.currentTimeMillis()))
+                            }
                             else -> throw ApiError(400, "unsupported_operation")
                         }
                     }
