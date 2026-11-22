@@ -8,7 +8,6 @@ import dagger.hilt.android.EntryPointAccessors
 import dagger.hilt.components.SingletonComponent
 import io.github.xilele777.snotes.core.database.LocalProfile
 import java.util.concurrent.TimeUnit
-import androidx.glance.appwidget.updateAll
 
 @EntryPoint @InstallIn(SingletonComponent::class)
 interface SyncWorkerAccess {
@@ -35,7 +34,7 @@ object SyncWork {
             OneTimeWorkRequestBuilder<WidgetUpdateWorker>().setInitialDelay(2, TimeUnit.SECONDS).build())
         val request = OneTimeWorkRequestBuilder<SyncWorker>().setInputData(data(id)).setConstraints(constraints)
             .setInitialDelay(3, TimeUnit.SECONDS).setBackoffCriteria(BackoffPolicy.EXPONENTIAL, 30, TimeUnit.SECONDS).addTag("profile:$id").build()
-        WorkManager.getInstance(context).enqueueUniqueWork("sync:$id", ExistingWorkPolicy.KEEP, request)
+        WorkManager.getInstance(context).enqueueUniqueWork("sync:$id", ExistingWorkPolicy.REPLACE, request)
     }
     fun periodic(context: Context, id: String) {
         val request = PeriodicWorkRequestBuilder<SyncWorker>(15, TimeUnit.MINUTES).setConstraints(constraints)

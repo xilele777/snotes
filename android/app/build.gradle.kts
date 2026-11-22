@@ -51,12 +51,19 @@ android {
     }
 
     buildTypes {
+        val isRunningAndroidTest = gradle.startParameter.taskNames.any {
+            it.contains("AndroidTest", ignoreCase = true) || it.contains("connected", ignoreCase = true)
+        }
         debug {
             applicationIdSuffix = ".debug"
+            isMinifyEnabled = !isRunningAndroidTest
+            isShrinkResources = !isRunningAndroidTest
+            proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
         }
         release {
             isMinifyEnabled = true
             isShrinkResources = true
+            signingConfig = signingConfigs.getByName("debug")
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
         }
         create("benchmark") {
@@ -65,6 +72,9 @@ android {
             signingConfig = signingConfigs.getByName("debug")
             matchingFallbacks += "release"
         }
+    }
+    androidResources {
+        localeFilters += listOf("zh", "zh-rCN", "en")
     }
     buildFeatures {
         compose = true
@@ -77,7 +87,16 @@ android {
     sourceSets {
         getByName("test").resources.directories.add("../../shared/fixtures/android-sync")
     }
-    packaging.resources.excludes += "/META-INF/{AL2.0,LGPL2.1}"
+    packaging.resources.excludes += setOf(
+        "/META-INF/{AL2.0,LGPL2.1}",
+        "/META-INF/LICENSE*",
+        "/META-INF/NOTICE*",
+        "/META-INF/*.version",
+        "/META-INF/androidx/**",
+        "DebugProbesKt.bin",
+        "kotlin-tooling-metadata.json",
+        "/*.properties",
+    )
 }
 
 // Signing material comes only from the operator's environment, never source control.
@@ -124,7 +143,6 @@ tasks.named("preBuild") { dependsOn(buildEditorAssets) }
 
 dependencies {
     implementation(libs.work.runtime)
-    implementation(libs.glance.appwidget)
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.activity.compose)
     implementation(platform(libs.compose.bom))
@@ -155,6 +173,5 @@ dependencies {
     androidTestImplementation(libs.mockwebserver)
     androidTestImplementation(platform(libs.compose.bom))
     androidTestImplementation(libs.compose.ui.test.junit4)
-    debugImplementation(libs.compose.ui.tooling)
     debugImplementation(libs.compose.ui.test.manifest)
 }

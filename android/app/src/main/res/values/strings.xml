@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">snotes</string>
-    <string name="version_label">版本 %1$s</string>
+    <string name="widget_new_note">+ 新建笔记</string>
     <string name="widget_description">快速新建和打开本机最近笔记</string>
 </resources>
