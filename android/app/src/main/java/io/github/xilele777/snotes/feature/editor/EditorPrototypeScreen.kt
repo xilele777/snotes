@@ -41,8 +41,8 @@ fun EditorPrototypeScreen(onBack: () -> Unit, model: EditorPrototypeViewModel = 
         model.openLink = { url -> runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, url.toUri())) } }
         onDispose { owner.lifecycle.removeObserver(observer); model.openLink = null }
     }
-    Scaffold(modifier = Modifier.imePadding()) { insets ->
-        Column(Modifier.fillMaxSize().padding(insets)) {
+    Scaffold(contentWindowInsets = WindowInsets.safeDrawing) { insets ->
+        Column(Modifier.fillMaxSize().padding(insets).consumeWindowInsets(insets)) {
             Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp), horizontalArrangement = Arrangement.SpaceBetween) {
                 TextButton(onClick = { exit() }, enabled = (state.loaded || state.failed) && !leaving && !state.busy) { Text("返回") }
                 Text("编辑器原型", modifier = Modifier.padding(top = 14.dp), style = MaterialTheme.typography.titleMedium)

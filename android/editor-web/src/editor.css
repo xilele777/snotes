@@ -1,27 +1,306 @@
-:root { color-scheme: light; font: 16px/1.6 system-ui, sans-serif; --surface: #fff; --ink: #202534; --muted: #4b566d; --line: #767c8b; --accent: #3659ce; background: var(--surface); color: var(--ink); }
-:root[data-dark="true"] { color-scheme: dark; --surface: #1e1f24; --ink: #edf0f7; --muted: #bec5d5; --line: #8791a3; --accent: #b6c5ff; }
+:root {
+  color-scheme: light;
+  --surface: #ffffff;
+  --canvas: #fafafa;
+  --ink: #25262b;
+  --muted: #50545e;
+  --subtle: #666b76;
+  --line: #e9eaee;
+  --accent: #4668e8;
+  --selected: #edf1ff;
+  --hover: #ededf0;
+  --highlight-bg: #fff3a3;
+  --code-bg: #f4f5f7;
+  --editor-line-height: 1.85;
+  font: 16px/var(--editor-line-height) -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Noto Sans CJK SC", system-ui, sans-serif;
+  background: var(--surface);
+  color: var(--ink);
+  -webkit-font-smoothing: antialiased;
+}
+
+:root[data-dark="true"] {
+  color-scheme: dark;
+  --surface: #27282f;
+  --canvas: #212228;
+  --ink: #edf2fa;
+  --muted: #b9c4d4;
+  --subtle: #95a4b9;
+  --line: #363842;
+  --accent: #7f97f0;
+  --selected: #2a3352;
+  --hover: #303139;
+  --highlight-bg: #6b5a00;
+  --code-bg: #1e1f24;
+}
+
+:root[data-line-spacing="compact"] { --editor-line-height: 1.6; }
+:root[data-line-spacing="standard"] { --editor-line-height: 1.82; }
+:root[data-line-spacing="relaxed"] { --editor-line-height: 2.08; }
+
 * { box-sizing: border-box; }
-html { height: 100%; }
-body { margin: 0; height: 100%; display: flex; flex-direction: column; }
-nav { display: flex; flex: none; overflow-x: auto; gap: .25rem; padding: .25rem .5rem; border-block-end: 1px solid var(--line); }
-button { flex: none; min-height: 48px; min-width: 48px; padding: .5rem .75rem; background: transparent; color: inherit; border: 0; border-radius: .5rem; font: inherit; }
-button[aria-pressed="true"] { background: #e8eeff; color: #253fa0; font-weight: 600; }
-:root[data-dark="true"] button[aria-pressed="true"] { background: #343e63; color: #e8eeff; }
-button:disabled { opacity: .55; }
-button:focus-visible, textarea:focus-visible, article:focus-visible { outline: 3px solid var(--accent); outline-offset: -3px; }
-#notice { flex: none; margin: 0; padding: .25rem .75rem; color: var(--muted); font-size: .875rem; }
-#notice:empty { display: none; }
-main { flex: 1; min-height: 0; display: flex; }
-section, article { flex: 1; min-width: 0; min-height: 0; }
-#source-pane { display: flex; flex-direction: column; }
-label { padding: .5rem .75rem .25rem; color: var(--muted); font-size: .875rem; }
-textarea { flex: 1; min-height: 0; width: 100%; border: 1px solid var(--line); border-radius: 0; padding: .75rem; margin: 0; resize: none; font: inherit; font-size: max(1rem, 1em); background: var(--surface); color: var(--ink); scroll-padding-block: 1rem; }
-#rich-pane { overflow: auto; }
-#rich { min-height: 100%; background: var(--surface); color: var(--ink); }
-#rich .vditor-ir { min-height: 240px; }
-#rich .vditor-reset { font-size: 1rem; padding: .75rem !important; color: var(--ink); }
-#preview { overflow: auto; padding: .75rem; background: var(--surface); color: var(--ink); font-size: 1rem; }
-#preview img { max-width: 100%; height: auto; }
+html { height: 100%; background: var(--surface); }
+body {
+  margin: 0;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  overflow-wrap: break-word;
+  container: editor / inline-size;
+  background: var(--surface);
+  color: var(--ink);
+}
+
+#notice {
+  flex: none;
+  margin: 0;
+  padding: 6px 18px;
+  color: var(--muted);
+  background: var(--canvas);
+  border-bottom: 1px solid var(--line);
+  font-size: 0.78rem;
+  line-height: 1.45;
+}
+#notice.sr-only { margin: -1px; padding: 0; border: 0; }
+
+main {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+section, article {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* Source fallback (for >50k char long documents) — clean, zero blue left bar */
+#source-pane {
+  display: flex;
+  flex-direction: column;
+}
+textarea#source {
+  flex: 1;
+  min-height: 0;
+  width: 100%;
+  border: 0;
+  border-radius: 0;
+  outline: none;
+  box-shadow: none;
+  padding: 20px 20px 72px;
+  margin: 0;
+  resize: none;
+  font: inherit;
+  font-size: 1rem;
+  line-height: var(--editor-line-height);
+  background: var(--surface);
+  color: var(--ink);
+  scroll-padding-block: 28px;
+}
+textarea#source::placeholder {
+  color: var(--subtle);
+  opacity: 0.7;
+}
+
+/* Web-aligned Vditor styling with Craft-level editorial calm */
+#rich-pane {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+#rich.snotes-vditor.vditor {
+  flex: 1;
+  min-height: 0;
+  height: 100% !important;
+  display: flex;
+  flex-direction: column;
+  border: 0;
+  border-radius: 0;
+  color: var(--ink);
+  background: var(--surface);
+  --panel-background-color: var(--surface);
+  --toolbar-background-color: var(--surface);
+  --textarea-background-color: var(--surface);
+  --border-color: var(--line);
+  --second-color: var(--muted);
+  --toolbar-icon-color: var(--muted);
+  --toolbar-icon-hover-color: var(--accent);
+  --hover-background-color: var(--hover);
+  --toolbar-height: 44px;
+}
+
+#rich.snotes-vditor .vditor-toolbar {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  flex-wrap: nowrap;
+  gap: 2px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: none;
+  -webkit-overflow-scrolling: touch;
+  padding: 4px 10px !important;
+  background: var(--surface);
+  border-bottom: 1px solid var(--line);
+  z-index: 10;
+}
+#rich.snotes-vditor .vditor-toolbar::-webkit-scrollbar { display: none; }
+#rich.snotes-vditor .vditor-toolbar > .vditor-toolbar__item {
+  float: none;
+  flex: 0 0 auto;
+  padding: 0;
+}
+#rich.snotes-vditor .vditor-toolbar > .vditor-toolbar__item > .vditor-tooltipped {
+  width: 38px;
+  height: 36px;
+  padding: 6px;
+  border-radius: 8px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  -webkit-tap-highlight-color: transparent;
+}
+#rich.snotes-vditor .vditor-toolbar > .vditor-toolbar__item > .vditor-tooltipped:active {
+  background: var(--hover);
+}
+#rich.snotes-vditor .vditor-toolbar > .vditor-toolbar__item > .vditor-menu--current {
+  color: var(--accent);
+  background: var(--selected);
+}
+#rich.snotes-vditor .vditor-toolbar > .vditor-toolbar__divider {
+  float: none;
+  flex: 0 0 auto;
+  height: 16px;
+  margin-inline: 4px;
+  border-left: 1px solid var(--line);
+}
+#rich.snotes-vditor .vditor-toolbar .vditor-hint,
+#rich.snotes-vditor .vditor-toolbar .vditor-panel {
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--surface);
+  box-shadow: 0 8px 28px rgb(0 0 0 / 12%);
+  padding: 4px;
+}
+:root[data-dark="true"] #rich.snotes-vditor .vditor-toolbar .vditor-hint,
+:root[data-dark="true"] #rich.snotes-vditor .vditor-toolbar .vditor-panel {
+  box-shadow: 0 10px 32px rgb(0 0 0 / 45%);
+}
+#rich.snotes-vditor .vditor-toolbar .vditor-hint button {
+  border-radius: 8px;
+  padding: 8px 12px;
+  color: var(--ink);
+}
+
+#rich.snotes-vditor .vditor-content {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  background: var(--surface);
+}
+#rich.snotes-vditor :is(.vditor-ir, .vditor-wysiwyg, .vditor-sv, .vditor-preview) {
+  min-width: 0;
+  background: var(--surface);
+}
+#rich.snotes-vditor :is(.vditor-reset, .vditor-sv) {
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 70vh;
+  padding: 20px 20px 84px !important;
+  color: var(--ink);
+  font-size: 1rem !important;
+  line-height: var(--editor-line-height) !important;
+  overflow-wrap: anywhere;
+  outline: none;
+}
+#rich.snotes-vditor .vditor-reset > :first-child { margin-top: 0 !important; }
+#rich.snotes-vditor .vditor-reset h1 { font-size: 1.5em; font-weight: 700; letter-spacing: -0.02em; border-bottom: 0; padding-bottom: 0; margin: 0.4em 0 0.55em; }
+#rich.snotes-vditor .vditor-reset h2 { font-size: 1.28em; font-weight: 650; letter-spacing: -0.015em; border-bottom: 0; padding-bottom: 0; margin: 1em 0 0.45em; }
+#rich.snotes-vditor .vditor-reset h3 { font-size: 1.12em; font-weight: 600; margin: 0.9em 0 0.4em; }
+#rich.snotes-vditor .vditor-reset blockquote {
+  border-left: 3px solid var(--accent);
+  padding: 2px 0 2px 14px;
+  color: var(--muted);
+  background: transparent;
+}
+#rich.snotes-vditor .vditor-reset code:not(.hljs):not(.highlight-chroma) {
+  background: var(--code-bg);
+  border-radius: 5px;
+  padding: 0.14em 0.4em;
+  font-size: 0.88em;
+}
+#rich.snotes-vditor .vditor-reset pre > code {
+  background: var(--code-bg);
+  border-radius: 10px;
+  padding: 14px 16px;
+}
+#rich.snotes-vditor .vditor-reset mark {
+  color: inherit;
+  background: var(--highlight-bg);
+  border-radius: 3px;
+  padding: 0 2px;
+}
+#rich.snotes-vditor .vditor-reset img {
+  max-width: 100%;
+  height: auto;
+  border-radius: 10px;
+}
+#rich.snotes-vditor .vditor-reset a { color: var(--accent); }
+#rich.snotes-vditor .vditor-reset hr {
+  height: 1px;
+  background: var(--line);
+  border: 0;
+  margin: 1.4em 0;
+}
+#rich.snotes-vditor .vditor-ir__marker {
+  color: var(--subtle);
+}
+#rich.snotes-vditor .vditor-sv {
+  resize: none;
+  border: 0;
+  outline: none;
+  box-shadow: none;
+  white-space: pre-wrap;
+}
+
+/* Read-only preview (trash notes) */
+#preview {
+  overflow: auto;
+  padding: 20px 20px 72px;
+  background: var(--surface);
+  color: var(--ink);
+  font-size: 1rem;
+  line-height: var(--editor-line-height);
+  scroll-padding-block: 24px;
+}
+#preview :is(h1, h2, h3) { text-wrap: balance; border-bottom: 0; }
+#preview :is(p, li) { text-wrap: pretty; }
+#preview img { max-width: 100%; height: auto; border-radius: 10px; }
 #preview pre, #preview table { overflow-x: auto; max-width: 100%; }
 #preview a { color: var(--accent); }
+#preview mark { color: inherit; background: var(--highlight-bg); border-radius: 3px; padding: 0 2px; }
+#preview :is(a, code) { overflow-wrap: anywhere; }
+
+@container editor (inline-size > 720px) {
+  textarea#source,
+  #preview,
+  #rich.snotes-vditor :is(.vditor-reset, .vditor-sv) {
+    padding-inline: max(36px, calc((100cqw - 720px) / 2)) !important;
+  }
+}
+
 [hidden] { display: none !important; }

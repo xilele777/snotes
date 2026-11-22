@@ -1,4 +1,4 @@
-import { build } from 'esbuild'
+import { build, transform } from 'esbuild'
 import { mkdir, cp, readFile, writeFile, rm } from 'node:fs/promises'
 import { fileURLToPath } from 'node:url'
 import { resolve, relative, sep } from 'node:path'
@@ -16,7 +16,7 @@ if (rootPackage.dependencies.vditor !== vditorPackage.version) throw Error('Andr
 await build({
   entryPoints: [resolve(directory, 'src/main.ts')],
   bundle: true, outdir: output, entryNames: 'editor', chunkNames: 'chunk-[hash]',
-  splitting: true, format: 'esm', target: 'chrome100', minify: true,
+  splitting: true, format: 'esm', target: 'chrome100', minify: true, legalComments: 'none',
   plugins: [{
     name: 'vditor-disabled-storage-guard',
     setup(builder) {
@@ -32,13 +32,25 @@ await build({
   }],
 })
 await cp(resolve(directory, 'index.html'), resolve(output, 'index.html'))
-await cp(resolve(directory, 'src/editor.css'), resolve(output, 'editor.css'))
+const rawEditorCss = await readFile(resolve(directory, 'src/editor.css'), 'utf8')
+const minEditorCss = await transform(rawEditorCss, { loader: 'css', minify: true })
+await writeFile(resolve(output, 'editor.css'), minEditorCss.code)
 await cp(resolve(directory, 'sample.svg'), resolve(output, 'sample.svg'))
 const vendor = resolve(output, 'vendor/vditor')
-await mkdir(resolve(vendor, 'dist/js'), { recursive: true })
-for (const path of ['index.css', 'js/lute/lute.min.js', 'js/i18n/zh_CN.js', 'js/icons/ant.js', 'css/content-theme']) {
-  await mkdir(resolve(vendor, 'dist', path, '..'), { recursive: true })
-  await cp(resolve(directory, 'node_modules/vditor/dist', path), resolve(vendor, 'dist', path), { recursive: true })
+await mkdir(resolve(vendor, 'dist/js/lute'), { recursive: true })
+await mkdir(resolve(vendor, 'dist/js/i18n'), { recursive: true })
+await mkdir(resolve(vendor, 'dist/js/icons'), { recursive: true })
+await mkdir(resolve(vendor, 'dist/css/content-theme'), { recursive: true })
+await cp(resolve(directory, 'node_modules/vditor/dist/js/lute/lute.min.js'), resolve(vendor, 'dist/js/lute/lute.min.js'))
+for (const cssPath of ['index.css', 'css/content-theme/light.css', 'css/content-theme/dark.css']) {
+  const raw = await readFile(resolve(directory, 'node_modules/vditor/dist', cssPath), 'utf8')
+  const minified = await transform(raw, { loader: 'css', minify: true })
+  await writeFile(resolve(vendor, 'dist', cssPath), minified.code)
+}
+for (const jsPath of ['js/i18n/zh_CN.js', 'js/icons/ant.js']) {
+  const raw = await readFile(resolve(directory, 'node_modules/vditor/dist', jsPath), 'utf8')
+  const minified = await transform(raw, { loader: 'js', minify: true, legalComments: 'none' })
+  await writeFile(resolve(vendor, 'dist', jsPath), minified.code)
 }
 for (const [name, license] of [['vditor', 'LICENSE'], ['dompurify', 'LICENSE']]) {
   await cp(resolve(directory, 'node_modules', name, license), resolve(output, `${name}-LICENSE`))

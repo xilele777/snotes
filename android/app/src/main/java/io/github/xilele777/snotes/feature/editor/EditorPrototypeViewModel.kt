@@ -178,6 +178,12 @@ class EditorPrototypeViewModel @Inject constructor(@ApplicationContext context: 
             finally { mutableState.value = state.value.copy(busy = false) }
         }
     }
+    fun setMode(mode: String) {
+        key?.let {
+            webView?.send(EditorProtocol.nativeMessage("mode", it, mapOf("mode" to JsonPrimitive(mode))))
+        }
+    }
+
     fun background() {
         if (state.value.loaded && !state.value.busy && flush == null) viewModelScope.launch { flushAndSave() }
     }
